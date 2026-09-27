@@ -103,6 +103,14 @@ private actor GatedArchiveTransport: ArchiveTransport {
 }
 
 private enum DownloadTestError: Error { case persistence }
+
+// Immutable artwork with a Sendable request handler, exercised on the same kind
+// of background queue that MediaPlayer uses rather than only on MainActor.
+private final class BackgroundArtworkProbe: @unchecked Sendable {
+    let artwork: MPMediaItemArtwork
+    init(_ artwork: MPMediaItemArtwork) { self.artwork = artwork }
+    func imageSize() -> CGSize? { artwork.image(at: CGSize(width: 24, height: 16))?.size }
+}
 private actor FaultingDownloadStore: DownloadPersistence {
     var records: [DownloadRecord]
     var rejectWrites = false
@@ -514,6 +522,9 @@ final class ServiceReviewTests: XCTestCase {
         let artwork = try XCTUnwrap(MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork)
         XCTAssertEqual(artwork.bounds.size, image.value.size)
         XCTAssertEqual(artwork.image(at: image.value.size)?.size, image.value.size)
+        let probe = BackgroundArtworkProbe(artwork)
+        let backgroundSize = await Task.detached { probe.imageSize() }.value
+        XCTAssertEqual(backgroundSize, image.value.size, "MediaPlayer must be able to invoke the handler off-main without an actor-isolation trap.")
         playback.pause()
         playback.seek(to: 0.2)
         playback.load(artifact: artifact, tracks: [track, track], trackIndex: 1, autoplay: false)

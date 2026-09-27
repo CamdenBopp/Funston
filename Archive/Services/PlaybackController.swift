@@ -568,7 +568,10 @@ final class PlaybackController: ObservableObject {
                   let self, self.artworkURL == url else { return }
             // The pipeline decodes off-main and caps resolution. The system's callback
             // only returns that immutable image: no I/O, decoding, or resizing per request.
-            self.nowPlayingArtwork = MPMediaItemArtwork(boundsSize: image.value.size) { _ in image.value }
+            // MediaPlayer calls this on its own access queue. Explicit @Sendable
+            // prevents the closure from inheriting this task's MainActor isolation.
+            let requestHandler: @Sendable (CGSize) -> UIImage = { _ in image.value }
+            self.nowPlayingArtwork = MPMediaItemArtwork(boundsSize: image.value.size, requestHandler: requestHandler)
             self.artworkTask = nil
             self.updateNowPlaying()
         }
