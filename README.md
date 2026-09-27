@@ -8,6 +8,8 @@ Audio publishes album artwork and transport metadata to the system Now Playing s
 
 UIKit owns navigation, adaptive tab/split layouts and reusable collections; SwiftUI composes artifact headers and the full audio player. A native interactive mini-player keeps listening available while browsing. Supported PDFs open in a PDFKit reader with page restoration and text search; compatible films open in AVKit. EPUB and OCR-specific reading tools remain future work.
 
+The video viewer streams public MP4/M4V/MOV files or uses a leased local download, restores per-file position, and offers retry without discarding progress. An unmodified full-screen AVKit player supplies auto-hiding transport, speed, AirPlay, embedded media options, and supported Picture in Picture. Its native Close action ends the video; the audio queue remains paused and available afterward. The image uses aspect-fit rather than cropping to fill the phone. Downloads includes a dedicated Watch Downloaded Film action that never silently switches to streaming. Device PiP/AirPlay and manual accessibility verification remain release gates.
+
 The audio presentation uses MIT-licensed LNPopupController 4.5.12, vendored with a documented manifest-only build fix. Its MIT-licensed LNSystemMarqueeLabel dependency is locked to 0.1.2. Playback, artwork caching, downloads and persistence remain app-owned. See [component decisions and licensing](Docs/ComponentDecisions.md) and [vendored provenance](Vendor/LNPopupController/PROVENANCE.md).
 
 Generate the Xcode project and build:

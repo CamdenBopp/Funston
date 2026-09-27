@@ -491,6 +491,166 @@ final class ServiceReviewTests: XCTestCase {
         playback.pause()
     }
 
+    func testTrackNavigationContinuesPlayingIncludingRapidChanges() async throws {
+        let (store, directory, media) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (playback, avPlayer) = try await navigationFixture(store: store, media: media)
+        defer { playback.pause() }
+        playback.play()
+        try await waitForTransport { playback.phase == .playing && avPlayer.rate > 0 }
+        playback.nextTrack()
+        XCTAssertEqual(playback.context?.trackIndex, 1)
+        try await waitForTransport { playback.phase == .playing && avPlayer.rate > 0 }
+        playback.previousTrack()
+        XCTAssertEqual(playback.context?.trackIndex, 0)
+        try await waitForTransport { playback.phase == .playing && avPlayer.rate > 0 }
+        playback.nextTrack()
+        playback.nextTrack()
+        playback.previousTrack()
+        XCTAssertEqual(playback.context?.trackIndex, 1)
+        try await waitForTransport { playback.phase == .playing && avPlayer.rate > 0 }
+    }
+
+    func testTrackNavigationPreservesPauseAndPauseDuringPreparation() async throws {
+        let (store, directory, media) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (playback, avPlayer) = try await navigationFixture(store: store, media: media)
+        defer { playback.pause() }
+        playback.nextTrack()
+        try await waitForTransport { playback.phase != .preparing }
+        XCTAssertEqual(playback.phase, .paused)
+        XCTAssertEqual(avPlayer.rate, 0)
+        playback.previousTrack()
+        try await waitForTransport { playback.phase != .preparing }
+        XCTAssertEqual(playback.phase, .paused)
+        XCTAssertEqual(avPlayer.rate, 0)
+        playback.play()
+        playback.nextTrack()
+        playback.pause()
+        playback.nextTrack()
+        try await waitForTransport { playback.phase != .preparing }
+        XCTAssertEqual(playback.context?.trackIndex, 2)
+        XCTAssertEqual(playback.phase, .paused)
+        XCTAssertEqual(avPlayer.rate, 0)
+    }
+
+    func testRapidTrackChangesDuringActivationKeepLatestPlayIntent() async throws {
+        let (store, directory, media) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let started = expectation(description: "Activation pending")
+        var releaseActivation: CheckedContinuation<Void, Never>?
+        var activationCount = 0
+        let (playback, avPlayer) = try await navigationFixture(store: store, media: media, activate: {
+            activationCount += 1
+            if activationCount == 1 {
+                await withCheckedContinuation { releaseActivation = $0; started.fulfill() }
+            }
+        })
+        defer { playback.pause() }
+        playback.play()
+        await fulfillment(of: [started], timeout: 3)
+        playback.nextTrack()
+        playback.nextTrack()
+        playback.previousTrack()
+        XCTAssertTrue(playback.wantsToPlay)
+        XCTAssertTrue(playback.phase.showsPauseControl(wantsToPlay: playback.wantsToPlay))
+        releaseActivation?.resume()
+        try await waitForTransport { playback.phase == .playing && avPlayer.rate > 0 }
+        XCTAssertEqual(playback.context?.trackIndex, 1)
+    }
+
+    func testTrackBoundariesRestartAndAutomaticAdvancePreservePlayback() async throws {
+        let (store, directory, media) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (playback, avPlayer) = try await navigationFixture(store: store, media: media)
+        defer { playback.pause() }
+        playback.play()
+        try await waitForTransport { playback.phase == .playing && avPlayer.rate > 0 }
+        playback.seek(to: 8)
+        try await waitForTransport { avPlayer.currentTime().seconds >= 8 }
+        playback.previousTrack()
+        try await waitForTransport { avPlayer.currentTime().seconds < 1 && avPlayer.rate > 0 }
+        XCTAssertEqual(playback.context?.trackIndex, 0)
+        NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: avPlayer.currentItem)
+        try await waitForTransport { playback.context?.trackIndex == 1 && playback.phase == .playing }
+        playback.nextTrack()
+        try await waitForTransport { playback.context?.trackIndex == 2 && playback.phase == .playing }
+        playback.nextTrack()
+        XCTAssertEqual(playback.phase, .playing, "Next at the queue boundary must not stop the current recording.")
+        XCTAssertGreaterThan(avPlayer.rate, 0)
+        NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: avPlayer.currentItem)
+        XCTAssertEqual(playback.phase, .ended)
+        XCTAssertFalse(playback.wantsToPlay)
+        XCTAssertEqual(avPlayer.rate, 0)
+    }
+
+    private func navigationFixture(store: SQLiteStore, media: URL,
+                                   activate: @escaping @MainActor () async throws -> Void = {},
+                                   deactivate: @escaping @MainActor () async -> Void = {}) async throws -> (PlaybackController, AVPlayer) {
+        var tracks: [PlayableTrack] = []
+        for index in 0..<3 {
+            let name = "track-\(index).wav"
+            let url = media.appending(path: name)
+            try writeSilentAudio(to: url, seconds: 30)
+            let record = DownloadRecord(key: DownloadManager.key(identifier: "navigation", fileName: name),
+                identifier: "navigation", fileName: name, title: name, expectedBytes: nil,
+                localPath: url.path, state: .completed, receivedBytes: 0, totalBytes: nil, errorMessage: nil, updatedAt: .now)
+            try await store.upsertDownload(record)
+            tracks.append(PlayableTrack(id: name, title: name, candidates: [ArchiveFile(name: name)]))
+        }
+        let downloads = DownloadManager(store: store, mediaDirectory: media, sessionConfiguration: .ephemeral)
+        await downloads.waitUntilReady()
+        let avPlayer = AVPlayer()
+        let playback = PlaybackController(store: store, downloads: downloads, player: avPlayer,
+            audioSessionActivator: activate, audioSessionDeactivator: deactivate, artworkLoader: { _ in throw URLError(.notConnectedToInternet) })
+        playback.load(artifact: ArtifactSummary(identifier: "navigation", title: "Album", mediaType: .audio),
+                      tracks: tracks, trackIndex: 0, autoplay: false)
+        try await waitForTransport { playback.phase == .paused && avPlayer.currentItem?.status == .readyToPlay }
+        return (playback, avPlayer)
+    }
+
+    private func waitForTransport(file: StaticString = #filePath, line: UInt = #line, _ predicate: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while !predicate(), Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(predicate(), "Expected transport state was not reached.", file: file, line: line)
+    }
+
+    func testVideoOwnershipProtectsSessionAndAudioRecoversAfterInterruption() async throws {
+        let (store, directory, media) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var deactivations = 0
+        let (playback, avPlayer) = try await navigationFixture(store: store, media: media, deactivate: { deactivations += 1 })
+        defer { playback.pause() }
+        playback.play()
+        try await waitForTransport { playback.phase == .playing }
+        NotificationCenter.default.post(name: AVAudioSession.interruptionNotification, object: nil,
+            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        let acquired = try await playback.acquireVideoPlayback()
+        let token = try XCTUnwrap(acquired)
+        let baseline = deactivations
+        NotificationCenter.default.post(name: AVAudioSession.interruptionNotification, object: nil,
+            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
+                       AVAudioSessionInterruptionOptionKey: AVAudioSession.InterruptionOptions.shouldResume.rawValue])
+        NotificationCenter.default.post(name: AVAudioSession.routeChangeNotification, object: nil,
+            userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue])
+        playback.pause(); playback.play(); playback.nextTrack()
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(deactivations, baseline)
+        XCTAssertEqual(avPlayer.rate, 0)
+        XCTAssertEqual(playback.context?.trackIndex, 0)
+        playback.releaseVideoPlayback(token)
+        playback.play()
+        try await waitForTransport { playback.phase == .playing && avPlayer.rate > 0 }
+        let acquiredAgain = try await playback.acquireVideoPlayback()
+        let newer = try XCTUnwrap(acquiredAgain)
+        playback.releaseVideoPlayback(token)
+        playback.play()
+        XCTAssertEqual(avPlayer.rate, 0, "A stale release cannot surrender the newer video's ownership.")
+        playback.releaseVideoPlayback(newer)
+        playback.play()
+        try await waitForTransport { playback.phase == .playing && avPlayer.rate > 0 }
+    }
+
     private func localAudioFixture(store: SQLiteStore, media: URL) async throws -> DownloadRecord {
         let url = media.appending(path: "session-test.wav")
         try writeSilentAudio(to: url)
@@ -568,12 +728,12 @@ final class ServiceReviewTests: XCTestCase {
         playback.pause()
     }
 
-    private func writeSilentAudio(to url: URL) throws {
+    private func writeSilentAudio(to url: URL, seconds: Int = 1) throws {
         let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 8_000, channels: 1))
         let file = try AVAudioFile(forWriting: url, settings: format.settings)
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8_000))
         buffer.frameLength = 8_000
         buffer.floatChannelData?[0].initialize(repeating: 0, count: 8_000)
-        try file.write(from: buffer)
+        for _ in 0..<seconds { try file.write(from: buffer) }
     }
 }

@@ -5,6 +5,16 @@ import XCTest
 @testable import Archive
 
 final class ArchiveUIPresentationTests: XCTestCase {
+    func testTransportButtonMatchesActionWhilePreparing() {
+        XCTAssertTrue(PlaybackPhase.preparing.showsPauseControl(wantsToPlay: true))
+        XCTAssertFalse(PlaybackPhase.preparing.showsPauseControl(wantsToPlay: false))
+        XCTAssertTrue(PlaybackPhase.buffering.showsPauseControl(wantsToPlay: true))
+        XCTAssertTrue(PlaybackPhase.playing.showsPauseControl(wantsToPlay: true))
+        for phase in [PlaybackPhase.paused, .ended, .idle, .failed("Unavailable")] {
+            XCTAssertFalse(phase.showsPauseControl(wantsToPlay: false))
+        }
+    }
+
     @MainActor
     func testMediaPrimaryActionsNeverExposeRestrictedOrPrivateFiles() {
         let summary = ArtifactSummary(identifier: "book", title: "Book", mediaType: .texts)
@@ -30,6 +40,15 @@ final class ArchiveUIPresentationTests: XCTestCase {
         let detail = ArtifactDetail(summary: summary, files: [unsupported, mp4])
         XCTAssertEqual(ArtifactMediaPresentation.preferredFile(in: detail), mp4)
         XCTAssertEqual(ArtifactMediaPresentation.actionTitle(for: detail), "Watch Film")
+    }
+
+    @MainActor
+    func testAudioArtifactKeepsPlayAsPrimaryActionDespitePDFDerivative() {
+        let summary = ArtifactSummary(identifier: "radio", title: "Radio show", mediaType: .audio)
+        let detail = ArtifactDetail(summary: summary, files: [ArchiveFile(name: "notes.pdf")],
+                                    tracks: [PlayableTrack(id: "track", title: "Episode", candidates: [ArchiveFile(name: "show.mp3")])])
+        XCTAssertNil(ArtifactMediaPresentation.actionTitle(for: detail))
+        XCTAssertNil(ArtifactMediaPresentation.preferredFile(in: detail))
     }
 
     @MainActor

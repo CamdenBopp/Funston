@@ -44,7 +44,7 @@ final class ArchivePlayerPresentation: NSObject, LNPopupPresentationDelegate {
         reopenAfterAttach = false
     }
 
-    func update(context: PlaybackContext?, phase: PlaybackPhase) {
+    func update(context: PlaybackContext?, phase: PlaybackPhase, wantsToPlay: Bool) {
         guard let context else {
             setProgressVisible(false)
             artworkTask?.cancel()
@@ -67,7 +67,7 @@ final class ArchivePlayerPresentation: NSObject, LNPopupPresentationDelegate {
         controller.popupItem.accessibilityValue = phase.spokenValue
         controller.popupItem.accessibilityHint = "Opens player"
         controller.popupItem.accessibilityImageLabel = context.artifact.title
-        let isPlaying = phase == .playing || phase == .buffering
+        let isPlaying = phase.showsPauseControl(wantsToPlay: wantsToPlay)
         toggle.image = UIImage(systemName: isPlaying ? "pause.fill" : "play.fill")
         toggle.accessibilityLabel = isPlaying ? "Pause" : "Play"
         toggle.accessibilityIdentifier = "compactPlayer.toggle"

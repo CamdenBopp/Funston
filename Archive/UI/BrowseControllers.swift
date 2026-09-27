@@ -217,7 +217,7 @@ final class DownloadsController: ArchiveListController {
             let update = self.projection.update(records)
             if update.replacesContents { self.apply(update.rows) }
             else { self.updateRows(update.rows) }
-            if records.isEmpty { self.showMessage("No downloads", detail: "Downloaded recordings and PDFs stay here for listening and reading offline.") }
+            if records.isEmpty { self.showMessage("No downloads", detail: "Downloaded recordings, films, and PDFs stay here for offline use.") }
         }
     }
     override func viewDidDisappear(_ animated: Bool) {
@@ -303,6 +303,9 @@ final class DownloadDetailController: ArchiveListController, QLPreviewController
         case .queued, .downloading: rows.append(ArchiveRow(id: "cancel", title: "Cancel Download"))
         case .failed, .cancelled, .missing: rows.append(ArchiveRow(id: "retry", title: "Retry Download"))
         case .completed:
+            if ArtifactMediaPresentation.isVideoFile(record.fileName) {
+                rows.append(ArchiveRow(id: "watchOffline", title: "Watch Downloaded Film", symbol: "play.fill"))
+            }
             if ["mp3", "m4a", "aac", "wav", "aiff", "aif"].contains((record.fileName as NSString).pathExtension.lowercased()) {
                 rows.append(ArchiveRow(id: "playOffline", title: "Play Downloaded Recording", symbol: "play.fill"))
             }
@@ -316,6 +319,10 @@ final class DownloadDetailController: ArchiveListController, QLPreviewController
     }
     override func selected(_ id: String) {
         switch id {
+        case "watchOffline":
+            ArtifactMediaPresentation.watch(file: ArchiveFile(name: record.fileName, size: record.expectedBytes),
+                summary: ArtifactSummary(identifier: record.identifier, title: record.title, mediaType: .movies),
+                from: self, environment: environment, downloadedOnly: true)
         case "playOffline": environment.playback.playDownloaded(record)
         case "openLocal": openLocalFile()
         case "artifact": open(ArtifactSummary(identifier: record.identifier, title: record.title))

@@ -23,6 +23,14 @@ enum PlaybackPhase: Equatable, Sendable {
         case .failed: "Playback failed"
         }
     }
+
+    func showsPauseControl(wantsToPlay: Bool) -> Bool {
+        switch self {
+        case .playing, .buffering: true
+        case .preparing: wantsToPlay
+        default: false
+        }
+    }
 }
 
 struct PlaybackContext: Equatable, Sendable {
@@ -85,7 +93,7 @@ final class PlaybackController: ObservableObject {
     private var intentRevision: UInt64 = 0
     private var positionRevision: UInt64 = 0
     private var persistenceTail: Task<Void, Never>?
-    private var wantsToPlay = false
+    @Published private(set) var wantsToPlay = false
     private var restoringPosition = false
     private var readyGeneration: UInt64?
     private var attemptedFiles = Set<String>()
@@ -93,6 +101,7 @@ final class PlaybackController: ObservableObject {
     private var sessionNotifications: [NSObjectProtocol] = []
     private var interruptionGeneration: UInt64?
     private var interrupted = false
+    private var videoOwnership: UInt64?
 
     init(store: SQLiteStore, downloads: DownloadManager, player: AVPlayer = AVPlayer(),
          audioSessionActivator: (@MainActor () async throws -> Void)? = nil,
@@ -136,6 +145,7 @@ final class PlaybackController: ObservableObject {
     }
 
     func load(artifact: ArtifactSummary, tracks: [PlayableTrack], trackIndex: Int, autoplay: Bool = true) {
+        guard videoOwnership == nil else { return }
         guard tracks.indices.contains(trackIndex) else {
             phase = .failed("No supported audio file is available.")
             return
@@ -201,19 +211,12 @@ final class PlaybackController: ObservableObject {
     }
 
     func togglePlayback() {
-        switch phase {
-        case .playing, .buffering:
-            pause()
-        case .preparing where wantsToPlay:
-            pause()
-        case .paused, .ended:
-            play()
-        case .preparing, .idle, .failed:
-            if player.currentItem != nil { play() }
-        }
+        if phase.showsPauseControl(wantsToPlay: wantsToPlay) { pause() }
+        else { play() }
     }
 
     func play() {
+        guard videoOwnership == nil else { return }
         guard player.currentItem != nil else { return }
         if case .failed = phase, let context {
             load(artifact: context.artifact, tracks: context.tracks, trackIndex: context.trackIndex)
@@ -274,6 +277,7 @@ final class PlaybackController: ObservableObject {
     }
 
     func pause() {
+        guard videoOwnership == nil else { return }
         wantsToPlay = false
         intentRevision &+= 1
         player.pause()
@@ -296,7 +300,38 @@ final class PlaybackController: ObservableObject {
         return revision == intentRevision && !wantsToPlay
     }
 
+    /// The fullscreen video viewer owns transport and the audio session until it
+    /// releases this token. Audio notifications/remote callbacks must not fight AVKit.
+    func acquireVideoPlayback() async throws -> UInt64? {
+        guard videoOwnership == nil else { return nil }
+        pause()
+        let token = intentRevision
+        videoOwnership = token
+        for (command, target) in remoteCommandTokens { command.removeTarget(target) }
+        remoteCommandTokens.removeAll()
+        let previous = audioSessionTail
+        var failure: (any Error)?
+        audioSessionTail = Task { @MainActor [weak self] in
+            await previous?.value
+            guard let self, self.videoOwnership == token else { return }
+            do { try await self.audioSessionActivator() }
+            catch { failure = error }
+        }
+        await audioSessionTail?.value
+        guard videoOwnership == token else { return nil }
+        if let failure { releaseVideoPlayback(token); throw failure }
+        return token
+    }
+
+    func releaseVideoPlayback(_ token: UInt64) {
+        guard videoOwnership == token else { return }
+        videoOwnership = nil
+        configureRemoteCommands()
+        pause()
+    }
+
     func seek(to seconds: Double) {
+        guard videoOwnership == nil else { return }
         guard seconds.isFinite, let seconds = MediaDuration.validated(max(0, seconds)) else { return }
         positionRevision &+= 1
         let upperBound = duration ?? seconds
@@ -315,20 +350,17 @@ final class PlaybackController: ObservableObject {
     }
 
     func nextTrack() {
+        guard videoOwnership == nil else { return }
         guard let context else { return }
         let nextIndex = context.trackIndex + 1
-        guard context.tracks.indices.contains(nextIndex) else {
-            player.pause()
-            wantsToPlay = false
-            phase = .ended
-            persist(seconds: 0)
-            updateNowPlaying()
-            return
-        }
-        load(artifact: context.artifact, tracks: context.tracks, trackIndex: nextIndex)
+        // A temporary zero player rate during preparation is not a Pause request.
+        // Preserve explicit intent across every item replacement, including rapid skips.
+        guard context.tracks.indices.contains(nextIndex) else { return }
+        load(artifact: context.artifact, tracks: context.tracks, trackIndex: nextIndex, autoplay: wantsToPlay)
     }
 
     func previousTrack() {
+        guard videoOwnership == nil else { return }
         guard let context else { return }
         if currentSeconds > 5 {
             seek(to: 0)
@@ -339,7 +371,7 @@ final class PlaybackController: ObservableObject {
             seek(to: 0)
             return
         }
-        load(artifact: context.artifact, tracks: context.tracks, trackIndex: previousIndex)
+        load(artifact: context.artifact, tracks: context.tracks, trackIndex: previousIndex, autoplay: wantsToPlay)
     }
 
     func beginVisibleProgress() {
@@ -454,7 +486,7 @@ final class PlaybackController: ObservableObject {
     }
 
     private func updateTransportPhase() {
-        guard context != nil, !restoringPosition else { return }
+        guard videoOwnership == nil, context != nil, !restoringPosition else { return }
         if case .failed = phase { return }
         if phase == .ended { return }
         if interrupted || !wantsToPlay { phase = .paused }
@@ -476,6 +508,14 @@ final class PlaybackController: ObservableObject {
             let options = (notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue ?? 0
             MainActor.assumeIsolated {
                 guard let self, let type else { return }
+                if self.videoOwnership != nil {
+                    // Keep the shared interruption fact current, but let AVKit
+                    // handle video transport. Otherwise an interruption ending
+                    // during video can leave the audio player permanently blocked.
+                    self.interrupted = type == AVAudioSession.InterruptionType.began.rawValue
+                    self.interruptionGeneration = nil
+                    return
+                }
                 if type == AVAudioSession.InterruptionType.began.rawValue {
                     self.interrupted = true
                     self.interruptionGeneration = self.wantsToPlay ? self.generation : nil
@@ -491,15 +531,22 @@ final class PlaybackController: ObservableObject {
         sessionNotifications.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] notification in
             let reason = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue
             MainActor.assumeIsolated {
-                if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { self?.pause() }
+                if self?.videoOwnership == nil, reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { self?.pause() }
             }
         })
     }
 
     private func advanceAfterEnd() {
+        guard videoOwnership == nil else { return }
         phase = .ended
         persist(seconds: 0)
-        nextTrack()
+        if let context, context.trackIndex + 1 < context.tracks.count {
+            nextTrack()
+        } else {
+            player.pause()
+            wantsToPlay = false
+            updateNowPlaying()
+        }
     }
 
     private func saveCurrentPosition() {
@@ -578,6 +625,7 @@ final class PlaybackController: ObservableObject {
     }
 
     private func updateNowPlaying() {
+        guard videoOwnership == nil else { return }
         guard let context else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             return

@@ -39,13 +39,13 @@ final class ArchiveRootController: UIViewController {
         registerForTraitChanges([UITraitHorizontalSizeClass.self]) { (controller: ArchiveRootController, _: UITraitCollection) in
             controller.configureLayout()
         }
-        environment.playback.$context.combineLatest(environment.playback.$phase)
+        environment.playback.$context.combineLatest(environment.playback.$phase, environment.playback.$wantsToPlay)
             // @Published delivers before the stored property is committed. Defer
             // constructing FullPlayer until it can seed and subscribe to committed
             // playback state, including the first nil-to-recording transition.
             .receive(on: RunLoop.main)
-            .sink { [weak self] context, phase in
-            self?.playerPresentation.update(context: context, phase: phase)
+            .sink { [weak self] context, phase, wantsToPlay in
+            self?.playerPresentation.update(context: context, phase: phase, wantsToPlay: wantsToPlay)
         }.store(in: &subscriptions)
     }
 

@@ -18,7 +18,7 @@ enum ArtifactMediaPresentation {
     }
 
     private static func supportedFiles(in detail: ArtifactDetail) -> [ArchiveFile] {
-        guard detail.access == .available else { return [] }
+        guard detail.access == .available, detail.summary.mediaType == .movies || detail.summary.mediaType == .texts else { return [] }
         let candidates = detail.files.filter { file in
             guard !file.isPrivate else { return false }
             let suffix = (file.name as NSString).pathExtension.lowercased()
@@ -36,6 +36,23 @@ enum ArtifactMediaPresentation {
         return detail.summary.mediaType == .movies ? "Watch Film" : "Read PDF"
     }
 
+    static func isVideoFile(_ fileName: String) -> Bool {
+        ["mp4", "m4v", "mov"].contains((fileName as NSString).pathExtension.lowercased())
+    }
+
+    static func watch(file: ArchiveFile, summary: ArtifactSummary, from controller: UIViewController,
+                      environment: AppEnvironment, downloadedOnly: Bool = false) {
+        guard !file.isPrivate, isVideoFile(file.name), controller.presentedViewController == nil else { return }
+        let session = VideoPlaybackSession(summary: summary, file: file,
+            source: downloadedOnly ? .downloadedOnly : .archive,
+            store: environment.store, downloads: environment.downloads,
+            acquireAudio: { try await environment.playback.acquireVideoPlayback() },
+            releaseAudio: { environment.playback.releaseVideoPlayback($0) })
+        let viewer = UINavigationController(rootViewController: ArtifactVideoController(session: session))
+        viewer.modalPresentationStyle = .fullScreen
+        controller.present(viewer, animated: true)
+    }
+
     static func open(detail: ArtifactDetail, from controller: UIViewController, environment: AppEnvironment) {
         let files = supportedFiles(in: detail)
         guard let file = files.first else { return }
@@ -49,16 +66,7 @@ enum ArtifactMediaPresentation {
 
     private static func open(file: ArchiveFile, summary: ArtifactSummary, from controller: UIViewController, environment: AppEnvironment) {
         if summary.mediaType == .movies {
-            Task { @MainActor [weak controller] in
-                // Finish off-main session deactivation before AVKit takes over.
-                // A newer audio intent cancels this pending handoff.
-                guard await environment.playback.pauseAndDeactivate(),
-                      let controller, controller.viewIfLoaded?.window != nil,
-                      controller.presentedViewController == nil else { return }
-                let player = AVPlayerViewController()
-                player.player = AVPlayer(url: ArchiveURLs.download(identifier: summary.identifier, fileName: file.name))
-                controller.present(player, animated: true) { player.player?.play() }
-            }
+            watch(file: file, summary: summary, from: controller, environment: environment)
         } else {
             controller.navigationController?.pushViewController(
                 ArtifactPDFController(summary: summary, file: file, downloads: environment.downloads), animated: true)

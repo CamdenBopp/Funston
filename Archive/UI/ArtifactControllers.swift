@@ -300,8 +300,8 @@ struct ArtifactOverview: View {
     }
 
     @ViewBuilder private var actions: some View {
-        if playable { Button(playTitle, systemImage: playTitle == "Pause" ? "pause.fill" : "play.fill", action: play).buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier("artifact.play") }
-        else if let mediaActionTitle { Button(mediaActionTitle, systemImage: summary.mediaType == .movies ? "play.fill" : "book", action: openMedia).buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier(summary.mediaType == .movies ? "artifact.watch" : "artifact.read") }
+        if let mediaActionTitle { Button(mediaActionTitle, systemImage: summary.mediaType == .movies ? "play.fill" : "book", action: openMedia).buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier(summary.mediaType == .movies ? "artifact.watch" : "artifact.read") }
+        else if playable { Button(playTitle, systemImage: playTitle == "Pause" ? "pause.fill" : "play.fill", action: play).buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier("artifact.play") }
         Button(isSaved ? "Saved" : "Save", systemImage: isSaved ? "bookmark.fill" : "bookmark", action: save)
             .buttonStyle(.bordered).controlSize(.large).accessibilityIdentifier("artifact.save")
             .accessibilityLabel(saveTitle)

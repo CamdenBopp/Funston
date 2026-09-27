@@ -40,9 +40,9 @@ struct FullPlayer: View {
                             transport("Back 15 seconds", symbol: "gobackward.15") { playback.skip(by: -15) }
                             Spacer()
                             Button { playback.togglePlayback() } label: {
-                                Image(systemName: presentation.phase == .playing || presentation.phase == .buffering ? "pause.fill" : "play.fill")
+                                Image(systemName: presentation.showsPauseControl ? "pause.fill" : "play.fill")
                                     .font(.system(size: 38, weight: .semibold)).frame(width: 80, height: 76)
-                            }.accessibilityLabel(presentation.phase == .playing || presentation.phase == .buffering ? "Pause" : "Play")
+                            }.accessibilityLabel(presentation.showsPauseControl ? "Pause" : "Play")
                                 .accessibilityValue(presentation.phase.spokenValue)
                                 .accessibilityIdentifier("player.toggle")
                             Spacer()
@@ -115,11 +115,14 @@ struct FullPlayer: View {
 private final class PlayerPresentationState: ObservableObject {
     @Published private(set) var context: PlaybackContext?
     @Published private(set) var phase: PlaybackPhase
+    @Published private(set) var wantsToPlay: Bool
+    var showsPauseControl: Bool { phase.showsPauseControl(wantsToPlay: wantsToPlay) }
     private var subscriptions = Set<AnyCancellable>()
     init(playback: PlaybackController) {
-        context = playback.context; phase = playback.phase
+        context = playback.context; phase = playback.phase; wantsToPlay = playback.wantsToPlay
         playback.$context.removeDuplicates().sink { [weak self] in self?.context = $0 }.store(in: &subscriptions)
         playback.$phase.removeDuplicates().sink { [weak self] in self?.phase = $0 }.store(in: &subscriptions)
+        playback.$wantsToPlay.removeDuplicates().sink { [weak self] in self?.wantsToPlay = $0 }.store(in: &subscriptions)
     }
 }
 
