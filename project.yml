@@ -1,0 +1,75 @@
+name: Archive
+options:
+  bundleIdPrefix: com.camden
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "27.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: true
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: true
+  configs:
+    Release:
+      ENABLE_CODE_COVERAGE: false
+      CLANG_COVERAGE_MAPPING: false
+packages:
+  LNPopupController:
+    path: Vendor/LNPopupController
+targets:
+  Archive:
+    type: application
+    platform: iOS
+    sources:
+      - path: Archive
+    dependencies:
+      - package: LNPopupController
+        product: LNPopupController-Static
+      - sdk: libsqlite3.tbd
+      - sdk: AVFoundation.framework
+      - sdk: MediaPlayer.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.camden.Archive
+        PRODUCT_NAME: Archive
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_FILE: Archive/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Archive
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.reference
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        SUPPORTS_MACCATALYST: false
+        TARGETED_DEVICE_FAMILY: "1,2"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "3"
+        CODE_SIGN_STYLE: Automatic
+    scheme:
+      testTargets:
+        - ArchiveTests
+        - ArchiveUITests
+      gatherCoverageData: true
+  ArchiveTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ArchiveTests
+    dependencies:
+      - target: Archive
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.camden.ArchiveTests
+        GENERATE_INFOPLIST_FILE: true
+  ArchiveUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ArchiveUITests
+    dependencies:
+      - target: Archive
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.camden.ArchiveUITests
+        GENERATE_INFOPLIST_FILE: true

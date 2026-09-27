@@ -1,0 +1,15 @@
+{
+  "originHash" : "f5fe7ed8c64f8d9b44d754ea8d334b60f03306f49c7bea7674cd094487794a5e",
+  "pins" : [
+    {
+      "identity" : "lnsystemmarqueelabel",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/LeoNatan/LNSystemMarqueeLabel",
+      "state" : {
+        "revision" : "a87c80c36e8cc84f05a691da33c838a8e93015f6",
+        "version" : "0.1.2"
+      }
+    }
+  ],
+  "version" : 3
+}
