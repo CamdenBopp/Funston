@@ -138,31 +138,27 @@ private struct PDFVisionTextEngine: PDFPageOCREngine {
     func recognize(_ image: CGImage) async -> String {
         let pageAspect = CGFloat(image.width) / CGFloat(max(image.height, 1))
         let lines = await Self.lines(in: image)
-        var columns: [(lines: [PDFTextBox], aspectRatio: CGFloat)] = []
+        var columns: [(lines: [PDFTextBox], aspectRatio: CGFloat, region: CGRect)] = []
         for run in PDFTextLayout.runs(PDFTextLayout.blocks(lines)) {
             guard !Task.isCancelled else { return "" }
             // One line has nothing a second pass would put in order.
-            guard run.count > 1 else { columns.append((run, pageAspect)); continue }
+            guard run.count > 1 else { columns.append((run, pageAspect, PDFTextLayout.region(of: run))); continue }
             let region = PDFTextLayout.region(of: run)
             let pixels = CGRect(x: region.minX * CGFloat(image.width), y: region.minY * CGFloat(image.height),
                                 width: region.width * CGFloat(image.width), height: region.height * CGFloat(image.height)).integral
             // A crop that can't be made falls back to the lines already found for it.
             if let crop = image.cropping(to: pixels), case let cropped = await Self.lines(in: crop), !cropped.isEmpty {
-                columns.append((cropped.sorted { $0.rect.minY < $1.rect.minY }, pixels.width / max(pixels.height, 1)))
+                columns.append((cropped.sorted { $0.rect.minY < $1.rect.minY }, pixels.width / max(pixels.height, 1), region))
             } else {
-                columns.append((run, pageAspect))
+                columns.append((run, pageAspect, region))
             }
         }
         let normalized = columns.map { column in
-            (column.lines.map { PDFTextBox(text: PDFPageTextPolicy.normalize($0.text), rect: $0.rect) }, column.aspectRatio)
+            (column.lines.map { PDFTextBox(text: PDFPageTextPolicy.normalize($0.text), rect: $0.rect) }, column.aspectRatio, column.region)
         }
         return await MainActor.run {
-            var paragraphs: [String] = []
-            for (lines, aspectRatio) in normalized {
-                let next = PDFTextLayout.paragraphs(lines, aspectRatio: aspectRatio, isWord: SpellingDictionary.isWord)
-                PDFTextLayout.appending(next, to: &paragraphs, isWord: SpellingDictionary.isWord)
-            }
-            return paragraphs.joined(separator: "\n\n")
+            let columns = normalized.map { (PDFTextLayout.paragraphs($0.0, aspectRatio: $0.1, isWord: SpellingDictionary.isWord), $0.2) }
+            return PDFTextLayout.threading(columns, isWord: SpellingDictionary.isWord).joined(separator: "\n\n")
         }
     }
 
@@ -375,7 +371,8 @@ actor PDFPageTextRecognizer {
     // 4: Vision reads column by column; the document reader was added.
     // 5: Vision finds columns under headlines and beside boxes; Automatic tries it first.
     // 6: Vision joins lines into paragraphs.
-    private static let cacheVersion = 6
+    // 7: a sidebar waits until the sentence beside it ends.
+    private static let cacheVersion = 7
     private static let cacheLifetime: TimeInterval = 60 * 60 * 24 * 365 * 10
     private let store: SQLiteStore
     let engineDescriptors: [PDFTextEngineDescriptor]

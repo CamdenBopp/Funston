@@ -42,6 +42,8 @@ final class PDFTextLayoutTests: XCTestCase {
         let paragraphs = try await recognize(decemberPage6, with: PDFTextEngineID.appleVision).components(separatedBy: "\n\n")
         let opening = "touch with those being regulated, the FCC has established advisory committees, made up of people in the regulated industries, to work with them on needed regulations."
         XCTAssertTrue(paragraphs.contains { $0.contains(opening) }, "No paragraph reads: \(opening)")
+        let acrossTheSidebar = "we would have reached our present amateur population"
+        XCTAssertTrue(paragraphs.contains { $0.contains(acrossTheSidebar) }, "The schedule box interrupts: \(acrossTheSidebar)")
         let bullet = try await recognize(augustPage40, with: PDFTextEngineID.appleVision).components(separatedBy: "\n\n")
         XCTAssertTrue(bullet.contains { $0.hasPrefix("• Low component count") && $0.hasSuffix("discrete components).") },
                       "The bullet item isn't one paragraph")
@@ -114,12 +116,39 @@ final class PDFTextLayoutTests: XCTestCase {
     }
 
     func testParagraphsContinueIntoTheNextColumnOnlyMidSentence() {
-        var paragraphs = ["aspects of getting local govern-"]
-        PDFTextLayout.appending(["ment cooperation for emergency communications", "At the last meeting"], to: &paragraphs, isWord: { $0 == "government" })
-        XCTAssertEqual(paragraphs, ["aspects of getting local government cooperation for emergency communications", "At the last meeting"])
-        var stray = ["we would have"]
-        PDFTextLayout.appending(["mac W2NSD/1 ON-THE-AIR"], to: &stray, isWord: { _ in true })
+        let government = PDFTextLayout.threading([(["aspects of getting local govern-"], column(0, 0.1, 0.9)),
+                                                  (["ment cooperation for emergency communications", "At the last meeting"], column(1, 0.1, 0.9))],
+                                                 isWord: { $0 == "government" })
+        XCTAssertEqual(government, ["aspects of getting local government cooperation for emergency communications", "At the last meeting"])
+        let stray = PDFTextLayout.threading([(["we would have"], column(0, 0.1, 0.9)), (["mac W2NSD/1 ON-THE-AIR"], column(1, 0.1, 0.2))],
+                                            isWord: { _ in true })
         XCTAssertEqual(stray, ["we would have", "mac W2NSD/1 ON-THE-AIR"], "A stray word off a photo isn't the rest of the sentence")
+    }
+
+    func testASidebarWaitsUntilTheSentenceBesideItEnds() {
+        let columns = [(["until that time, we would have"], column(1, 0.3, 0.72)),
+                       (["W2NSD/1 ON-THE-AIR SCHEDULE", "Sessions run from 7:00 to 10:00 pm eastern time."], column(0, 0.71, 0.95)),
+                       (["6 73 Magazine • December, 1981"], column(0, 0.96, 0.98)),
+                       (["reached our present amateur population in about 1965.", "The result of this"], column(2, 0.28, 0.73))]
+        XCTAssertEqual(PDFTextLayout.threading(columns, isWord: { _ in false }), [
+            "until that time, we would have reached our present amateur population in about 1965.", "The result of this",
+            "W2NSD/1 ON-THE-AIR SCHEDULE", "Sessions run from 7:00 to 10:00 pm eastern time.", "6 73 Magazine • December, 1981"
+        ])
+    }
+
+    /// 73 Magazine page 40: a short line ("high to low.") got its own block
+    /// between two in the same column. Text further down that column is not a
+    /// column break, so nothing jumps ahead of the short line.
+    func testTextFurtherDownTheSameColumnDoesNotJumpAhead() {
+        let columns = [(["the signal makes a transition from"], column(0, 0.10, 0.50)),
+                       (["high to low."], column(0, 0.51, 0.52)),
+                       (["code element is currently being sent, dot flip flop"], column(0, 0.53, 0.90))]
+        XCTAssertEqual(PDFTextLayout.threading(columns, isWord: { _ in false }),
+                       ["the signal makes a transition from", "high to low.", "code element is currently being sent, dot flip flop"])
+    }
+
+    private func column(_ index: CGFloat, _ top: CGFloat, _ bottom: CGFloat) -> CGRect {
+        CGRect(x: 0.05 + index * 0.23, y: top, width: 0.21, height: bottom - top)
     }
 
     func testALostLineBreakHyphenClosesUpOnlyIntoARealWord() {

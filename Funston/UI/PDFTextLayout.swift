@@ -231,17 +231,44 @@ enum PDFTextLayout {
         return paragraphs
     }
 
-    /// Adds the next column's paragraphs, continuing the last one when it
-    /// stopped mid-sentence and the next starts in lower case ("local govern-" /
-    /// "ment cooperation"). Without a hyphen to go on, a short fragment (a stray
-    /// word read off a photo) doesn't count as the continuation.
-    static func appending(_ next: [String], to paragraphs: inout [String], isWord: (String) -> Bool) {
-        guard let previous = paragraphs.last, let end = previous.last, let first = next.first,
-              first.first?.isLowercase == true,
-              end == "-" || ((end == "," || end.isLowercase) && first.split(separator: " ").count >= minimumContinuationWords)
-        else { paragraphs += next; return }
-        paragraphs[paragraphs.count - 1] = joiningLine(previous, first, isWord: isWord)
-        paragraphs += next.dropFirst()
+    /// Joins columns of paragraphs in reading order, continuing a paragraph a
+    /// column break cut mid-sentence. When the next column doesn't carry on the
+    /// sentence but one of the few after it does, and that one starts back up
+    /// the page (the top of the next column), it is read first: a sidebar box
+    /// beside the article waits until the sentence is finished. On 73 Magazine,
+    /// December 1981 page 6, the schedule box sat between "we would have" and
+    /// "reached our present amateur population". `region` is where each column
+    /// sits on the page.
+    static func threading(_ columns: [(paragraphs: [String], region: CGRect)], isWord: (String) -> Bool) -> [String] {
+        var remaining = columns.filter { !$0.paragraphs.isEmpty }
+        var paragraphs: [String] = []
+        var lastRegion: CGRect?
+        while !remaining.isEmpty {
+            var index = 0
+            if let previous = paragraphs.last, let lastRegion, !continues(previous, with: remaining[0].paragraphs[0]) {
+                index = remaining.indices.dropFirst().prefix(sidebarLookahead).first { candidate in
+                    remaining[candidate].region.minY < lastRegion.midY
+                        && continues(previous, with: remaining[candidate].paragraphs[0])
+                } ?? 0
+            }
+            let next = remaining.remove(at: index)
+            if let previous = paragraphs.last, continues(previous, with: next.paragraphs[0]) {
+                paragraphs[paragraphs.count - 1] = joiningLine(previous, next.paragraphs[0], isWord: isWord)
+                paragraphs += next.paragraphs.dropFirst()
+            } else {
+                paragraphs += next.paragraphs
+            }
+            lastRegion = next.region
+        }
+        return paragraphs
+    }
+
+    /// Whether `next` carries on a paragraph that stopped mid-sentence ("local
+    /// govern-" / "ment cooperation"). Without a hyphen to go on, a short
+    /// fragment (a stray word read off a photo) doesn't count.
+    static func continues(_ previous: String, with next: String) -> Bool {
+        guard let end = previous.last, next.first?.isLowercase == true else { return false }
+        return end == "-" || ((end == "," || end.isLowercase) && next.split(separator: " ").count >= minimumContinuationWords)
     }
 
     /// "com-" + "plementary" closes up when the joined word is a word; "on-" +
@@ -278,6 +305,8 @@ enum PDFTextLayout {
     private static let justifiedShortSlack: CGFloat = 0.08
     private static let raggedShortSlack: CGFloat = 0.3
     private static let minimumContinuationWords = 5
+    /// How many columns ahead a sentence's continuation is looked for.
+    private static let sidebarLookahead = 4
 
     /// Justified, letter-spaced type makes Apple's document recognizer split one
     /// printed line into several paragraphs ("in the best" / "commercial"). A
