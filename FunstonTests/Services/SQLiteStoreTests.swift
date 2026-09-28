@@ -2,6 +2,7 @@ import XCTest
 import AVFoundation
 import UIKit
 import MediaPlayer
+import SQLite3
 @testable import Funston
 
 final class SQLiteStoreTests: XCTestCase {
@@ -61,6 +62,44 @@ final class SQLiteStoreTests: XCTestCase {
         XCTAssertNotNil(entry)
         XCTAssertTrue(entry?.isFresh == true)
         XCTAssertEqual(entry?.snapshot, Data())
+    }
+
+    /// Every install before schema versioning has these tables, real rows and
+    /// user_version 0. Opening it must keep the rows and record the schema version,
+    /// or the first appended migration would never run on existing phones.
+    func testPreVersioningDatabaseKeepsDataAndRecordsSchemaVersion() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "legacy.sqlite3")
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &handle), SQLITE_OK)
+        let legacy = """
+        CREATE TABLE saved_artifacts(identifier TEXT PRIMARY KEY, snapshot BLOB NOT NULL, saved_at REAL NOT NULL);
+        CREATE TABLE playback_positions(identifier TEXT NOT NULL, file_name TEXT NOT NULL, seconds REAL NOT NULL, updated_at REAL NOT NULL, PRIMARY KEY(identifier, file_name));
+        CREATE TABLE last_playback(singleton INTEGER PRIMARY KEY CHECK(singleton=1), identifier TEXT NOT NULL, file_name TEXT NOT NULL, seconds REAL NOT NULL);
+        CREATE TABLE downloads(key TEXT PRIMARY KEY, identifier TEXT NOT NULL, file_name TEXT NOT NULL, title TEXT NOT NULL, expected_bytes INTEGER, local_path TEXT NOT NULL, state TEXT NOT NULL, received_bytes INTEGER NOT NULL, total_bytes INTEGER, error_message TEXT, updated_at REAL NOT NULL);
+        CREATE TABLE cache_entries(key TEXT PRIMARY KEY, kind TEXT NOT NULL, response BLOB NOT NULL, snapshot BLOB, stored_at REAL NOT NULL, accessed_at REAL NOT NULL, max_age REAL NOT NULL, byte_count INTEGER NOT NULL);
+        INSERT INTO playback_positions VALUES('OTRR_Gunsmoke_Singles', 'Gunsmoke 52-04-26 001 Billy the Kid.mp3', 421.5, 1790000000);
+        INSERT INTO downloads VALUES('k', 'item', 'episode.mp3', 'Episode', 1024, '/tmp/episode.mp3', 'completed', 1024, 1024, NULL, 123);
+        """
+        XCTAssertEqual(sqlite3_exec(handle, legacy, nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(try SQLiteStore.userVersion(handle), 0)
+        sqlite3_close(handle)
+
+        let store = try SQLiteStore(url: url)
+        let position = try await store.playbackPosition(identifier: "OTRR_Gunsmoke_Singles", fileName: "Gunsmoke 52-04-26 001 Billy the Kid.mp3")
+        XCTAssertEqual(position, 421.5)
+        let downloads = try await store.downloads()
+        XCTAssertEqual(downloads.map(\.key), ["k"])
+
+        XCTAssertEqual(sqlite3_open(url.path, &handle), SQLITE_OK)
+        XCTAssertEqual(try SQLiteStore.userVersion(handle), SQLiteStore.schemaVersion)
+        sqlite3_close(handle)
+        // Reopening at the current version runs nothing and loses nothing.
+        let reopened = try SQLiteStore(url: url)
+        let reopenedDownloads = try await reopened.downloads()
+        XCTAssertEqual(reopenedDownloads.map(\.key), ["k"])
     }
 
     func testDownloadRecordRoundTrip() async throws {

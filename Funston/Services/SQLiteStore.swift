@@ -299,55 +299,86 @@ actor SQLiteStore {
         }
     }
 
+    /// Numbered schema steps. `PRAGMA user_version` records how many have run, so
+    /// each step runs exactly once per database. Never edit a shipped step; append.
+    /// Step 1 is the original schema. It stays idempotent because databases created
+    /// before versioning already have its tables at user_version 0.
+    private static let migrations: [String] = [
+        """
+        CREATE TABLE IF NOT EXISTS saved_artifacts(
+          identifier TEXT PRIMARY KEY,
+          snapshot BLOB NOT NULL,
+          saved_at REAL NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS playback_positions(
+          identifier TEXT NOT NULL,
+          file_name TEXT NOT NULL,
+          seconds REAL NOT NULL,
+          updated_at REAL NOT NULL,
+          PRIMARY KEY(identifier, file_name)
+        );
+        CREATE TABLE IF NOT EXISTS last_playback(
+          singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+          identifier TEXT NOT NULL,
+          file_name TEXT NOT NULL,
+          seconds REAL NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS downloads(
+          key TEXT PRIMARY KEY,
+          identifier TEXT NOT NULL,
+          file_name TEXT NOT NULL,
+          title TEXT NOT NULL,
+          expected_bytes INTEGER,
+          local_path TEXT NOT NULL,
+          state TEXT NOT NULL,
+          received_bytes INTEGER NOT NULL,
+          total_bytes INTEGER,
+          error_message TEXT,
+          updated_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS downloads_state_index ON downloads(state, updated_at DESC);
+        CREATE TABLE IF NOT EXISTS cache_entries(
+          key TEXT PRIMARY KEY,
+          kind TEXT NOT NULL,
+          response BLOB NOT NULL,
+          snapshot BLOB,
+          stored_at REAL NOT NULL,
+          accessed_at REAL NOT NULL,
+          max_age REAL NOT NULL,
+          byte_count INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS cache_access_index ON cache_entries(accessed_at);
+        """
+    ]
+
+    static var schemaVersion: Int { migrations.count }
+
     private static func migrate(_ database: OpaquePointer?) throws {
-        try execute(
-            """
-            CREATE TABLE IF NOT EXISTS saved_artifacts(
-              identifier TEXT PRIMARY KEY,
-              snapshot BLOB NOT NULL,
-              saved_at REAL NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS playback_positions(
-              identifier TEXT NOT NULL,
-              file_name TEXT NOT NULL,
-              seconds REAL NOT NULL,
-              updated_at REAL NOT NULL,
-              PRIMARY KEY(identifier, file_name)
-            );
-            CREATE TABLE IF NOT EXISTS last_playback(
-              singleton INTEGER PRIMARY KEY CHECK(singleton=1),
-              identifier TEXT NOT NULL,
-              file_name TEXT NOT NULL,
-              seconds REAL NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS downloads(
-              key TEXT PRIMARY KEY,
-              identifier TEXT NOT NULL,
-              file_name TEXT NOT NULL,
-              title TEXT NOT NULL,
-              expected_bytes INTEGER,
-              local_path TEXT NOT NULL,
-              state TEXT NOT NULL,
-              received_bytes INTEGER NOT NULL,
-              total_bytes INTEGER,
-              error_message TEXT,
-              updated_at REAL NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS downloads_state_index ON downloads(state, updated_at DESC);
-            CREATE TABLE IF NOT EXISTS cache_entries(
-              key TEXT PRIMARY KEY,
-              kind TEXT NOT NULL,
-              response BLOB NOT NULL,
-              snapshot BLOB,
-              stored_at REAL NOT NULL,
-              accessed_at REAL NOT NULL,
-              max_age REAL NOT NULL,
-              byte_count INTEGER NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS cache_access_index ON cache_entries(accessed_at);
-            """,
-            on: database
-        )
+        let current = try userVersion(database)
+        guard current < migrations.count else { return }
+        for (index, step) in migrations.enumerated().dropFirst(current) {
+            try execute("BEGIN IMMEDIATE", on: database)
+            do {
+                try execute(step, on: database)
+                try execute("PRAGMA user_version=\(index + 1)", on: database)
+                try execute("COMMIT", on: database)
+            } catch {
+                try? execute("ROLLBACK", on: database)
+                throw error
+            }
+        }
+    }
+
+    static func userVersion(_ database: OpaquePointer?) throws -> Int {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "PRAGMA user_version", -1, &statement, nil) == SQLITE_OK else {
+            throw StoreError.statement(database.map { String(cString: sqlite3_errmsg($0)) } ?? "No database")
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw StoreError.step(database.map { String(cString: sqlite3_errmsg($0)) } ?? "No database")
+        }
+        return Int(sqlite3_column_int(statement, 0))
     }
 
     private enum Binding {
