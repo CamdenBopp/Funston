@@ -152,7 +152,8 @@ enum ArtifactArtworkResolver {
             let name = file.name.lowercased()
             let format = file.format?.lowercased() ?? ""
             guard !name.contains("thumb"), !name.contains("spectrogram"), !format.contains("thumbnail"), !format.contains("spectrogram"),
-                  ["jpg", "jpeg", "png"].contains((name as NSString).pathExtension) else { continue }
+                  ["jpg", "jpeg", "png"].contains((name as NSString).pathExtension),
+                  !isGeneratedFromMedia(file) else { continue }
             let stem = ((name as NSString).lastPathComponent as NSString).deletingPathExtension
             let rank: Int
             if format == "item image" { rank = 0 }
@@ -163,5 +164,15 @@ enum ArtifactArtworkResolver {
             else if rank == bestRank, best != file.name { ambiguous = true }
         }
         return ambiguous ? nil : best
+    }
+
+    private static let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "gif", "tif", "tiff", "jp2", "bmp", "webp", "heic"]
+
+    /// Internet Archive draws a waveform PNG for every audio track, named like the
+    /// item ("JoanAvoi1947.png", derived from "JoanAvoi1947.mp3"). It isn't cover art.
+    /// A derived image only counts when it was made from another image.
+    private static func isGeneratedFromMedia(_ file: ArchiveFile) -> Bool {
+        guard file.source?.lowercased() == "derivative", let original = file.original else { return false }
+        return !imageExtensions.contains((original as NSString).pathExtension.lowercased())
     }
 }

@@ -19,6 +19,21 @@ final class ArchiveCoreTests: XCTestCase {
         XCTAssertEqual(ArtifactArtworkResolver.fileName(identifier: "radio", files: rejected + [exact, explicit]), "poster.png")
     }
 
+    /// The real file list of Joan Avoids a Cold (JoanAvoi1947): its identifier-named
+    /// PNG is the audio waveform, derived from the MP3. The item page used to wait
+    /// 2.5 s for it and show a squiggle instead of the film's thumbnail.
+    func testArtworkResolverIgnoresWaveformsDerivedFromSoundOrFilm() {
+        let files = [
+            ArchiveFile(name: "JoanAvoi1947.gif", format: "Animated GIF", source: "derivative", original: "JoanAvoi1947.mpeg", size: 291_763),
+            ArchiveFile(name: "JoanAvoi1947.png", format: "PNG", source: "derivative", original: "JoanAvoi1947.mp3", size: 11_959),
+            ArchiveFile(name: "__ia_thumb.jpg", format: "Item Tile", source: "original", size: 7_026)
+        ]
+        XCTAssertNil(ArtifactArtworkResolver.fileName(identifier: "JoanAvoi1947", files: files))
+        // An image derived from a scan is still a real cover.
+        let fromScan = ArchiveFile(name: "JoanAvoi1947.jpg", format: "JPEG", source: "derivative", original: "JoanAvoi1947.tif", size: 90_000)
+        XCTAssertEqual(ArtifactArtworkResolver.fileName(identifier: "JoanAvoi1947", files: files + [fromScan]), "JoanAvoi1947.jpg")
+    }
+
     func testArtworkResolverRefusesAmbiguousCoversAndKeepsLegacySnapshotsDecodable() throws {
         let files = [ArchiveFile(name: "cover.jpg", size: 200), ArchiveFile(name: "folder.png", size: 300)]
         XCTAssertNil(ArtifactArtworkResolver.fileName(identifier: "radio", files: files))
