@@ -42,6 +42,22 @@ struct PlaybackContext: Equatable, Sendable {
     var track: PlayableTrack { tracks[trackIndex] }
 }
 
+/// When a saved position is worth resuming. A few seconds in is an accidental
+/// tap, and the closing credits or applause count as having finished.
+enum ResumePolicy {
+    /// Positions before this start the recording over.
+    static let minimumResumeSeconds: Double = 5
+    /// Share of the duration past which a recording counts as finished.
+    static let finishedFraction: Double = 0.95
+    /// Seconds before the end past which a recording counts as finished.
+    static let finishedTailSeconds: Double = 10
+
+    static func isFinished(_ seconds: Double, duration: Double) -> Bool {
+        guard let duration = MediaDuration.validated(duration), duration > 0 else { return false }
+        return seconds >= duration * finishedFraction || seconds >= duration - finishedTailSeconds
+    }
+}
+
 /// AVAudioSession activation performs synchronous interprocess work. A dedicated
 /// serial queue keeps that work off both UIKit and Swift's cooperative executor.
 private final class AudioSessionWorker: Sendable {
@@ -493,9 +509,13 @@ final class PlaybackController: ObservableObject {
         return seconds.isFinite ? max(0, seconds) : 0
     }
 
+    /// Where a saved bookmark resumes. Audio and video players share this, so keep
+    /// the signature stable. A duration that isn't finite and positive only
+    /// disables the finished rule; the short-listen rule still applies.
     nonisolated static func restoredPosition(_ seconds: Double, duration: Double) -> Double {
-        guard let seconds = MediaDuration.validated(seconds), seconds > 0 else { return 0 }
-        if duration.isFinite, duration > 0, seconds >= duration - 1 { return 0 }
+        guard let seconds = MediaDuration.validated(seconds),
+              seconds >= ResumePolicy.minimumResumeSeconds,
+              !ResumePolicy.isFinished(seconds, duration: duration) else { return 0 }
         return seconds
     }
 

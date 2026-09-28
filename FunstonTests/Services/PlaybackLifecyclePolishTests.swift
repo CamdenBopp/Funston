@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class PlaybackLifecyclePolishTests: XCTestCase {
-    private func fixture(corrupt: Bool = false) async throws -> (SQLiteStore, DownloadManager, DownloadRecord) {
+    private func fixture(corrupt: Bool = false, seconds: Int = 10) async throws -> (SQLiteStore, DownloadManager, DownloadRecord) {
         let directory = FileManager.default.temporaryDirectory.appending(path: "audio-lifecycle-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
@@ -13,9 +13,10 @@ final class PlaybackLifecyclePolishTests: XCTestCase {
         else {
             let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 8_000, channels: 1))
             let file = try AVAudioFile(forWriting: url, settings: format.settings)
-            let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 80_000))
-            buffer.frameLength = 80_000
-            buffer.floatChannelData?[0].initialize(repeating: 0, count: 80_000)
+            let frames = AVAudioFrameCount(8_000 * seconds)
+            let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+            buffer.frameLength = frames
+            buffer.floatChannelData?[0].initialize(repeating: 0, count: Int(frames))
             try file.write(from: buffer)
         }
         let store = try SQLiteStore(url: URL(string: "file::memory:")!)
@@ -67,19 +68,20 @@ final class PlaybackLifecyclePolishTests: XCTestCase {
     }
 
     func testImmediateReloadRestoresPositionQueuedByPause() async throws {
-        let (store, downloads, record) = try await fixture()
+        // Long enough that 20 s is neither a short listen nor finished.
+        let (store, downloads, record) = try await fixture(seconds: 60)
         let player = AVPlayer()
         let playback = PlaybackController(store: store, downloads: downloads, player: player,
             audioSessionActivator: {}, audioSessionDeactivator: {},
             artworkLoader: { _ in throw URLError(.cancelled) })
         playback.playDownloaded(record, autoplay: false)
         try await until { playback.phase == .paused }
-        let sought = await player.seek(to: CMTime(seconds: 5, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        let sought = await player.seek(to: CMTime(seconds: 20, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         XCTAssertTrue(sought)
         playback.pause()
         playback.playDownloaded(record, autoplay: false)
         try await until { playback.phase == .paused }
-        XCTAssertEqual(player.currentTime().seconds, 5, accuracy: 0.05)
+        XCTAssertEqual(player.currentTime().seconds, 20, accuracy: 0.05)
         XCTAssertFalse(playback.wantsToPlay)
     }
 }

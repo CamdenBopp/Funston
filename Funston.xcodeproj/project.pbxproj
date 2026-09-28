@@ -41,6 +41,7 @@
 		9CFDC45EF60E820EF46A524C /* PDFScreenRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CE64CF4FBD3ECC1CC387721 /* PDFScreenRenderingTests.swift */; };
 		9EB40E9254AE28EEDE54C895 /* FunstonListController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E19340146C38C0EA03063E4 /* FunstonListController.swift */; };
 		AA20305C654DF7018EA831A0 /* ArchivePlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5AAF43B1597B01B8AA33FF4F /* ArchivePlayerCore */; };
+		AACBCEFEF392BBAF69EC21A0 /* ResumePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B2556F6A00E16BF44C90D2 /* ResumePolicyTests.swift */; };
 		AD69A3FE00A93AE56D970A3B /* ArchiveNetworking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4885569ECF9679D7A64CADF7 /* ArchiveNetworking.swift */; };
 		AF284FAD0DD53B09AA0CE882 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 73F779CCD8281CD0F095B326 /* ThirdPartyNotices.txt */; };
 		B71B2B79473396C8456E2659 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEC399375132D18A85258F1 /* DownloadManager.swift */; };
@@ -123,6 +124,7 @@
 		BCB1127C7E1A84E47D833B69 /* FunstonTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FunstonTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C06E7B3A4A0DEDE6ED4D71EE /* ExploreController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreController.swift; sourceTree = "<group>"; };
 		C4FC31D2391A678F056CDEB5 /* ArtifactMediaController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactMediaController.swift; sourceTree = "<group>"; };
+		C6B2556F6A00E16BF44C90D2 /* ResumePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumePolicyTests.swift; sourceTree = "<group>"; };
 		CB73A6339210FC418D6AAF77 /* PDFPerformanceView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PDFPerformanceView.m; sourceTree = "<group>"; };
 		D2275460558ED9B1F14D4806 /* FunstonApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonApplication.swift; sourceTree = "<group>"; };
 		D66AB97AFBE5A2BE8B21FD76 /* FunstonUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FunstonUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -213,6 +215,7 @@
 				ADA9E91F2303508878EBCAE7 /* PDFRenderingPerformanceTests.swift */,
 				81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */,
 				233DB5EE909DC936BDB88C04 /* PlaybackLifecyclePolishTests.swift */,
+				C6B2556F6A00E16BF44C90D2 /* ResumePolicyTests.swift */,
 				B7B0F9C8906315750BF847F3 /* SQLiteStoreTests.swift */,
 				15D73992E91F99768E44AC95 /* VideoPlaybackTests.swift */,
 			);
@@ -513,6 +516,7 @@
 				6F51B7CC80D382D750A3B5F9 /* PDFScreenRenderingExperiment.swift in Sources */,
 				9CFDC45EF60E820EF46A524C /* PDFScreenRenderingTests.swift in Sources */,
 				F5B8A7086BC9A4D26B859DC0 /* PlaybackLifecyclePolishTests.swift in Sources */,
+				AACBCEFEF392BBAF69EC21A0 /* ResumePolicyTests.swift in Sources */,
 				0C50B41EAB14FF045250AFD0 /* SQLiteStoreTests.swift in Sources */,
 				BDCEDCFB9D7C58FD6BD965EE /* VideoPlaybackTests.swift in Sources */,
 			);
