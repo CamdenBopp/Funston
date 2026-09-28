@@ -147,13 +147,12 @@ struct SearchPage: Codable, Hashable, Sendable {
 struct ArchiveCollection: Identifiable, Codable, Hashable, Sendable {
     let identifier: String
     let title: String
-    let description: String
     var id: String { identifier }
     static let curated: [ArchiveCollection] = [
-        .init(identifier: "oldtimeradio", title: "Old Time Radio", description: "Radio drama, comedy, and broadcasts from earlier decades."),
-        .init(identifier: "texts", title: "Books & Texts", description: "Books, magazines, and documents preserved in the Archive."),
-        .init(identifier: "prelinger", title: "Prelinger Archives", description: "Advertising, educational, industrial, and amateur films."),
-        .init(identifier: "etree", title: "Live Music Archive", description: "Live recordings shared by a community of artists and tapers.")
+        .init(identifier: "oldtimeradio", title: "Old Time Radio"),
+        .init(identifier: "texts", title: "Books & Texts"),
+        .init(identifier: "prelinger", title: "Prelinger Archives"),
+        .init(identifier: "etree", title: "Live Music Archive")
     ]
 }
 

@@ -223,7 +223,7 @@ final class FunstonUIPresentationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = try SQLiteStore(url: directory.appending(path: "cache.sqlite3"))
         let transport = UIPresentationCancellableTransport()
-        var controller: SearchController? = SearchController(repository: CachingArchiveRepository(store: store, transport: transport), collection: ArchiveCollection(identifier: "fixture", title: "Fixture", description: ""), open: { _ in })
+        var controller: SearchController? = SearchController(repository: CachingArchiveRepository(store: store, transport: transport), collection: ArchiveCollection(identifier: "fixture", title: "Fixture"), open: { _ in })
         weak let reference = controller
         controller?.loadViewIfNeeded()
         await waitForRequest(transport)
@@ -269,7 +269,7 @@ final class FunstonUIPresentationTests: XCTestCase {
         try await store.storeCache(key: "search:\(request.cacheKey)", kind: "search", response: Data(), snapshot: JSONEncoder().encode(page), maxAge: -1)
         let transport = UIPresentationGateTransport()
         let repository = CachingArchiveRepository(store: store, transport: transport)
-        let controller = SearchController(repository: repository, collection: ArchiveCollection(identifier: "fixture", title: "Fixture", description: ""), open: { _ in })
+        let controller = SearchController(repository: repository, collection: ArchiveCollection(identifier: "fixture", title: "Fixture"), open: { _ in })
         controller.loadViewIfNeeded()
         await waitFor { controller.rows.contains { $0.id == "artifact:saved" } }
         XCTAssertTrue(controller.rows.contains { $0.id == "artifact:saved" })
@@ -291,7 +291,7 @@ final class FunstonUIPresentationTests: XCTestCase {
         let page = SearchPage(items: [], total: 0, page: 1, pageSize: 40)
         try await store.storeCache(key: "search:\(request.cacheKey)", kind: "search", response: Data(), snapshot: JSONEncoder().encode(page), maxAge: -1)
         let transport = UIPresentationGateTransport()
-        let controller = SearchController(repository: CachingArchiveRepository(store: store, transport: transport), collection: ArchiveCollection(identifier: "fixture", title: "Fixture", description: ""), open: { _ in })
+        let controller = SearchController(repository: CachingArchiveRepository(store: store, transport: transport), collection: ArchiveCollection(identifier: "fixture", title: "Fixture"), open: { _ in })
         controller.loadViewIfNeeded()
         await waitFor { (controller.contentUnavailableConfiguration as? UIContentUnavailableConfiguration)?.text == "No matches in saved results" }
         XCTAssertEqual((controller.contentUnavailableConfiguration as? UIContentUnavailableConfiguration)?.text, "No matches in saved results")

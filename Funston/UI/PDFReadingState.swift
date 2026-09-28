@@ -90,6 +90,7 @@ struct PDFTextEngineDescriptor: Hashable, Sendable {
     let id: String
     let title: String
     let isAvailable: Bool
+    var subtitle: String? = nil
 }
 
 /// OCR engines expose a stable identifier and one recognition operation. The
@@ -186,13 +187,15 @@ struct PDFTextEnginePreference {
 
     func options(ocrEngines: [PDFTextEngineDescriptor]) -> [PDFTextEngineDescriptor] {
         [
-            PDFTextEngineDescriptor(id: PDFTextEngineID.automatic, title: "Automatic (Recommended)", isAvailable: true),
-            PDFTextEngineDescriptor(id: PDFTextEngineID.embedded, title: "PDF Embedded Text", isAvailable: true)
+            PDFTextEngineDescriptor(id: PDFTextEngineID.automatic, title: "Automatic", isAvailable: true,
+                                    subtitle: "Recognizes scanned pages on this device"),
+            PDFTextEngineDescriptor(id: PDFTextEngineID.embedded, title: "Text in the PDF", isAvailable: true,
+                                    subtitle: "On scanned books, this is Internet Archive's OCR")
         ] + ocrEngines
     }
 
     func title(ocrEngines: [PDFTextEngineDescriptor]) -> String {
-        options(ocrEngines: ocrEngines).first { $0.id == selectedID }?.title ?? "Automatic (Recommended)"
+        options(ocrEngines: ocrEngines).first { $0.id == selectedID }?.title ?? "Automatic"
     }
 }
 

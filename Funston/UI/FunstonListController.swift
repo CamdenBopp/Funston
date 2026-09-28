@@ -256,7 +256,7 @@ extension ArtifactSummary {
 func archiveMessage(_ error: Error) -> String {
     if let error = error as? ArchiveError { return error.userMessage }
     if let error = error as? URLError, error.code == .notConnectedToInternet {
-        return "You’re offline. Saved artifacts and completed downloads remain on this device."
+        return "You’re offline. Your library and downloads still work."
     }
-    return "The Archive could not be reached. Try again."
+    return "Could not reach Internet Archive. Try again."
 }

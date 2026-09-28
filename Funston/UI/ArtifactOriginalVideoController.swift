@@ -110,7 +110,7 @@ final class ArtifactOriginalVideoController: UIViewController {
             label.numberOfLines = 0; label.textAlignment = .center
         }
         timeLabel.font = .preferredFont(forTextStyle: .body)
-        status.text = "Opening original film"
+        status.text = "Opening film"
         captionLabel.textColor = .white
         captionLabel.backgroundColor = UIColor.black.withAlphaComponent(0.75)
         captionLabel.layer.cornerRadius = 4
@@ -134,7 +134,6 @@ final class ArtifactOriginalVideoController: UIViewController {
         controls.addArrangedSubview(status); controls.addArrangedSubview(timeLabel)
         controls.addArrangedSubview(slider); controls.addArrangedSubview(transport); controls.addArrangedSubview(menus)
         slider.accessibilityLabel = "Playback position"
-        slider.accessibilityHint = "Adjust to seek to a different time"
         slider.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         slider.minimumValue = 0
         slider.maximumValue = Float(file.duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 1)
@@ -204,7 +203,7 @@ final class ArtifactOriginalVideoController: UIViewController {
         view.backgroundColor = .systemBackground
         canvas.isHidden = true; controlsContainer.isHidden = true; captionLabel.text = nil
         interruptionPauseRequested = false
-        var loading = UIContentUnavailableConfiguration.loading(); loading.text = "Opening original film"
+        var loading = UIContentUnavailableConfiguration.loading(); loading.text = "Opening film"
         contentUnavailableConfiguration = loading
         preparation = Task { [weak self] in
             guard let self else { return }
@@ -235,7 +234,7 @@ final class ArtifactOriginalVideoController: UIViewController {
                 contentUnavailableConfiguration = nil
                 view.backgroundColor = .black; canvas.isHidden = false; controlsContainer.isHidden = false
                 rebuildMenus(); setEnabled(true)
-                if interruptionPauseRequested { status.text = "Ready · Tap Play" }
+                if interruptionPauseRequested { status.text = "Paused" }
                 else { try playback.play(rate: rate) }
                 startTicker(); showControls()
             } catch {
@@ -251,7 +250,7 @@ final class ArtifactOriginalVideoController: UIViewController {
         case .failed(let message): showFailure(DemuxError.unsupported(message))
         case .playing, .finishedEnqueuing:
             playButton.setImage(UIImage(systemName: "pause.fill"), for: .normal); playButton.accessibilityLabel = "Pause"
-            status.text = engine?.selectedAudioTrackID == nil ? "Playing without audio · No supported audio track" : "Playing"
+            status.text = engine?.selectedAudioTrackID == nil ? "Playing without sound. No audio track in this file can be played." : "Playing"
         case .paused:
             playButton.setImage(UIImage(systemName: "play.fill"), for: .normal); playButton.accessibilityLabel = "Play"
             status.text = "Paused"; showControls()
@@ -424,7 +423,7 @@ final class ArtifactOriginalVideoController: UIViewController {
         view.backgroundColor = .systemBackground
         canvas.isHidden = true; controlsContainer.isHidden = true; captionLabel.text = nil
         var config = UIContentUnavailableConfiguration.empty()
-        config.text = "Could not play this original"
+        config.text = "Could not play this film"
         if case .unsupported(let reason) = error as? DemuxError { config.secondaryText = reason }
         else { config.secondaryText = "Check your connection or choose another version of this film." }
         config.button.title = "Try Again"

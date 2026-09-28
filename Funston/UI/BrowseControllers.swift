@@ -46,7 +46,7 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
         definesPresentationContext = true
         updateFilter()
         if collection != nil { submit(debounce: false) }
-        else { showMessage("Search the Internet Archive", detail: "Find recordings, films, books, and other artifacts.") }
+        else { showMessage("Search the Internet Archive") }
     }
 
     func updateSearchResults(for searchController: UISearchController) { submit(debounce: true) }
@@ -75,7 +75,7 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
         loading = false
         refreshing = false
         guard collection != nil || !text.isEmpty else {
-            showMessage("Search the Internet Archive", detail: "Find recordings, films, books, and other artifacts.")
+            showMessage("Search the Internet Archive")
             return
         }
         fetch(request, debounce: debounce)
@@ -141,17 +141,14 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
         if items.isEmpty {
             if pages.isEmpty, loading { showLoading() }
             else if pages.isEmpty, let failure = firstFailure {
-                showMessage("Could not load artifacts", detail: failure.message, retry: { [weak self] in self?.retryPage(failure.page) })
+                showMessage("Could not load results", detail: failure.message, retry: { [weak self] in self?.retryPage(failure.page) })
             } else if let failure = firstFailure {
-                showMessage(stalePages.isEmpty ? "No matching artifacts" : "No matches in saved results", detail: failure.message, retry: { [weak self] in self?.retryPage(failure.page) })
+                showMessage(stalePages.isEmpty ? "No results" : "No matches in saved results", detail: failure.message, retry: { [weak self] in self?.retryPage(failure.page) })
             } else {
-                showMessage(stalePages.isEmpty ? "No matching artifacts" : "No matches in saved results", detail: loading ? "Updating from Internet Archive…" : "Try different words or another media type.")
+                showMessage(stalePages.isEmpty ? "No results" : "No matches in saved results", detail: loading ? "Updating from Internet Archive…" : "Try different words or another media type.")
             }
         }
         var rows = items.map { FunstonRow.artifact($0, prefix: "artifact:") }
-        if let collection, !collection.description.isEmpty {
-            rows.insert(FunstonRow(id: "__collection", title: collection.description, navigates: false), at: 0)
-        }
         if !items.isEmpty, !stalePages.isEmpty {
             rows.append(FunstonRow(id: "__cacheStatus", title: "Showing saved results", subtitle: refreshing ? "Updating from Internet Archive…" : nil, navigates: false))
         }
@@ -190,7 +187,7 @@ final class LibraryController: FunstonListController {
             if let error, !saved.isEmpty { rows.append(FunstonRow(id: "__libraryRetry", title: "Try Again", subtitle: "Library could not be updated. " + error)) }
             self.apply(rows)
             if let error, saved.isEmpty { self.showMessage("Library could not be loaded", detail: error, retry: { [weak self] in Task { await self?.environment.reloadLibrary() } }) }
-            else if saved.isEmpty { self.showMessage("Your saved artifacts", detail: "Save an artifact to keep it here. Your library is stored on this device.") }
+            else if saved.isEmpty { self.showMessage("Nothing saved yet", detail: "Tap Save on any item to keep it here.") }
         }.store(in: &subscriptions)
     }
     override func selected(_ id: String) {
@@ -200,10 +197,7 @@ final class LibraryController: FunstonListController {
     }
     override func configure(_ cell: UICollectionViewListCell, row: FunstonRow) {
         super.configure(cell, row: row)
-        if row.id == "__libraryRetry" {
-            cell.accessories = []
-            cell.accessibilityHint = "Retries loading saved artifacts"
-        } else { cell.accessibilityHint = nil }
+        if row.id == "__libraryRetry" { cell.accessories = [] }
     }
 }
 
@@ -228,7 +222,7 @@ final class DownloadsController: FunstonListController {
             let update = self.projection.update(records)
             if update.replacesContents { self.apply(update.rows) }
             else { self.updateRows(update.rows) }
-            if records.isEmpty { self.showMessage("No downloads", detail: "Downloaded recordings, films, and PDFs stay here for offline use.") }
+            if records.isEmpty { self.showMessage("No downloads", detail: "Downloaded files play and open without a connection.") }
         }
     }
     override func viewDidDisappear(_ animated: Bool) {
@@ -318,7 +312,7 @@ final class DownloadDetailController: FunstonListController, QLPreviewController
     private func render() {
         var rows = [FunstonRow(id: "identity", title: DownloadPresentation.fileName(record.fileName), subtitle: "From \(record.title)", navigates: false),
                     FunstonRow(id: "state", title: record.state == .completed ? "File available offline" : record.state.rawValue.capitalized, subtitle: record.errorMessage, navigates: false),
-                    FunstonRow(id: "artifact", title: "Open Artifact")]
+                    FunstonRow(id: "artifact", title: "Open Item")]
         if let mutation {
             rows.append(FunstonRow(id: "mutation", title: mutation == .remove ? "Removing download…" : "Cancelling download…", navigates: false))
         } else { switch record.state {
@@ -398,7 +392,7 @@ final class DownloadDetailController: FunstonListController, QLPreviewController
             return
         }
         guard let url = environment.downloads.acquireLocalURL(identifier: record.identifier, fileName: record.fileName) else {
-            showError(NSError(domain: "Funston", code: 1, userInfo: [NSLocalizedDescriptionKey: "The downloaded file is no longer available. Download it again to restore this copy."]))
+            showError(NSError(domain: "Funston", code: 1, userInfo: [NSLocalizedDescriptionKey: "This file is no longer on your device. Download it again."]))
             return
         }
         if QLPreviewController.canPreview(url as NSURL) {

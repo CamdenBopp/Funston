@@ -43,14 +43,14 @@ final class ExploreController: UICollectionViewController {
                 cell.contentConfiguration = UIHostingConfiguration {
                     VStack(alignment: .leading, spacing: 12) {
                         if let error {
-                            Text(self.contents[collectionID]?.isEmpty == false ? "Saved artifacts" : "Could not load artifacts").font(.headline)
+                            Text(self.contents[collectionID]?.isEmpty == false ? "Could not refresh" : "Could not load items").font(.headline)
                             Text(error).font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
                             Button("Try Again") { [weak self] in self?.load(collectionID, force: true) }.frame(minHeight: 44)
                         } else if self.contents[collectionID]?.isEmpty == true && self.tasks[collectionID] == nil {
-                            Text("No artifacts available").font(.headline)
-                            Text("Browse this collection for more information.").font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
+                            Text("No items to show").font(.headline)
+                            Text("Open the collection to browse it.").font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
                         } else {
-                            ProgressView().accessibilityLabel("Loading artifacts")
+                            ProgressView().accessibilityLabel("Loading")
                             Text("Loading from Internet Archive…").font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
                         }
                     }.frame(maxWidth: .infinity, minHeight: 190, alignment: .leading)
@@ -182,7 +182,7 @@ final class ExploreController: UICollectionViewController {
 
     private func open(_ artifact: ArtifactSummary) {
         if artifact.mediaType == .collection {
-            openCollection(ArchiveCollection(identifier: artifact.identifier, title: artifact.title, description: ""))
+            openCollection(ArchiveCollection(identifier: artifact.identifier, title: artifact.title))
         } else { openArtifact(artifact) }
     }
 }
@@ -349,10 +349,6 @@ private final class ExploreSectionHeader: UICollectionReusableView {
         if let action { title.removeAction(action, for: .primaryActionTriggered) }
         let next = UIAction { _ in open() }; action = next
         title.addAction(next, for: .primaryActionTriggered)
-        if traitCollection.preferredContentSizeCategory.isAccessibilityCategory {
-            subtitle.text = cached ? "Saved results" : "Most downloaded"
-        } else {
-            subtitle.text = cached ? "Saved results · Most downloaded" : "Most downloaded · \(collection.description)"
-        }
+        subtitle.text = cached ? "Most downloaded (saved copy)" : "Most downloaded"
     }
 }

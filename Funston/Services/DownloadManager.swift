@@ -66,7 +66,7 @@ private final class DownloadSessionDelegate: NSObject, URLSessionDownloadDelegat
         let result: Result<URL, TransferFailure>
         do {
             guard let response = downloadTask.response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
-                throw TransferFailure(message: "The Archive did not return the requested file.")
+                throw TransferFailure(message: "Internet Archive did not return this file.")
             }
             let attributes = try FileManager.default.attributesOfItem(atPath: location.path)
             let received = (attributes[.size] as? NSNumber)?.int64Value

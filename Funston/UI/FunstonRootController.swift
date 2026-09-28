@@ -122,8 +122,7 @@ final class FunstonRootController: UIViewController {
         let controller = UIViewController()
         controller.view.backgroundColor = .systemBackground
         var configuration = UIContentUnavailableConfiguration.empty()
-        configuration.text = "Choose an artifact"
-        configuration.secondaryText = "Explore a collection or search the Internet Archive."
+        configuration.text = "No item selected"
         controller.contentUnavailableConfiguration = configuration
         return controller
     }
@@ -147,7 +146,7 @@ final class FunstonRootController: UIViewController {
 
     private func open(_ artifact: ArtifactSummary, destination: Int, fromDetail: Bool = false) {
         if artifact.mediaType == .collection {
-            openCollection(ArchiveCollection(identifier: artifact.identifier, title: artifact.title, description: ""), destination: destination, fromDetail: fromDetail)
+            openCollection(ArchiveCollection(identifier: artifact.identifier, title: artifact.title), destination: destination, fromDetail: fromDetail)
             return
         }
         let controller = ArtifactController(environment: environment, summary: artifact) { [weak self] collection in

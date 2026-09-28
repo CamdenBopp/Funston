@@ -93,9 +93,9 @@ private final class ArtifactMediaFilePicker: FunstonListController {
 
     init(summary: ArtifactSummary, files: [ArchiveFile], openFile: @escaping (ArchiveFile, UIViewController) -> Void) {
         self.files = files; self.openFile = openFile
-        super.init(title: summary.mediaType == .movies ? "Choose a Film File" : "Choose a PDF")
+        super.init(title: summary.mediaType == .movies ? "Choose a Film" : "Choose a PDF")
         var rows = [FunstonRow(id: "explanation", title: summary.title,
-                               subtitle: "This artifact has several files. Choose the version you want to open.", navigates: false)]
+                               subtitle: "This item has more than one version.", navigates: false)]
         rows += files.enumerated().map { index, file in
             FunstonRow(id: "file:\(index)", title: (file.name as NSString).lastPathComponent,
                        subtitle: [file.format, file.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }].compactMap { $0 }.joined(separator: " · "))
@@ -249,7 +249,7 @@ private final class ArtifactPDFController: UIViewController {
     }
 
     private func startDownload() {
-        showStatus("Preparing document", detail: "The PDF will be saved in Downloads for offline reading.")
+        showStatus("Preparing PDF", detail: "It will also be saved to Downloads.")
         startTask?.cancel()
         startTask = Task { [weak self] in
             guard let self else { return }
@@ -271,21 +271,21 @@ private final class ArtifactPDFController: UIViewController {
         case .queued, .downloading:
             let received = ByteCountFormatter.string(fromByteCount: record.receivedBytes, countStyle: .file)
             let total = record.totalBytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
-            showStatus("Downloading PDF", detail: total.map { "\(received) of \($0) · Saved for offline reading" } ?? "\(received) · Saved for offline reading")
+            showStatus("Downloading PDF", detail: total.map { "\(received) of \($0)" } ?? received)
             navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Cancel", primaryAction: UIAction { [weak self] _ in
                 guard let self, let record = self.currentRecord else { return }
                 Task { do { try await self.downloads.cancel(record) } catch { self.showStatus("Could not cancel", detail: error.localizedDescription, retry: true) } }
             })
         case .failed, .missing, .cancelled:
             navigationItem.rightBarButtonItem = nil
-            showStatus(record.state == .cancelled ? "Download cancelled" : "Could not open document", detail: record.errorMessage ?? "Try downloading this PDF again.", retry: true)
+            showStatus(record.state == .cancelled ? "Download cancelled" : "Could not open PDF", detail: record.errorMessage ?? "Try downloading this PDF again.", retry: true)
         }
     }
 
     private func prepareDocument(at url: URL) {
         loadingPDF = true
         navigationItem.rightBarButtonItem = nil
-        showStatus("Opening PDF", detail: "Preparing the saved document…")
+        showStatus("Opening PDF")
         let worker = Task.detached(priority: .userInitiated) { () -> PreparedPDF? in
             guard !Task.isCancelled, let document = PDFDocument(url: url),
                   !document.isLocked, document.pageCount > 0, !Task.isCancelled else { return nil }
@@ -305,7 +305,7 @@ private final class ArtifactPDFController: UIViewController {
             loadingPDF = false
             guard let result else {
                 downloads.releaseLocalURL(url)
-                showStatus("This PDF cannot be opened", detail: "It may be locked or damaged. Open the artifact on Internet Archive for other formats.")
+                showStatus("This PDF cannot be opened", detail: "It may be locked or damaged. Open the item on Internet Archive for other formats.")
                 return
             }
             lease = url
@@ -321,7 +321,7 @@ private final class ArtifactPDFController: UIViewController {
         }
     }
 
-    private func showStatus(_ title: String, detail: String, retry: Bool = false) {
+    private func showStatus(_ title: String, detail: String? = nil, retry: Bool = false) {
         var configuration = UIContentUnavailableConfiguration.empty()
         configuration.image = UIImage(systemName: "doc.richtext")
         configuration.text = title; configuration.secondaryText = detail
@@ -353,8 +353,7 @@ private final class ArtifactPDFController: UIViewController {
         let readText = UIBarButtonItem(image: UIImage(systemName: "text.viewfinder"), primaryAction: UIAction { [weak self] _ in
             self?.readRecognizedText()
         })
-        readText.accessibilityLabel = "Read recognized text"
-        readText.accessibilityHint = "Opens this page as selectable text using the remembered text recognition preference."
+        readText.accessibilityLabel = "Page text"
         let layouts = PDFReadingLayout.allCases.map { layout in
             UIAction(title: layout.title, state: layout == readingLayout ? .on : .off) { [weak self] _ in
                 self?.changeLayout(to: layout)
@@ -365,6 +364,7 @@ private final class ArtifactPDFController: UIViewController {
         let engines = engineOptions.map { engine in
             UIAction(
                 title: engine.title,
+                subtitle: engine.subtitle,
                 attributes: engine.isAvailable ? [] : [.disabled],
                 state: engine.id == selectedEngineID ? .on : .off
             ) { [weak self] _ in
@@ -511,7 +511,7 @@ private final class PDFTextReaderController: UIViewController {
         self.recognizer = recognizer
         self.showPage = showPage
         super.init(nibName: nil, bundle: nil)
-        title = "Recognized Text"
+        title = "Page Text"
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -569,6 +569,7 @@ private final class PDFTextReaderController: UIViewController {
         let actions = textEnginePreference.options(ocrEngines: textEngineDescriptors).map { engine in
             UIAction(
                 title: engine.title,
+                subtitle: engine.subtitle,
                 attributes: engine.isAvailable ? [] : [.disabled],
                 state: engine.id == selectedEngineID ? .on : .off
             ) { [weak self] _ in
@@ -579,7 +580,7 @@ private final class PDFTextReaderController: UIViewController {
             }
         }
         let item = UIBarButtonItem(title: "Text Engine", menu: UIMenu(title: "Text Recognition", children: actions))
-        item.accessibilityLabel = "Text recognition engine"
+        item.accessibilityLabel = "Text engine"
         item.accessibilityValue = textEnginePreference.title(ocrEngines: textEngineDescriptors)
         navigationItem.rightBarButtonItem = item
     }
@@ -626,7 +627,7 @@ private final class PDFTextReaderController: UIViewController {
                 textView.text = result.text
                 if let engineID = result.engineID {
                     textView.accessibilityHint = textEnginePreference.options(ocrEngines: textEngineDescriptors)
-                        .first { $0.id == engineID }?.title
+                        .first { $0.id == engineID }.map { "Read by \($0.title)" }
                 }
                 textView.setContentOffset(.zero, animated: false)
                 UIAccessibility.post(notification: .screenChanged, argument: textView)
@@ -638,7 +639,7 @@ private final class PDFTextReaderController: UIViewController {
         var unavailable = UIContentUnavailableConfiguration.empty()
         unavailable.image = UIImage(systemName: "text.magnifyingglass")
         unavailable.text = "No text found on page \(pageIndex + 1)"
-        unavailable.secondaryText = "Try another page; this page may not contain readable text."
+        unavailable.secondaryText = "This page may be a picture or blank."
         contentUnavailableConfiguration = unavailable
         UIAccessibility.post(notification: .screenChanged, argument: view)
     }

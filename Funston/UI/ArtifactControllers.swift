@@ -26,7 +26,7 @@ final class ArtifactController: FunstonListController {
         self.environment = environment; self.summary = summary; self.openCollection = openCollection
         self.repository = repository ?? environment.repository
         savedState = ArtifactSavedState(identifier: summary.identifier, isSaved: environment.isSaved(summary))
-        super.init(title: summary.mediaType == .texts ? "Book" : summary.mediaType == .movies ? "Film" : summary.mediaType == .audio ? "Audio" : "Artifact")
+        super.init(title: summary.mediaType == .texts ? "Book" : summary.mediaType == .movies ? "Film" : summary.mediaType == .audio ? "Audio" : "Item")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     deinit { task?.cancel() }
@@ -35,7 +35,7 @@ final class ArtifactController: FunstonListController {
         super.viewDidLoad()
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.rightBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "square.and.arrow.up"), primaryAction: UIAction { [weak self] _ in self?.share() })
-        navigationItem.rightBarButtonItem?.accessibilityLabel = "Share artifact"
+        navigationItem.rightBarButtonItem?.accessibilityLabel = "Share"
         savedState.observe(environment.$saved.eraseToAnyPublisher()) { [weak self] in self?.render() }
         playbackSubscription = environment.playback.$context.combineLatest(environment.playback.$phase)
             .sink { [weak self] context, phase in
@@ -90,7 +90,7 @@ final class ArtifactController: FunstonListController {
         let overviewChanged = overview != lastOverview
         lastOverview = overview
         var rows = [FunstonRow(id: "overview", title: summary.title, navigates: false)]
-        if detail == nil, failure == nil { rows.append(FunstonRow(id: "loading", title: "Loading artifact…", navigates: false)) }
+        if detail == nil, failure == nil { rows.append(FunstonRow(id: "loading", title: "Loading…", navigates: false)) }
         if let detail {
             if !detail.tracks.isEmpty {
                 rows.append(FunstonRow(id: "recordingsHeading", title: "Recordings", subtitle: detail.tracks.count.formatted(), navigates: false))
@@ -110,7 +110,7 @@ final class ArtifactController: FunstonListController {
             }
             var seenCollections = Set<String>()
             for collection in detail.summary.collections where seenCollections.insert(collection).inserted {
-                rows.append(FunstonRow(id: "collection:" + collection, title: collectionDisplayName(collection), subtitle: "From this collection"))
+                rows.append(FunstonRow(id: "collection:" + collection, title: collectionDisplayName(collection), subtitle: "Collection"))
             }
             rows.append(FunstonRow(id: "files", title: "Files", subtitle: detail.files.count.formatted() + " files"))
             rows.append(FunstonRow(id: "metadata", title: "Information", subtitle: summary.identifier))
@@ -171,7 +171,7 @@ final class ArtifactController: FunstonListController {
     override func selected(_ id: String) {
         if id.hasPrefix("collection:") {
             let identifier = String(id.dropFirst("collection:".count))
-            openCollection(ArchiveCollection(identifier: identifier, title: collectionDisplayName(identifier), description: "")); return
+            openCollection(ArchiveCollection(identifier: identifier, title: collectionDisplayName(identifier))); return
         }
         switch id {
         case "retry": load()
@@ -309,7 +309,7 @@ struct ArtifactOverview: View {
                 HStack(spacing: 16) { actions }
                 VStack(alignment: .leading, spacing: 12) { actions }
             }
-            if restricted { Text("This item has access restrictions. Visit Internet Archive for available options.").font(.callout).foregroundStyle(Color.funstonSecondaryText) }
+            if restricted { Text("Internet Archive restricts access to this item. Open it on the website to see your options.").font(.callout).foregroundStyle(Color.funstonSecondaryText) }
         }
     }
 
@@ -319,7 +319,7 @@ struct ArtifactOverview: View {
         Button(isSaved ? "Saved" : "Save", systemImage: isSaved ? "bookmark.fill" : "bookmark", action: save)
             .buttonStyle(.bordered).controlSize(.large).accessibilityIdentifier("artifact.save")
             .accessibilityLabel(saveTitle)
-            .accessibilityValue(isSaving ? "Saving change" : "")
+            .accessibilityValue(isSaving ? "Saving" : "")
             .disabled(isSaving)
     }
 }
@@ -524,8 +524,7 @@ private struct RecordingRow: View {
                 }.frame(minHeight: 44).contentShape(Rectangle())
             }.buttonStyle(.plain).disabled(!available)
                 .accessibilityLabel(track.title)
-                .accessibilityValue(([current ? "Current recording" : nil, track.duration.map(PlayerTimePresentation.spoken)].compactMap { $0 }).joined(separator: ". "))
-                .accessibilityHint(available ? "Plays recording" : "Recording unavailable")
+                .accessibilityValue(([current ? "Current recording" : nil, available ? nil : "Unavailable", track.duration.map(PlayerTimePresentation.spoken)].compactMap { $0 }).joined(separator: ". "))
                 .accessibilityIdentifier("recording.play.\(number - 1)")
                 .accessibilityAction(named: "Recording information", information)
             Menu {
