@@ -49,6 +49,9 @@ final class AppEnvironment: ObservableObject {
         // Exercise first playback without deleting the user's saved library or
         // listening bookmark. This switch is unavailable in release builds.
         if ProcessInfo.processInfo.arguments.contains("--skip-playback-restoration") { return }
+        // Unit tests run inside this app. Restoring whatever was last played on the
+        // simulator would publish its Now Playing over the test's own.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
         #endif
         guard let bookmark = try? await store.lastPlayback(), playback.context == nil else { return }
         let restoreGeneration = playback.loadGeneration
