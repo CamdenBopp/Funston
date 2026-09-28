@@ -141,6 +141,17 @@ actor SQLiteStore {
         ) { sqlite3_column_double($0, 0) }
     }
 
+    /// Saved positions, most recently updated first.
+    func recentPlaybackPositions(limit: Int) throws -> [PlaybackBookmark] {
+        try query(
+            "SELECT identifier, file_name, seconds FROM playback_positions ORDER BY updated_at DESC LIMIT ?",
+            bindings: [.int64(Int64(max(0, limit)))]
+        ) {
+            guard let identifier = Self.text($0, column: 0), let fileName = Self.text($0, column: 1) else { return nil }
+            return PlaybackBookmark(identifier: identifier, fileName: fileName, seconds: sqlite3_column_double($0, 2))
+        }.compactMap { $0 }
+    }
+
     func setLastPlayback(_ bookmark: PlaybackBookmark?) throws {
         if let bookmark {
             try execute(

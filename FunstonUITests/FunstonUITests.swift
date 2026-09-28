@@ -102,6 +102,60 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(waitForValue("Paused", of: toggle))
     }
 
+    /// Listen past the short-listen threshold, relaunch, and pick the recording
+    /// back up from Explore. The tile is one element whose value is time left,
+    /// and the player resumes where the listener paused.
+    @MainActor
+    func testContinueListeningShelfResumesARecording() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--skip-playback-restoration"]
+        app.launch()
+        XCTAssertTrue(app.buttons["oldtimeradio"].waitForExistence(timeout: 10))
+        app.buttons["oldtimeradio"].tap()
+        let recording = app.collectionViews.cells["artifact:OTRR_Gunsmoke_Singles"]
+        XCTAssertTrue(recording.waitForExistence(timeout: 30))
+        recording.tap()
+        let play = app.buttons["artifact.play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 30))
+        play.tap()
+        let popup = app.descendants(matching: .any)["compactPlayer.open"].firstMatch
+        XCTAssertTrue(popup.waitForExistence(timeout: 15))
+        popup.tap()
+        let toggle = app.buttons["player.toggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitForValue("Playing", of: toggle))
+        // Well past ResumePolicy.minimumResumeSeconds.
+        Thread.sleep(forTimeInterval: 12)
+        toggle.tap()
+        XCTAssertTrue(waitForValue("Paused", of: toggle))
+        // Pausing writes the position asynchronously; give it a moment before quitting.
+        Thread.sleep(forTimeInterval: 1)
+
+        app.terminate()
+        app.launch()
+        let tile = app.buttons["explore.continue.OTRR_Gunsmoke_Singles"]
+        XCTAssertTrue(tile.waitForExistence(timeout: 30))
+        let tileValue = tile.value as? String ?? ""
+        print("Continue listening tile label: \(tile.label)")
+        print("Continue listening tile value: \(tileValue)")
+        XCTAssertTrue(tile.label.hasPrefix("Gunsmoke"), tile.label)
+        XCTAssertTrue(tileValue.hasSuffix(" left"), tileValue)
+        XCTAssertEqual(app.staticTexts["Continue listening"].firstMatch.exists, true)
+        capture(app, name: "10 Continue listening")
+
+        tile.tap()
+        XCTAssertTrue(popup.waitForExistence(timeout: 15))
+        popup.tap()
+        XCTAssertTrue(toggle.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitForValue("Playing", of: toggle))
+        let position = app.sliders["Playback position"]
+        XCTAssertTrue(position.waitForExistence(timeout: 8))
+        let positionValue = position.value as? String ?? ""
+        print("Resumed position: \(positionValue)")
+        XCTAssertFalse(positionValue.hasPrefix("0 seconds"), positionValue)
+        XCTAssertFalse(positionValue.hasPrefix("1 second"), positionValue)
+    }
+
     @MainActor
     func testLargeTextExploreScreenshot() throws {
         let app = XCUIApplication()

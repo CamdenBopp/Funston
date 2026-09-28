@@ -140,7 +140,7 @@ private struct PlaybackPositionView: View {
                     if !editing { playback.seek(to: proposedTime) }
                 }
                 .accessibilityLabel("Playback position")
-                .accessibilityValue("\(PlayerTimePresentation.spoken(playback.elapsed)) of \(PlayerTimePresentation.spoken(duration))")
+                .accessibilityValue(PlayerTimePresentation.spokenPosition(playback.elapsed, duration: duration, rate: playback.playbackRate))
                 .accessibilityAdjustableAction { direction in
                     switch direction {
                     case .increment: playback.skip(by: 15)
@@ -177,6 +177,36 @@ enum PlayerTimePresentation {
         guard let value = MediaDuration.validated(seconds) else { return "Time unavailable" }
         // Integer Duration construction avoids floating-point conversion overflow.
         return Duration.seconds(Int64(value)).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
+    }
+
+    /// The position slider's value: "4 minutes, 12 seconds of 28 minutes, 57 seconds,
+    /// 25 minutes left". Time left is listening time, so it shrinks at faster speeds.
+    static func spokenPosition(_ elapsed: Double, duration: Double, rate: Double) -> String {
+        let position = clampedPosition(elapsed, duration: duration)
+        let speed = rate.isFinite && rate > 0 ? rate : 1
+        let remaining = spokenRemaining((duration - position) / speed)
+        // Mid-sentence, "Less than a minute left" loses its capital.
+        return "\(spoken(position)) of \(spoken(duration)), \(remaining.prefix(1).lowercased() + remaining.dropFirst())"
+    }
+
+    /// "24 minutes left". Whole minutes are enough to decide whether to keep listening.
+    static func spokenRemaining(_ seconds: Double) -> String {
+        guard let value = MediaDuration.validated(seconds) else { return "Time unavailable" }
+        guard let minutes = roundedMinutes(value) else { return "Less than a minute left" }
+        return minutes + " left"
+    }
+
+    /// "12 minutes played", for a recording whose length isn't known.
+    static func spokenPlayed(_ seconds: Double) -> String {
+        guard let value = MediaDuration.validated(seconds) else { return "Time unavailable" }
+        guard let minutes = roundedMinutes(value) else { return "Less than a minute played" }
+        return minutes + " played"
+    }
+
+    private static func roundedMinutes(_ seconds: Double) -> String? {
+        let minutes = Int64((seconds / 60).rounded())
+        guard minutes > 0 else { return nil }
+        return Duration.seconds(minutes * 60).formatted(.units(allowed: [.hours, .minutes], width: .wide))
     }
 }
 
