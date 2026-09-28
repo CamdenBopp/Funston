@@ -1,32 +1,55 @@
 # Funston
 
-A native iPhone and iPad client for exploring Internet Archive artifacts. Browse live collections through artwork shelves, search across media types, inspect provenance and files, save artifacts, and download supported media for offline use.
+An iPhone and iPad app for Internet Archive: old radio, live music, films, books and scanned magazines, in a native UIKit shell that works with VoiceOver.
 
-Audio publishes album artwork and transport metadata to the system Now Playing surface, including the Lock Screen. Artwork is loaded asynchronously through the bounded image cache and retained across tracks from the same artifact.
+<p>
+<img src="Docs/ReviewScreenshots/explore-dark.png" width="260" alt="Explore: shelves of Old Time Radio and Books & Texts, most downloaded first">
+<img src="Docs/ReviewScreenshots/player-dark.png" width="260" alt="The audio player showing a Gunsmoke episode with artwork, scrubber and transport controls">
+</p>
 
-UIKit owns navigation, adaptive tab/split layouts and reusable collections; SwiftUI composes artifact headers and the full audio player. A native interactive mini-player keeps listening available while browsing. Supported PDFs open in a PDFKit reader with page restoration and text search; scanned pages also have an on-device recognized-text view that defaults to Automatic and prefers Apple Live Text for Internet Archive derivatives. Readers are not prompted when opening a page, but Reading Options exposes an extensible engine list and remembers a choice until it is changed. Compatible films open in AVKit. EPUB remains future work.
+## What it does
 
-The [PDF scrolling investigation and polish report](Docs/PDFScrollingPolish.md) records physical-device measurements and rejected rendering experiments. Fast-scroll blank pages in heavy scanned PDFs remain an open issue; the experimental raster cache is test-only.
+Explore shows the most downloaded items from a few collections, and Search covers all of Internet Archive, filtered by media type. On iPad the app becomes a three-column split view.
 
-The video viewer streams public MP4/M4V/MOV files or uses a leased local download, restores per-file position, and offers retry without discarding progress. An unmodified full-screen AVKit player supplies auto-hiding transport, speed, AirPlay, embedded media options, and supported Picture in Picture. Its native Close action ends the video; the audio queue remains paused and available afterward. The image uses aspect-fit rather than cropping to fill the phone. Downloads includes a dedicated Watch Downloaded Film action that never silently switches to streaming. Device PiP/AirPlay and manual accessibility verification remain release gates.
+Multi-track items play as a queue. A mini-player stays open while you browse, the Lock Screen shows the item's artwork, and each recording remembers where you stopped.
 
-An experimental original-file path now opens MKV through the MIT-only [ArchivePlayerCore](https://github.com/CamdenBopp/ArchivePlayerCore): bounded HTTP Range reads, a Swift Matroska demuxer, and Apple's sample-buffer video/audio renderers. The demuxer understands WebM's container structure, but WebM video codecs have not passed a device decode gate and `.webm` is not yet offered as a Watch action. The existing AVKit path remains preferred for MP4/M4V/MOV. The MKV controls expose audio-track names/languages/roles, captions when a supported embedded text track exists, speed, seek, and VoiceOver actions; unsupported codecs/tracks are identified rather than silently discarded. This path is not AVKit, has no Picture in Picture, and has not passed physical-device or manual VoiceOver validation. Separate strict MPEG-TS and DVD/VOB access-unit adapters have passed early Mac renderer gates, but are not in the app and do not imply physical-iPhone compatibility; the raw demuxers alone are not playable. The player lives in its own package, [ArchivePlayerCore](https://github.com/CamdenBopp/ArchivePlayerCore), which records the measured device codec gates, playback findings and conformance results.
+PDFs open in PDFKit with search and a remembered page. For scanned books, Page Text recognizes the page on the device (Live Text, then Vision) instead of trusting Internet Archive's OCR, and Reading options lets you pick the engine yourself.
 
-The audio presentation uses MIT-licensed LNPopupController 4.5.12, vendored with a documented manifest-only build fix. Its MIT-licensed LNSystemMarqueeLabel dependency is locked to 0.1.2. Playback, artwork caching, downloads and persistence remain app-owned. See [component decisions and licensing](Docs/ComponentDecisions.md) and [vendored provenance](Vendor/LNPopupController/PROVENANCE.md).
+MP4, M4V and MOV films play in the system player. MKV originals play through [ArchivePlayerCore](https://github.com/CamdenBopp/ArchivePlayerCore), with audio-track and caption menus. That path is experimental.
 
-Generate the Xcode project and build:
+Library holds what you save and Downloads holds files for offline use. They're independent: removing a download doesn't unsave the item, and unsaving doesn't delete the file.
+
+## Build
+
+Requires Xcode 27 and [XcodeGen](https://github.com/yonaskolb/XcodeGen). The app targets iOS 18.
 
 ```sh
 xcodegen generate
 xcodebuild -project Funston.xcodeproj -scheme Funston -destination 'generic/platform=iOS Simulator' build
 ```
 
-Requires Xcode 27 and XcodeGen; the app supports iOS 18 and later. Keep the workspace's `Package.resolved` to reproduce the transitive dependency version. Regenerate the original geometric app icon with `swift Scripts/GenerateAppIcon.swift`.
+To run on a device, change `DEVELOPMENT_TEAM` and the `com.camden` bundle prefix in `project.yml` to your own. `Package.resolved` is committed; keep it to get the same dependency versions.
 
-Simulator downloads use an in-process URLSession because the tested simulator's background-transfer daemon failed before starting transfers. Physical-device builds retain background downloads. See [simulator download behavior and validation limits](Docs/SimulatorDownloads.md).
+Tests:
 
-The product and engineering contract, including acceptance gates that require physical-device validation, is in [ImplementationPlan.md](Docs/ImplementationPlan.md).
+```sh
+xcodebuild test -project Funston.xcodeproj -scheme Funston -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:FunstonTests
+```
+
+`FunstonUITests` drive the live app against archive.org and need a network connection.
+
+## Known gaps
+
+- Fast scrolling through heavy scanned PDFs can show blank pages for a moment. [PDFScrollingPolish.md](Docs/PDFScrollingPolish.md) has the measurements and the experiments that didn't work.
+- The MKV player hasn't been tested on a physical iPhone or under VoiceOver on a device. WebM, VOB and MPEG-TS aren't offered yet.
+- Background downloads only run on a device. The Simulator uses an in-process session because its background transfer daemon fails; see [SimulatorDownloads.md](Docs/SimulatorDownloads.md).
+- AirPlay and Picture in Picture for films come from the system player but haven't been checked on a device.
+- EPUB isn't supported.
+
+## How it's put together
+
+UIKit owns navigation, the tab and split layouts, and every list. SwiftUI draws the item header and the full-screen audio player. The mini-player is [LNPopupController](https://github.com/LeoNatan/LNPopupController) 4.5.12, vendored with a one-file build fix described in [its provenance note](Vendor/LNPopupController/PROVENANCE.md). Playback, downloads, artwork caching and the SQLite store are the app's own. [ComponentDecisions.md](Docs/ComponentDecisions.md) explains the choices, and [ImplementationPlan.md](Docs/ImplementationPlan.md) is the product contract.
 
 ## License
 
-Original project source is available under the [MIT License](LICENSE). Vendored dependencies retain their own copyright and license notices; see [ThirdPartyNotices.txt](Funston/Resources/ThirdPartyNotices.txt). Internet Archive media and artwork (including material visible in review screenshots) remain subject to their respective rights and are not relicensed by this repository.
+MIT; see [LICENSE](LICENSE). Vendored code keeps its own license ([ThirdPartyNotices.txt](Funston/Resources/ThirdPartyNotices.txt)). Media and artwork from Internet Archive, including what appears in these screenshots, belong to their rights holders and aren't covered by this license.
