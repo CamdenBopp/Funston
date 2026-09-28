@@ -132,6 +132,12 @@ final class PDFReadingStateTests: XCTestCase {
         ])
     }
 
+    /// The December 1981 scan of 73 Magazine: column-by-column Vision kept 99% of
+    /// lines in order, the document reader 75% with lines missing.
+    func testAutomaticTriesColumnByColumnVisionFirst() {
+        XCTAssertEqual(PDFPageTextEngineRegistry.builtIn.descriptors.first?.id, PDFTextEngineID.appleVision)
+    }
+
     func testExplicitEngineIsRememberedWithoutBecomingARepeatedPrompt() {
         let available = [PDFTextEngineID.appleLiveText, PDFTextEngineID.appleVision]
         XCTAssertEqual(

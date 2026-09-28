@@ -176,14 +176,15 @@ private struct PDFVisionTextEngine: PDFPageOCREngine {
 }
 
 /// Apple's document recognizer (iOS 26 and later) finds columns, paragraphs and
-/// lists itself. On 73 Magazine it matched the column-by-column Vision engine's
-/// reading order (99-100%) in a third of the time.
+/// lists itself. On 73 Magazine it is about twice as fast as column-by-column
+/// Vision, but on the December 1981 scan it kept 75% of lines in order and
+/// dropped some altogether.
 private struct PDFDocumentTextEngine: PDFPageOCREngine {
     var descriptor: PDFTextEngineDescriptor {
         let available: Bool
         if #available(iOS 26.0, *) { available = true } else { available = false }
         return PDFTextEngineDescriptor(id: PDFTextEngineID.appleDocuments, title: "Apple Document Reader",
-                                       isAvailable: available, subtitle: "Keeps columns and paragraphs in reading order")
+                                       isAvailable: available, subtitle: "Faster, but can skip lines on rough scans")
     }
 
     func recognize(_ image: CGImage) async -> String {
@@ -212,10 +213,11 @@ struct PDFPageTextEngineRegistry: Sendable {
     }
 
     static var builtIn: Self {
-        // Automatic tries these in order. Measured on 73 Magazine: the document
-        // reader and column-by-column Vision kept reading order at 99-100%, Live
-        // Text at 52-100% depending on the page.
-        Self(engines: [PDFDocumentTextEngine(), PDFVisionTextEngine(), PDFLiveTextEngine()])
+        // Automatic tries these in order. Lines kept in order on 73 Magazine
+        // (August 1976 pages 30 and 40, December 1981 page 6): column-by-column
+        // Vision 100/99/99%, the document reader 100/99/75% (it also drops lines
+        // on the December scan), Live Text 100/52/99%.
+        Self(engines: [PDFVisionTextEngine(), PDFDocumentTextEngine(), PDFLiveTextEngine()])
     }
 
     var descriptors: [PDFTextEngineDescriptor] {
@@ -366,7 +368,8 @@ struct PDFPageTextRequest: Sendable {
 actor PDFPageTextRecognizer {
     // 3: pages were recognized from a render at 1x in the middle of the canvas.
     // 4: Vision reads column by column; the document reader was added.
-    private static let cacheVersion = 4
+    // 5: Vision finds columns under headlines and beside boxes; Automatic tries it first.
+    private static let cacheVersion = 5
     private static let cacheLifetime: TimeInterval = 60 * 60 * 24 * 365 * 10
     private let store: SQLiteStore
     let engineDescriptors: [PDFTextEngineDescriptor]
