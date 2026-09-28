@@ -163,6 +163,8 @@ final class FunstonUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["oldtimeradio"].waitForExistence(timeout: 10))
         let cover = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "explore.artifact.")).firstMatch
+        // With listening history, Continue listening fills the first screen at this size.
+        for _ in 0..<4 where !cover.waitForExistence(timeout: 8) { app.swipeUp() }
         XCTAssertTrue(cover.waitForExistence(timeout: 30))
         capture(app, name: "05 Explore accessibility text")
     }
@@ -278,21 +280,34 @@ final class FunstonUITests: XCTestCase {
         let original = app.collectionViews.cells.matching(NSPredicate(format: "label CONTAINS[c] %@", ".mkv")).firstMatch
         XCTAssertTrue(original.waitForExistence(timeout: 10), app.debugDescription)
         original.tap()
-        let audio = app.buttons["Audio"]
-        XCTAssertTrue(audio.waitForExistence(timeout: 60), app.debugDescription)
-        let originalValue = audio.value as? String
-        XCTAssertNotNil(originalValue)
-        if !audio.isHittable { app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).tap() }
-        audio.tap()
-        let alternate = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Japanese")).firstMatch
-        XCTAssertTrue(alternate.waitForExistence(timeout: 5), app.debugDescription)
-        alternate.tap()
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "value CONTAINS[c] %@", "Japanese"), object: audio)], timeout: 30),
-            .completed,
-            "An alternate audio track should become the selected accessible value")
+        // Audio lives under More, as in the system player.
+        let more = app.buttons["More"]
+        // More stays dimmed until the film is ready, as the other controls do.
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 60), app.debugDescription)
+        XCTAssertTrue(more.isEnabled)
+        func openAudioMenu() {
+            if !more.isHittable { app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).tap() }
+            more.tap()
+            let audio = app.buttons["Audio"]
+            XCTAssertTrue(audio.waitForExistence(timeout: 5), app.debugDescription)
+            audio.tap()
+        }
+        openAudioMenu()
+        // The film opens on the remembered language, so switch to one that isn't selected.
+        let japanese = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Japanese")).firstMatch
+        let english = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "English")).firstMatch
+        XCTAssertTrue(japanese.waitForExistence(timeout: 5), app.debugDescription)
+        let target = japanese.isSelected ? english : japanese
+        XCTAssertFalse(target.isSelected)
+        target.tap()
+        sleep(3)
+        openAudioMenu()
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        XCTAssertTrue(target.isSelected, "The chosen audio track should read as selected")
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
         let done = app.buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Close'")).firstMatch
+        // The controls fade while the film plays; a tap on the film brings them back.
+        if !done.waitForExistence(timeout: 1) { app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).tap() }
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         done.tap()
         XCTAssertTrue(original.waitForExistence(timeout: 5), "Closing the player should return to file selection")

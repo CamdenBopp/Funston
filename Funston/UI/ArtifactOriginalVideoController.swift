@@ -61,18 +61,18 @@ final class ArtifactOriginalVideoController: UIViewController {
     private var selectedCaption: UInt32?
     private var lastInteraction = Date()
     private let canvas = UIView()
-    private let controls = UIStackView()
-    private let controlsContainer = UIScrollView()
-    private let status = UILabel()
+    private let chrome = OriginalVideoControlsView()
     private let captionLabel = UILabel()
-    private let timeLabel = UILabel()
-    private let slider = UISlider()
-    private let playButton = UIButton(type: .system)
-    private let backButton = UIButton(type: .system)
-    private let forwardButton = UIButton(type: .system)
-    private let audioButton = UIButton(type: .system)
-    private let captionsButton = UIButton(type: .system)
-    private let speedButton = UIButton(type: .system)
+    private var captionsAboveControls: NSLayoutConstraint?
+    private var captionsAtBottom: NSLayoutConstraint?
+    private var audioMenu: UIMenu?
+    private var subtitlesMenu: UIMenu?
+    private var speedMenu: UIMenu?
+    private static let controlsFadeDelay: TimeInterval = 5
+    private static let controlsFadeDuration: TimeInterval = 0.25
+    private static let captionBottomMargin: CGFloat = 24
+    private static let captionBackgroundOpacity: CGFloat = 0.75
+    private static let captionCornerRadius: CGFloat = 4
 
     init(summary: ArtifactSummary, file: ArchiveFile, environment: AppEnvironment, downloadedOnly: Bool) {
         self.summary = summary; self.file = file; self.environment = environment; self.downloadedOnly = downloadedOnly
@@ -90,8 +90,9 @@ final class ArtifactOriginalVideoController: UIViewController {
     /// Nil until the film is ready, and always nil where Picture in Picture isn't supported.
     var pictureInPictureSupport: OriginalVideoPictureInPicture? { pictureInPicture }
     var videoSurface: UIView { canvas }
-    var controlsShown: Bool { controlsContainer.alpha == 1 && !controls.accessibilityElementsHidden }
-    var trackMenus: (audio: UIMenu?, captions: UIMenu?, speed: UIMenu?) { (audioButton.menu, captionsButton.menu, speedButton.menu) }
+    var controlsShown: Bool { chrome.alpha == 1 && !chrome.accessibilityElementsHidden }
+    var trackMenus: (audio: UIMenu?, captions: UIMenu?, speed: UIMenu?) { (audioMenu, subtitlesMenu, speedMenu) }
+    var controls: OriginalVideoControlsView { chrome }
     /// True until the film has handed audio back to the audio player.
     var holdsPlayback: Bool { audioOwnership != nil }
 
@@ -109,11 +110,10 @@ final class ArtifactOriginalVideoController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .black
         view.accessibilityIdentifier = "original.video.viewer"
         remote = OriginalVideoRemoteControl { [weak self] command in self?.handleRemote(command) ?? false }
         navigationItem.largeTitleDisplayMode = .never
-        navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.close() })
         canvas.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(canvas)
         canvas.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(canvasTapped)))
@@ -124,78 +124,54 @@ final class ArtifactOriginalVideoController: UIViewController {
         canvas.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Show playback controls") { [weak self] _ in
             guard let self else { return false }
             self.showControls()
-            UIAccessibility.post(notification: .layoutChanged, argument: self.playButton)
+            UIAccessibility.post(notification: .layoutChanged, argument: self.chrome.playButton)
             return true
         }]
-        controls.axis = .vertical; controls.spacing = 8
-        controls.isLayoutMarginsRelativeArrangement = true
-        controls.directionalLayoutMargins = .init(top: 12, leading: 16, bottom: 12, trailing: 16)
-        controls.backgroundColor = UIColor.secondarySystemBackground.withAlphaComponent(0.95)
-        controls.layer.cornerRadius = 12
-        controls.translatesAutoresizingMaskIntoConstraints = false
-        controlsContainer.translatesAutoresizingMaskIntoConstraints = false
-        controlsContainer.addSubview(controls)
-        view.addSubview(controlsContainer)
-        for label in [status, timeLabel, captionLabel] {
-            label.font = .preferredFont(forTextStyle: label === captionLabel ? .title3 : .footnote)
-            label.adjustsFontForContentSizeCategory = true
-            label.numberOfLines = 0; label.textAlignment = .center
-        }
-        timeLabel.font = .preferredFont(forTextStyle: .body)
-        status.text = "Opening film"
+        captionLabel.font = .preferredFont(forTextStyle: .title3)
+        captionLabel.adjustsFontForContentSizeCategory = true
+        captionLabel.numberOfLines = 0; captionLabel.textAlignment = .center
         captionLabel.textColor = .white
-        captionLabel.backgroundColor = UIColor.black.withAlphaComponent(0.75)
-        captionLabel.layer.cornerRadius = 4
+        captionLabel.backgroundColor = UIColor.black.withAlphaComponent(Self.captionBackgroundOpacity)
+        captionLabel.layer.cornerRadius = Self.captionCornerRadius
+        captionLabel.clipsToBounds = true
         captionLabel.translatesAutoresizingMaskIntoConstraints = false
-        captionLabel.accessibilityLabel = "Captions"
+        captionLabel.accessibilityLabel = "Subtitles"
+        chrome.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(captionLabel)
-        configure(playButton, title: "Play", symbol: "play.fill") { [weak self] in self?.togglePlayback() }
-        configure(backButton, title: "Back 15 seconds", symbol: "gobackward.15") { [weak self] in self?.seek(by: -15) }
-        configure(forwardButton, title: "Forward 15 seconds", symbol: "goforward.15") { [weak self] in self?.seek(by: 15) }
-        for (button, title) in [(audioButton, "Audio"), (captionsButton, "Captions"), (speedButton, "Speed")] {
-            button.configuration = .bordered(); button.setTitle(title, for: .normal)
-            button.titleLabel?.font = .preferredFont(forTextStyle: .body)
-            button.titleLabel?.adjustsFontForContentSizeCategory = true
-            button.showsMenuAsPrimaryAction = true
-            button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-        }
-        let transport = UIStackView(arrangedSubviews: [backButton, playButton, forwardButton])
-        transport.distribution = .fillEqually; transport.spacing = 8
-        let menus = UIStackView(arrangedSubviews: [audioButton, captionsButton, speedButton])
-        menus.distribution = .fillEqually; menus.spacing = 8
-        controls.addArrangedSubview(status); controls.addArrangedSubview(timeLabel)
-        controls.addArrangedSubview(slider); controls.addArrangedSubview(transport); controls.addArrangedSubview(menus)
-        slider.accessibilityLabel = "Playback position"
-        slider.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-        slider.minimumValue = 0
-        slider.maximumValue = Float(file.duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 1)
-        slider.addAction(UIAction { [weak self] _ in self?.showControls() }, for: .touchDown)
-        slider.addAction(UIAction { [weak self] _ in
-            guard let self else { return }; self.seek(to: Double(self.slider.value))
-        }, for: [.touchUpInside, .touchUpOutside, .primaryActionTriggered])
-        slider.addAction(UIAction { [weak self] _ in
-            guard let self, !self.slider.isTracking else { return }
-            self.seek(to: Double(self.slider.value))
+        view.addSubview(chrome)
+        chrome.setTitle(summary.title)
+        chrome.setTime(elapsed: 0, duration: file.duration)
+        chrome.closeButton.addAction(UIAction { [weak self] _ in self?.close() }, for: .primaryActionTriggered)
+        chrome.playButton.addAction(UIAction { [weak self] _ in self?.togglePlayback() }, for: .primaryActionTriggered)
+        chrome.backButton.addAction(UIAction { [weak self] _ in self?.seek(by: -OriginalVideoControlsView.skipInterval) }, for: .primaryActionTriggered)
+        chrome.forwardButton.addAction(UIAction { [weak self] _ in self?.seek(by: OriginalVideoControlsView.skipInterval) }, for: .primaryActionTriggered)
+        chrome.muteButton.addAction(UIAction { [weak self] _ in self?.toggleMute() }, for: .primaryActionTriggered)
+        chrome.pictureInPictureButton.addAction(UIAction { [weak self] _ in
+            guard let pictureInPicture = self?.pictureInPicture else { return }
+            if pictureInPicture.isActive { pictureInPicture.stop() } else { pictureInPicture.start() }
+        }, for: .primaryActionTriggered)
+        chrome.scrubber.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.showControls()
+            self.chrome.setTime(elapsed: self.chrome.scrubber.position, duration: self.file.duration)
         }, for: .valueChanged)
-        let naturalControlsHeight = controlsContainer.heightAnchor.constraint(equalTo: controls.heightAnchor)
-        naturalControlsHeight.priority = .defaultHigh
+        chrome.scrubber.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.seek(to: self.chrome.scrubber.position)
+        }, for: .primaryActionTriggered)
+        chrome.setPictureInPictureAvailable(false)
+        captionsAboveControls = captionLabel.bottomAnchor.constraint(equalTo: chrome.captionsGuide.bottomAnchor)
+        captionsAtBottom = captionLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Self.captionBottomMargin)
         NSLayoutConstraint.activate([
             canvas.leadingAnchor.constraint(equalTo: view.leadingAnchor), canvas.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            canvas.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), canvas.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            controlsContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
-            controlsContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
-            controlsContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
-            controlsContainer.heightAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.heightAnchor, multiplier: 0.65),
-            naturalControlsHeight,
-            controls.leadingAnchor.constraint(equalTo: controlsContainer.contentLayoutGuide.leadingAnchor),
-            controls.trailingAnchor.constraint(equalTo: controlsContainer.contentLayoutGuide.trailingAnchor),
-            controls.topAnchor.constraint(equalTo: controlsContainer.contentLayoutGuide.topAnchor),
-            controls.bottomAnchor.constraint(equalTo: controlsContainer.contentLayoutGuide.bottomAnchor),
-            controls.widthAnchor.constraint(equalTo: controlsContainer.frameLayoutGuide.widthAnchor),
-            captionLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
-            captionLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
-            captionLabel.bottomAnchor.constraint(equalTo: controlsContainer.topAnchor, constant: -12)
-        ])
+            canvas.topAnchor.constraint(equalTo: view.topAnchor), canvas.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            chrome.leadingAnchor.constraint(equalTo: view.leadingAnchor), chrome.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            chrome.topAnchor.constraint(equalTo: view.topAnchor), chrome.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            captionLabel.leadingAnchor.constraint(greaterThanOrEqualTo: chrome.captionsGuide.leadingAnchor),
+            captionLabel.trailingAnchor.constraint(lessThanOrEqualTo: chrome.captionsGuide.trailingAnchor),
+            captionLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            captionsAboveControls
+        ].compactMap { $0 })
         setEnabled(false)
         observe(UIAccessibility.voiceOverStatusDidChangeNotification) { [weak self] in self?.showControls() }
         observe(UIApplication.didEnterBackgroundNotification) { [weak self] in
@@ -206,6 +182,18 @@ final class ArtifactOriginalVideoController: UIViewController {
         observe(AVAudioSession.interruptionNotification) { [weak self] in self?.pauseForInterruption() }
         observe(AVAudioSession.routeChangeNotification) { [weak self] in self?.pauseForInterruption() }
         start()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(contentUnavailableConfiguration == nil, animated: false)
+    }
+
+    override var prefersStatusBarHidden: Bool { controlsHidden }
+    override var prefersHomeIndicatorAutoHidden: Bool { controlsHidden }
+    override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
+    private var controlsHidden = false {
+        didSet { setNeedsStatusBarAppearanceUpdate(); setNeedsUpdateOfHomeIndicatorAutoHidden() }
     }
 
     override func viewDidLayoutSubviews() {
@@ -220,14 +208,6 @@ final class ArtifactOriginalVideoController: UIViewController {
         if isBeingDismissed || navigationController?.isBeingDismissed == true || isMovingFromParent { finish() }
     }
 
-    private func configure(_ button: UIButton, title: String, symbol: String, action: @escaping @MainActor () -> Void) {
-        button.configuration = .bordered()
-        button.setImage(UIImage(systemName: symbol), for: .normal)
-        button.accessibilityLabel = title
-        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-        button.addAction(UIAction { _ in action() }, for: .touchUpInside)
-    }
-
     private func observe(_ name: Notification.Name, action: @escaping @MainActor @Sendable () -> Void) {
         notifications.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { action() }
@@ -236,11 +216,15 @@ final class ArtifactOriginalVideoController: UIViewController {
 
     private func start() {
         guard !closing, preparation == nil else { return }
-        view.backgroundColor = .systemBackground
-        canvas.isHidden = true; controlsContainer.isHidden = true; captionLabel.text = nil
+        view.backgroundColor = .black
+        contentUnavailableConfiguration = nil
+        navigationController?.setNavigationBarHidden(true, animated: false)
+        canvas.isHidden = true; chrome.isHidden = false; captionLabel.text = nil
         interruptionPauseRequested = false
-        var loading = UIContentUnavailableConfiguration.loading(); loading.text = "Opening film"
-        contentUnavailableConfiguration = loading
+        chrome.setNotice(nil)
+        chrome.setTransport(.loading)
+        showControls()
+        UIAccessibility.post(notification: .announcement, argument: "Opening film")
         preparation = Task { [weak self] in
             guard let self else { return }
             defer { self.preparation = nil }
@@ -287,12 +271,11 @@ final class ArtifactOriginalVideoController: UIViewController {
                 }
                 try Task.checkCancellation()
                 guard !closing else { throw CancellationError() }
-                contentUnavailableConfiguration = nil
-                view.backgroundColor = .black; canvas.isHidden = false; controlsContainer.isHidden = false
-                rebuildMenus(); setEnabled(true)
+                canvas.isHidden = false
+                rebuildMenus(); setEnabled(true); chrome.setMuted(isMuted)
                 remote?.activate()
                 if let layer = playback.displayLayer { installPictureInPicture(layer: layer) }
-                if interruptionPauseRequested { status.text = "Paused" }
+                if interruptionPauseRequested { chrome.setTransport(.paused) }
                 else { try playback.play(rate: rate) }
                 startTicker(); showControls(); publishNowPlaying()
             } catch {
@@ -307,15 +290,16 @@ final class ArtifactOriginalVideoController: UIViewController {
         switch state {
         case .failed(let message): showFailure(DemuxError.unsupported(message))
         case .playing, .finishedEnqueuing:
-            playButton.setImage(UIImage(systemName: "pause.fill"), for: .normal); playButton.accessibilityLabel = "Pause"
-            status.text = engine?.selectedAudioTrackID == nil ? "Playing without sound. No audio track in this file can be played." : "Playing"
+            chrome.setTransport(.playing)
+            let silent = engine?.selectedAudioTrackID == nil
+            if silent, chrome.noticeLabel.text == nil {
+                UIAccessibility.post(notification: .announcement, argument: Self.silentNotice)
+            }
+            chrome.setNotice(silent ? Self.silentNotice : nil)
         case .paused:
-            playButton.setImage(UIImage(systemName: "play.fill"), for: .normal); playButton.accessibilityLabel = "Play"
-            status.text = "Paused"; showControls(); savePosition()
+            chrome.setTransport(.paused); showControls(); savePosition()
         case .ended:
-            playButton.setImage(UIImage(systemName: "arrow.counterclockwise"), for: .normal)
-            playButton.accessibilityLabel = "Replay"
-            status.text = "Finished"; showControls(); savePosition()
+            chrome.setTransport(.ended); showControls(); savePosition()
         default: break
         }
         publishNowPlaying()
@@ -341,14 +325,20 @@ final class ArtifactOriginalVideoController: UIViewController {
 
     private func installPictureInPicture(layer: AVSampleBufferDisplayLayer) {
         pictureInPicture = OriginalVideoPictureInPicture(layer: layer, transport: pictureInPictureTransport)
-        guard pictureInPicture != nil else { return }
-        let button = UIBarButtonItem(image: AVPictureInPictureController.pictureInPictureButtonStartImage,
-                                     primaryAction: UIAction { [weak self] _ in
-            guard let pictureInPicture = self?.pictureInPicture else { return }
-            if pictureInPicture.isActive { pictureInPicture.stop() } else { pictureInPicture.start() }
-        })
-        button.accessibilityLabel = "Picture in Picture"
-        navigationItem.leftBarButtonItem = button
+        chrome.setPictureInPictureAvailable(pictureInPicture != nil)
+    }
+
+    private static let silentNotice = "Playing without sound. No audio track in this file can be played."
+
+    private var audioRenderer: AVSampleBufferAudioRenderer? {
+        (engine?.rendering as? SampleBufferPlaybackRenderers)?.audioRenderer
+    }
+    private var isMuted: Bool { audioRenderer?.isMuted ?? false }
+    private func toggleMute() {
+        guard let audioRenderer else { return }
+        audioRenderer.isMuted.toggle()
+        chrome.setMuted(audioRenderer.isMuted)
+        showControls()
     }
 
     private func publishNowPlaying() {
@@ -404,7 +394,7 @@ final class ArtifactOriginalVideoController: UIViewController {
     @discardableResult
     private func perform(_ work: @escaping @MainActor (SampleBufferPlaybackEngine) async throws -> Void) -> Bool {
         guard !busy, !closing, let engine else { return false }
-        busy = true; setEnabled(false); status.text = "Updating playback"; showControls()
+        busy = true; setEnabled(false); chrome.setTransport(.loading); showControls()
         operation = Task { [weak self] in
             var operationFailed = false
             do { try await work(engine) }
@@ -413,9 +403,9 @@ final class ArtifactOriginalVideoController: UIViewController {
                 if let self, !Task.isCancelled, !self.closing {
                     if case .failed = engine.state { self.showFailure(error) }
                     else {
-                        self.status.text = "Could not update playback. Try again."
+                        self.chrome.setNotice(Self.updateFailedNotice)
                         self.showControls()
-                        UIAccessibility.post(notification: .announcement, argument: self.status.text)
+                        UIAccessibility.post(notification: .announcement, argument: Self.updateFailedNotice)
                     }
                 }
             }
@@ -425,19 +415,30 @@ final class ArtifactOriginalVideoController: UIViewController {
             if case .failed = engine.state { return }
             if self.interruptionPauseRequested { engine.pause() }
             self.setEnabled(true); self.rebuildMenus(); self.stateChanged(engine.state)
-            if operationFailed { self.status.text = "Could not update playback. Try again." }
+            if operationFailed { self.chrome.setNotice(Self.updateFailedNotice) }
         }
         return true
     }
 
-    private func trackTitle(_ track: MediaTrack) -> String {
-        let language = track.language.map { tag in
-            tag == "und" ? "Unknown language" : Locale.current.localizedString(forLanguageCode: tag) ?? tag
-        } ?? "Unknown language"
-        let roles = track.roles.sorted { $0.rawValue < $1.rawValue }.map {
-            switch $0 { case .commentary: return "Commentary"; case .visualImpaired: return "Audio description"; case .hearingImpaired: return "Hearing impaired"; case .forced: return "Forced"; case .original: return "Original" }
+    private static let updateFailedNotice = "Couldn't change playback. Try again."
+
+    /// A menu row for a track, led by its language as the system player does.
+    /// Embedded track names are often an uploader's tag ("Toonworld4all.me"), so a
+    /// name only appears, underneath, to tell apart two tracks in one language.
+    private func trackLabel(_ track: MediaTrack, among tracks: [MediaTrack]) -> (title: String, subtitle: String?) {
+        func language(_ track: MediaTrack) -> String {
+            track.language.map { tag in
+                tag == "und" ? "Unknown language" : Locale.current.localizedString(forLanguageCode: tag) ?? tag
+            } ?? "Unknown language"
         }
-        return ([track.name, language, "Track \(track.id)"] + roles.map(Optional.some)).compactMap { $0 }.joined(separator: " · ")
+        let title = language(track)
+        let roles = track.roles.sorted { $0.rawValue < $1.rawValue }.map {
+            switch $0 { case .commentary: return "Commentary"; case .visualImpaired: return "Audio description"; case .hearingImpaired: return "SDH"; case .forced: return "Forced"; case .original: return "Original" }
+        }
+        let sharesLanguage = tracks.contains { $0.id != track.id && language($0) == title }
+        let name = sharesLanguage ? (track.name.flatMap { $0.isEmpty ? nil : $0 } ?? "Track \(track.id)") : nil
+        let details = ([name] + roles.map(Optional.some)).compactMap { $0 }
+        return (title, details.isEmpty ? nil : details.joined(separator: ", "))
     }
 
     /// The audio menu's action. Remembered for this file only once the switch succeeds.
@@ -471,34 +472,40 @@ final class ArtifactOriginalVideoController: UIViewController {
         rebuildMenus(); showControls()
     }
 
+    private static let speeds: [Float] = [0.5, 1, 1.25, 1.5, 2]
+    private static let unavailableTrack = "Can't be played"
+
+    /// One "More" menu with Playback Speed, Audio and Subtitles, as in the system player.
     private func rebuildMenus() {
         guard let engine else { return }
         let unsupported = Set(engine.unsupportedTracks.map(\.id))
         let audio = engine.tracks.filter { $0.kind == .audio }
-        var audioActions = [UIAction(title: "Audio Off", state: engine.selectedAudioTrackID == nil ? .on : .off) { [weak self] _ in
+        var audioActions = [UIAction(title: "Off", state: engine.selectedAudioTrackID == nil ? .on : .off) { [weak self] _ in
             self?.chooseAudio(nil)
         }]
         audioActions += audio.map { track in
-            UIAction(title: trackTitle(track) + (unsupported.contains(track.id) ? " · Unavailable" : ""),
-                     attributes: unsupported.contains(track.id) ? .disabled : [], state: engine.selectedAudioTrackID == track.id ? .on : .off) { [weak self] _ in
+            let label = trackLabel(track, among: audio)
+            let playable = !unsupported.contains(track.id)
+            return UIAction(title: label.title, subtitle: playable ? label.subtitle : Self.unavailableTrack,
+                            attributes: playable ? [] : .disabled,
+                            state: engine.selectedAudioTrackID == track.id ? .on : .off) { [weak self] _ in
                 self?.chooseAudio(track.id)
             }
         }
-        audioButton.menu = UIMenu(title: "Audio track", children: audioActions)
-        audioButton.accessibilityValue = engine.selectedAudioTrackID.flatMap { id in audio.first { $0.id == id }.map(trackTitle) } ?? "Off"
-        var captionActions = [UIAction(title: "Off", state: selectedCaption == nil ? .on : .off) { [weak self] _ in
+        var subtitleActions = [UIAction(title: "Off", state: selectedCaption == nil ? .on : .off) { [weak self] _ in
             self?.chooseCaption(nil)
         }]
-        captionActions += engine.tracks.filter { $0.kind == .subtitle }.map { track in
+        let subtitleTracks = engine.tracks.filter { $0.kind == .subtitle }
+        subtitleActions += subtitleTracks.map { track in
+            let label = trackLabel(track, among: subtitleTracks)
             let supported = CaptionPipeline.supportedCodecs.contains(track.codec)
-            return UIAction(title: trackTitle(track) + (supported ? "" : " · Unavailable"), attributes: supported ? [] : .disabled,
+            return UIAction(title: label.title, subtitle: supported ? label.subtitle : Self.unavailableTrack,
+                            attributes: supported ? [] : .disabled,
                             state: selectedCaption == track.id ? .on : .off) { [weak self] _ in
                 self?.chooseCaption(track.id)
             }
         }
-        captionsButton.menu = UIMenu(title: "Captions", children: captionActions)
-        captionsButton.accessibilityValue = selectedCaption.flatMap { id in engine.tracks.first { $0.id == id }.map(trackTitle) } ?? "Off"
-        speedButton.menu = UIMenu(title: "Playback speed", children: [Float(0.5), 1, 1.25, 1.5, 2].map { value in
+        let speedActions = Self.speeds.map { value in
             UIAction(title: "\(value.formatted())×", state: rate == value ? .on : .off) { [weak self] _ in
                 guard let self else { return }; self.rate = value
                 if engine.state == .playing || engine.state == .finishedEnqueuing {
@@ -506,15 +513,15 @@ final class ArtifactOriginalVideoController: UIViewController {
                 }
                 self.rebuildMenus(); self.showControls()
             }
-        })
-        speedButton.accessibilityValue = "\(rate.formatted()) times"
+        }
+        let speed = UIMenu(title: "Playback Speed", image: UIImage(systemName: "gauge.with.dots.needle.33percent"), children: speedActions)
+        let audioMenu = UIMenu(title: "Audio", image: UIImage(systemName: "waveform"), children: audioActions)
+        let subtitles = UIMenu(title: "Subtitles", image: UIImage(systemName: "captions.bubble"), children: subtitleActions)
+        speedMenu = speed; self.audioMenu = audioMenu; subtitlesMenu = subtitles
+        chrome.moreButton.menu = UIMenu(children: [speed, audioMenu, subtitles])
     }
 
-    private func setEnabled(_ enabled: Bool) {
-        for button in [playButton, backButton, forwardButton, audioButton, captionsButton, speedButton] { button.isEnabled = enabled }
-        slider.isEnabled = enabled && file.duration.map { $0.isFinite && $0 > 0 } == true
-        slider.isHidden = file.duration.map { $0.isFinite && $0 > 0 } != true
-    }
+    private func setEnabled(_ enabled: Bool) { chrome.setEnabled(enabled) }
 
     private func startTicker() {
         ticker?.cancel()
@@ -524,33 +531,49 @@ final class ArtifactOriginalVideoController: UIViewController {
                 guard let self, !self.closing, let engine = self.engine else { return }
                 let time = engine.currentTime
                 self.bookmark.saveIfDue(seconds: time.seconds, ended: engine.state == .ended)
-                if time.seconds.isFinite {
-                    self.timeLabel.text = PlayerTimePresentation.clock(max(0, time.seconds))
-                    self.slider.accessibilityValue = self.timeLabel.text
-                    if !self.slider.isTracking { self.slider.value = Float(time.seconds) }
+                if time.seconds.isFinite, !self.chrome.scrubber.isTracking {
+                    self.chrome.setTime(elapsed: max(0, time.seconds), duration: self.file.duration)
                 }
                 if let captionDemuxer = self.captionDemuxer {
                     let (text, failed) = await captionDemuxer.text(at: time, trackID: self.selectedCaption)
                     self.captionLabel.text = text.isEmpty ? nil : text
                     self.captionLabel.accessibilityValue = text
-                    if failed { self.status.text = "Some captions could not be displayed" }
+                    if failed { self.chrome.setNotice("Some subtitles couldn't be shown.") }
                 }
-                if !UIAccessibility.isVoiceOverRunning, !self.busy, !self.slider.isTracking,
+                if self.controlsShown, !UIAccessibility.isVoiceOverRunning, !self.busy, !self.chrome.scrubber.isTracking,
                    (engine.state == .playing || engine.state == .finishedEnqueuing),
-                   !self.controlsContainer.isTracking, !self.controlsContainer.isDecelerating,
-                   Date().timeIntervalSince(self.lastInteraction) > 5 {
-                    self.controlsContainer.alpha = 0; self.controls.accessibilityElementsHidden = true
+                   Date().timeIntervalSince(self.lastInteraction) > Self.controlsFadeDelay {
+                    self.hideControls()
                 }
             }
         }
     }
 
-    @objc private func canvasTapped() { showControls() }
+    /// A tap on the film shows the controls, or hides them if they're up, as in the system player.
+    @objc private func canvasTapped() {
+        if controlsShown, !UIAccessibility.isVoiceOverRunning, engine?.state == .playing { hideControls() } else { showControls() }
+    }
     private func savePosition() {
         guard let engine else { return }
         bookmark.save(seconds: engine.currentTime.seconds, ended: engine.state == .ended)
     }
-    private func showControls() { lastInteraction = Date(); controlsContainer.alpha = 1; controls.accessibilityElementsHidden = false }
+    private func showControls() {
+        lastInteraction = Date()
+        chrome.accessibilityElementsHidden = false
+        captionsAtBottom?.isActive = false; captionsAboveControls?.isActive = true
+        controlsHidden = false
+        animate { self.chrome.alpha = 1; self.view.layoutIfNeeded() }
+    }
+    private func hideControls() {
+        chrome.accessibilityElementsHidden = true
+        captionsAboveControls?.isActive = false; captionsAtBottom?.isActive = true
+        controlsHidden = true
+        animate { self.chrome.alpha = 0; self.view.layoutIfNeeded() }
+    }
+    private func animate(_ changes: @escaping () -> Void) {
+        if UIAccessibility.isReduceMotionEnabled || view.window == nil { changes() }
+        else { UIView.animate(withDuration: Self.controlsFadeDuration, animations: changes) }
+    }
     private func pauseForInterruption() {
         if engine != nil { interruptionPauseRequested = true }
         engine?.pause(); showControls()
@@ -560,8 +583,10 @@ final class ArtifactOriginalVideoController: UIViewController {
         savePosition()
         ticker?.cancel(); ticker = nil
         setEnabled(false); showControls()
-        view.backgroundColor = .systemBackground
-        canvas.isHidden = true; controlsContainer.isHidden = true; captionLabel.text = nil
+        canvas.isHidden = true; chrome.isHidden = true; captionLabel.text = nil
+        // The error page needs a way out; the controls' Close is hidden with them.
+        navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.close() })
+        navigationController?.setNavigationBarHidden(false, animated: false)
         var config = UIContentUnavailableConfiguration.empty()
         config.text = "Could not play this film"
         if case .unsupported(let reason) = error as? DemuxError { config.secondaryText = reason }
@@ -583,7 +608,7 @@ final class ArtifactOriginalVideoController: UIViewController {
         ticker?.cancel(); ticker = nil
         bookmark.suspend()
         pictureInPicture?.stop(); pictureInPicture = nil
-        navigationItem.leftBarButtonItem = nil
+        chrome.setPictureInPictureAvailable(false)
         let old = engine; engine = nil
         old?.onStateChange = nil
         await old?.stop(); old?.displayLayer?.removeFromSuperlayer()

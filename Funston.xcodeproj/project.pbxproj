@@ -15,6 +15,7 @@
 		12567D6189ACD7041167D8F7 /* CachingArchiveRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63B2F9D20233F0D328D27C37 /* CachingArchiveRepository.swift */; };
 		15A6DA24023C06BEF04F7119 /* FunstonAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60547F1D814C05A757DCE7B9 /* FunstonAppearance.swift */; };
 		16C24E58516427E2CD03AD39 /* FunstonUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AAFDC5C7C54DF226D11A47 /* FunstonUITests.swift */; };
+		19095D18B73DD28BA13C48BC /* OriginalVideoControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E7631BBAB981E4F1A0DD839 /* OriginalVideoControlsView.swift */; };
 		193FCD3292B04912E1A21DAB /* OriginalTransportStreamRenderDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E1D4A647EC1DB86A1FB685 /* OriginalTransportStreamRenderDeviceTests.swift */; };
 		1D77B9B0D800D997F0E21FFA /* VideoPlaybackSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0306A62D510F6CE4C26D675 /* VideoPlaybackSession.swift */; };
 		2E3C46D9768C200357CFBE57 /* PDFPerformanceView.m in Sources */ = {isa = PBXBuildFile; fileRef = CB73A6339210FC418D6AAF77 /* PDFPerformanceView.m */; };
@@ -125,6 +126,7 @@
 		81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFScreenRenderingExperiment.swift; sourceTree = "<group>"; };
 		83FA6742BCE70DB39C50A79E /* ArtifactOriginalVideoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactOriginalVideoController.swift; sourceTree = "<group>"; };
 		892AA9E3E0B1E928B9A42438 /* OriginalVideoTrackMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoTrackMemory.swift; sourceTree = "<group>"; };
+		8E7631BBAB981E4F1A0DD839 /* OriginalVideoControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoControlsView.swift; sourceTree = "<group>"; };
 		9059921AE97E122328AC8EC5 /* PlayerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViews.swift; sourceTree = "<group>"; };
 		90E76B9A4F6B4D55BA45EEFE /* ArchiveNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNormalizer.swift; sourceTree = "<group>"; };
 		97C4A1A2218332A1F56B2F54 /* ContinueListening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueListening.swift; sourceTree = "<group>"; };
@@ -282,6 +284,7 @@
 				2E19340146C38C0EA03063E4 /* FunstonListController.swift */,
 				0F42D64BFE13F26B5291D02C /* FunstonPlayerPresentation.swift */,
 				2FBBB642621A8FDC9EB59A6D /* FunstonRootController.swift */,
+				8E7631BBAB981E4F1A0DD839 /* OriginalVideoControlsView.swift */,
 				9DDAC92BD36FE050CE0CEFD8 /* OriginalVideoPictureInPicture.swift */,
 				2D9D4D28CB7D06FA401FAA6C /* PDFReadingState.swift */,
 				9059921AE97E122328AC8EC5 /* PlayerViews.swift */,
@@ -540,6 +543,7 @@
 				DD6E6429D23A191C8DF02C3A /* FunstonPlayerPresentation.swift in Sources */,
 				8946332DBAD4F9DFFF2C2A05 /* FunstonRootController.swift in Sources */,
 				793B43E0E3E05D1BD0963CFB /* OriginalVideoBookmark.swift in Sources */,
+				19095D18B73DD28BA13C48BC /* OriginalVideoControlsView.swift in Sources */,
 				A8D8AB026A6E45181B3B3D10 /* OriginalVideoPictureInPicture.swift in Sources */,
 				670A25A66B3475B39199A7CC /* OriginalVideoRemoteControl.swift in Sources */,
 				F133CEE06D6390C2F74AB9A6 /* OriginalVideoTrackMemory.swift in Sources */,
