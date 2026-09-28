@@ -788,6 +788,37 @@ final class ServiceReviewTests: XCTestCase {
         return record
     }
 
+    /// Headset presses send toggle, the Lock Screen needs skip commands for long
+    /// recordings, and the system needs the queue position. None were published.
+    func testRemoteCommandsCoverHeadsetSkipAndQueuePosition() async throws {
+        let (store, directory, media) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let record = try await localAudioFixture(store: store, media: media)
+        let downloads = DownloadManager(store: store, mediaDirectory: media, sessionConfiguration: .ephemeral)
+        await downloads.waitUntilReady()
+        let playback = PlaybackController(store: store, downloads: downloads, audioSessionActivator: {}, audioSessionDeactivator: {})
+        let center = MPRemoteCommandCenter.shared()
+        let registered = playback.registeredRemoteCommands
+        for command in [center.togglePlayPauseCommand, center.skipForwardCommand, center.skipBackwardCommand,
+                        center.nextTrackCommand, center.previousTrackCommand] {
+            XCTAssertTrue(registered.contains { $0 === command }, "\(command) is not registered")
+        }
+        XCTAssertEqual(center.skipForwardCommand.preferredIntervals, [15])
+
+        let artifact = ArtifactSummary(identifier: record.identifier, title: "Album", mediaType: .audio)
+        let track = PlayableTrack(id: record.fileName, title: "Recording", candidates: [ArchiveFile(name: record.fileName)])
+        playback.load(artifact: artifact, tracks: [track, track, track], trackIndex: 1, autoplay: false)
+        let info = try XCTUnwrap(MPNowPlayingInfoCenter.default().nowPlayingInfo)
+        XCTAssertEqual(info[MPNowPlayingInfoPropertyPlaybackQueueIndex] as? Int, 1)
+        XCTAssertEqual(info[MPNowPlayingInfoPropertyPlaybackQueueCount] as? Int, 3)
+    }
+
+    func testLockScreenShowsSkipButtonsOnlyForLongRecordings() {
+        XCTAssertTrue(PlaybackController.prefersSkipButtons(duration: 29 * 60), "A half-hour radio episode")
+        XCTAssertFalse(PlaybackController.prefersSkipButtons(duration: 4 * 60), "A four-minute music track")
+        XCTAssertTrue(PlaybackController.prefersSkipButtons(duration: nil), "Unknown length behaves like spoken word")
+    }
+
     func testNowPlayingArtworkSurvivesTransportUpdatesAndReusesSameCover() async throws {
         let (store, directory, media) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }

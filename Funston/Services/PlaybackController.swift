@@ -88,6 +88,7 @@ final class PlaybackController: ObservableObject {
     private var visibleProgressObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var remoteCommandTokens: [(MPRemoteCommand, Any)] = []
+    var registeredRemoteCommands: [MPRemoteCommand] { remoteCommandTokens.map(\.0) }
     private var progressConsumers = 0
     private var generation: UInt64 = 0
     private var intentRevision: UInt64 = 0
@@ -607,6 +608,23 @@ final class PlaybackController: ObservableObject {
             Task { @MainActor in self?.previousTrack() }
             return .success
         }))
+        // A wired headset's single press sends toggle, not play or pause.
+        remoteCommandTokens.append((center.togglePlayPauseCommand, center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.togglePlayback() }
+            return .success
+        }))
+        center.skipForwardCommand.preferredIntervals = [NSNumber(value: Self.remoteSkipInterval)]
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: Self.remoteSkipInterval)]
+        remoteCommandTokens.append((center.skipForwardCommand, center.skipForwardCommand.addTarget { [weak self] event in
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? Self.remoteSkipInterval
+            Task { @MainActor in self?.skip(by: interval) }
+            return .success
+        }))
+        remoteCommandTokens.append((center.skipBackwardCommand, center.skipBackwardCommand.addTarget { [weak self] event in
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? Self.remoteSkipInterval
+            Task { @MainActor in self?.skip(by: -interval) }
+            return .success
+        }))
         center.changePlaybackPositionCommand.isEnabled = true
         remoteCommandTokens.append((
             center.changePlaybackPositionCommand,
@@ -657,6 +675,22 @@ final class PlaybackController: ObservableObject {
         }
         if let duration { info[MPMediaItemPropertyPlaybackDuration] = duration }
         if let nowPlayingArtwork { info[MPMediaItemPropertyArtwork] = nowPlayingArtwork }
+        info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = context.trackIndex
+        info[MPNowPlayingInfoPropertyPlaybackQueueCount] = context.tracks.count
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let skipButtons = Self.prefersSkipButtons(duration: duration)
+        let center = MPRemoteCommandCenter.shared()
+        center.skipForwardCommand.isEnabled = skipButtons
+        center.skipBackwardCommand.isEnabled = skipButtons
+    }
+
+    nonisolated static let remoteSkipInterval: Double = 15
+    /// The Lock Screen shows one pair of side buttons. Long spoken-word recordings
+    /// get ±15 s, as in Podcasts; short tracks keep previous and next, as in Music.
+    /// Next and previous stay registered either way for headphone gestures.
+    nonisolated static let skipButtonsMinimumDuration: Double = 10 * 60
+    nonisolated static func prefersSkipButtons(duration: Double?) -> Bool {
+        guard let duration else { return true }
+        return duration >= skipButtonsMinimumDuration
     }
 }

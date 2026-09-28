@@ -22,7 +22,7 @@ The roadmap first said swallowed writes could lose a finished download. Reading 
 ### 1.3 Resume failed downloads instead of restarting them (S, done)
 `didCompleteWithError` (`DownloadManager.swift:83`) ignores `NSURLSessionDownloadTaskResumeDataKey`, and Retry starts over from byte zero. Internet Archive originals run to several gigabytes. Keep the resume data on disk with the record and use `downloadTask(withResumeData:)` on retry. JellyGo does this, but it's GPL, so write it fresh; it's standard Apple API anyway.
 
-### 1.4 Complete the headphone and Lock Screen controls (S)
+### 1.4 Complete the headphone and Lock Screen controls (S, done; needs a check on the iPhone)
 `configureRemoteCommands` (`PlaybackController.swift:592`) registers play, pause, next, previous and scrubbing. It's missing:
 - `togglePlayPauseCommand`, which a wired headset's button sends (verify AirPods behaviour on the device)
 - `skipForwardCommand` and `skipBackwardCommand` with `preferredIntervals = [15]`, which give the Lock Screen and car ±15 s buttons that are far easier to use under VoiceOver than scrubbing
