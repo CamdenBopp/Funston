@@ -34,6 +34,8 @@ protocol DownloadPersistence: Sendable {
     func downloads() async throws -> [DownloadRecord]
     func upsertDownload(_ record: DownloadRecord) async throws
     func deleteDownload(key: String) async throws
+    func downloadResumeData(key: String) async throws -> Data?
+    func setDownloadResumeData(_ data: Data?, key: String) async throws
 }
 extension SQLiteStore: DownloadPersistence {}
 
@@ -87,7 +89,8 @@ private final class DownloadSessionDelegate: NSObject, URLSessionDownloadDelegat
         let diagnostic = error as NSError
         Self.logger.error("Download failed: \(diagnostic.domain, privacy: .public) code \(diagnostic.code)")
         let message = DownloadFailurePresentation.message(for: error)
-        append { await $0.failed(identity: identity, message: message) }
+        let resumeData = DownloadManager.resumeData(from: error)
+        append { await $0.failed(identity: identity, message: message, resumeData: resumeData) }
     }
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         append { await $0.finishedBackgroundEvents() }
@@ -185,9 +188,13 @@ final class DownloadManager: NSObject, ObservableObject {
                                     state: .queued, receivedBytes: 0, totalBytes: file.size, errorMessage: nil, updatedAt: .now)
         var task: URLSessionDownloadTask?
         do {
+            // Retry continues from the bytes a failed attempt left behind. The blob is
+            // used once: if it's stale, that attempt fails and a fresh one starts next time.
+            let resumeData = await consumeResumeData(key: key)
             try await store.upsertDownload(record)
             upsertInMemory(record)
-            let created = session.downloadTask(with: ArchiveURLs.download(identifier: identifier, fileName: file.name))
+            let created = resumeData.map { session.downloadTask(withResumeData: $0) }
+                ?? session.downloadTask(with: ArchiveURLs.download(identifier: identifier, fileName: file.name))
             task = created
             created.taskDescription = identity.taskDescription
             record.state = .downloading
@@ -299,11 +306,15 @@ final class DownloadManager: NSObject, ObservableObject {
             }
         }
     }
-    fileprivate func failed(identity: DownloadTaskIdentity, message: String) async {
+    fileprivate func failed(identity: DownloadTaskIdentity, message: String, resumeData: Data?) async {
         await serialize { [self] in
             guard var record = records.first(where: { identity.matches($0, directory: mediaDirectory) }), [.queued, .downloading].contains(record.state) else { return }
             record.state = .failed; record.errorMessage = message; record.updatedAt = .now
             await persistRecoverably(record)
+            if let resumeData {
+                do { try await store.setDownloadResumeData(resumeData, key: record.key) }
+                catch { Self.logger.error("Resume data not saved: \(error.localizedDescription, privacy: .public)") }
+            }
             upsertInMemory(record)
         }
     }
@@ -311,6 +322,16 @@ final class DownloadManager: NSObject, ObservableObject {
         await serialize { [self] in
             if let completion = backgroundCompletionHandler { backgroundCompletionHandler = nil; completion() }
             else { backgroundEventsDrained = true }
+        }
+    }
+    private func consumeResumeData(key: String) async -> Data? {
+        do {
+            guard let data = try await store.downloadResumeData(key: key) else { return nil }
+            try await store.setDownloadResumeData(nil, key: key)
+            return data
+        } catch {
+            Self.logger.error("Resume data unavailable: \(error.localizedDescription, privacy: .public)")
+            return nil
         }
     }
     func reloadAfterFailure() async {
@@ -420,6 +441,11 @@ final class DownloadManager: NSObject, ObservableObject {
     private func upsertInMemory(_ record: DownloadRecord) {
         if let index = records.firstIndex(where: { $0.key == record.key }) { records[index] = record }
         else { records.insert(record, at: 0) }
+    }
+    /// A download that fails partway (lost connection, timeout) usually carries the
+    /// state URLSession needs to continue it. Explicit cancels don't produce it.
+    nonisolated static func resumeData(from error: any Error) -> Data? {
+        (error as? URLError)?.downloadTaskResumeData
     }
     nonisolated static func key(identifier: String, fileName: String) -> String {
         SHA256.hash(data: Data("\(identifier)\u{0}\(fileName)".utf8)).map { String(format: "%02x", $0) }.joined()

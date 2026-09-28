@@ -219,6 +219,16 @@ actor SQLiteStore {
         }
     }
 
+    func downloadResumeData(key: String) throws -> Data? {
+        try queryOne("SELECT resume_data FROM downloads WHERE key=?", bindings: [.text(key)]) {
+            Self.blob($0, column: 0)
+        } ?? nil
+    }
+
+    func setDownloadResumeData(_ data: Data?, key: String) throws {
+        try execute("UPDATE downloads SET resume_data=? WHERE key=?", bindings: [data.map(Binding.blob) ?? .null, .text(key)])
+    }
+
     func deleteDownload(key: String) throws {
         try execute("DELETE FROM downloads WHERE key=?", bindings: [.text(key)])
     }
@@ -348,7 +358,9 @@ actor SQLiteStore {
           byte_count INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS cache_access_index ON cache_entries(accessed_at);
-        """
+        """,
+        // 2: bytes URLSession hands back when a transfer fails, so Retry can continue it.
+        "ALTER TABLE downloads ADD COLUMN resume_data BLOB;"
     ]
 
     static var schemaVersion: Int { migrations.count }

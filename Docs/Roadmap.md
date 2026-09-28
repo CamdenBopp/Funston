@@ -13,13 +13,13 @@ Written 2026-09-28 after reading the code of every repository ChatGPT suggested 
 
 ## 1. Fix what's quietly broken
 
-### 1.1 Version the database schema (S)
+### 1.1 Version the database schema (S, done)
 `SQLiteStore.migrate()` (`Funston/Services/SQLiteStore.swift:302`) is a single `CREATE TABLE IF NOT EXISTS` script with no `PRAGMA user_version`. The first time a table gains a column, existing installs will keep the old table and the new code will fail against it. Replace it with numbered migration steps and a test that upgrades a version-1 database. Everything that adds storage later (book positions, track preferences) depends on this.
 
 ### 1.2 Say so when the download list can't be read (S, done)
 The roadmap first said swallowed writes could lose a finished download. Reading closer, they can't: the success path already handles its error, and launch reconciliation repairs the other three writes by design. The real hole was reading. If the saved list failed to load at launch, Downloads looked empty, exactly like having no downloads. It now shows "Could not load downloads" with Try Again, touches no files, and the recoverable writes are logged instead of discarded.
 
-### 1.3 Resume failed downloads instead of restarting them (S)
+### 1.3 Resume failed downloads instead of restarting them (S, done)
 `didCompleteWithError` (`DownloadManager.swift:83`) ignores `NSURLSessionDownloadTaskResumeDataKey`, and Retry starts over from byte zero. Internet Archive originals run to several gigabytes. Keep the resume data on disk with the record and use `downloadTask(withResumeData:)` on retry. JellyGo does this, but it's GPL, so write it fresh; it's standard Apple API anyway.
 
 ### 1.4 Complete the headphone and Lock Screen controls (S)

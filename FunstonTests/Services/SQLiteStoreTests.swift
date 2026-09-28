@@ -168,7 +168,11 @@ private actor FaultingDownloadStore: DownloadPersistence {
     func deleteDownload(key: String) throws {
         if rejectWrites { throw DownloadTestError.persistence }
         records.removeAll { $0.key == key }
+        resume[key] = nil
     }
+    var resume: [String: Data] = [:]
+    func downloadResumeData(key: String) -> Data? { resume[key] }
+    func setDownloadResumeData(_ data: Data?, key: String) { resume[key] = data }
 }
 
 private final class ArtworkRequestProbe: @unchecked Sendable {
@@ -359,6 +363,56 @@ final class ServiceReviewTests: XCTestCase {
         await manager.reloadAfterFailure()
         XCTAssertNil(manager.loadError)
         XCTAssertEqual(manager.records.map(\.key), ["key"])
+    }
+
+    func testResumeDataIsStoredPerDownloadAndClearedWithIt() async throws {
+        let (store, directory, _) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let record = DownloadRecord(key: "key", identifier: "item", fileName: "film.mkv", title: "Film", expectedBytes: 3_000_000_000,
+                                    localPath: "/tmp/film.mkv", state: .failed, receivedBytes: 900_000_000, totalBytes: 3_000_000_000,
+                                    errorMessage: "The download timed out.", updatedAt: .now)
+        try await store.upsertDownload(record)
+        let blob = Data("resume".utf8)
+        try await store.setDownloadResumeData(blob, key: "key")
+        // Updating the record's state must not wipe its resume data.
+        try await store.upsertDownload(record)
+        let kept = try await store.downloadResumeData(key: "key")
+        XCTAssertEqual(kept, blob)
+        try await store.deleteDownload(key: "key")
+        let afterDelete = try await store.downloadResumeData(key: "key")
+        XCTAssertNil(afterDelete)
+    }
+
+    func testResumeDataIsReadFromTheTransferError() {
+        let blob = Data("resume".utf8)
+        let timedOut = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: [NSURLSessionDownloadTaskResumeData: blob])
+        XCTAssertEqual(DownloadManager.resumeData(from: timedOut), blob)
+        XCTAssertNil(DownloadManager.resumeData(from: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled)))
+    }
+
+    /// Retry uses saved resume data exactly once. A stale blob must fail cleanly
+    /// (not crash) and leave nothing behind, so the next Retry starts fresh.
+    func testRetryConsumesResumeDataOnceAndSurvivesAStaleBlob() async throws {
+        let (_, directory, media) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = DownloadManager.key(identifier: "item", fileName: "film.mkv")
+        let failed = DownloadRecord(key: key, identifier: "item", fileName: "film.mkv", title: "Film", expectedBytes: 3,
+                                    localPath: media.appending(path: "old").path, state: .failed, receivedBytes: 1, totalBytes: 3,
+                                    errorMessage: "The download timed out.", updatedAt: .now)
+        let store = FaultingDownloadStore(records: [failed])
+        await store.setDownloadResumeData(Data("stale resume data".utf8), key: key)
+        let manager = DownloadManager(store: store, mediaDirectory: media, sessionConfiguration: .ephemeral)
+        await manager.waitUntilReady()
+        await manager.retry(failed, file: ArchiveFile(name: "film.mkv", size: 3))
+        let consumed = await store.downloadResumeData(key: key)
+        XCTAssertNil(consumed, "Resume data is single-use")
+        let deadline = ContinuousClock.now + .seconds(10)
+        while manager.records.first(where: { $0.key == key })?.state == .downloading, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(manager.records.first(where: { $0.key == key })?.state, .failed)
+        let leftover = await store.downloadResumeData(key: key)
+        XCTAssertNil(leftover, "A rejected blob must not be saved for the next Retry")
     }
 
     func testReconciliationRecoversMovedFileButNeverRevivesCancelledAttempt() async throws {

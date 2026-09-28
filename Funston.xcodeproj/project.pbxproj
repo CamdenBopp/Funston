@@ -57,6 +57,7 @@
 		F5B97A27324D31423F0FA693 /* MediaPlayer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8184368EFE3E38AB32EB6C7F /* MediaPlayer.framework */; };
 		F9E9741D793F15D8C6FF6D4E /* FunstonApplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2275460558ED9B1F14D4806 /* FunstonApplication.swift */; };
 		FD1FD2B4D3283EB577966091 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EA709EA56A02C0C2ABF784EC /* AVFoundation.framework */; };
+		FEE2684258F2F3D53007D641 /* DownloadResumeLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72CAD4E4C8526BEB670CFA90 /* DownloadResumeLiveTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -99,6 +100,7 @@
 		4FD2EE1149DB04EDD621B35A /* FunstonTests-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "FunstonTests-Bridging-Header.h"; sourceTree = "<group>"; };
 		60547F1D814C05A757DCE7B9 /* FunstonAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonAppearance.swift; sourceTree = "<group>"; };
 		63B2F9D20233F0D328D27C37 /* CachingArchiveRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachingArchiveRepository.swift; sourceTree = "<group>"; };
+		72CAD4E4C8526BEB670CFA90 /* DownloadResumeLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadResumeLiveTests.swift; sourceTree = "<group>"; };
 		73F779CCD8281CD0F095B326 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
 		74936F3127256B6C79C16AE3 /* ArtworkResponseLimitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkResponseLimitTests.swift; sourceTree = "<group>"; };
 		7DBCF6D4893AA8269341A32F /* DownloadRelocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadRelocationTests.swift; sourceTree = "<group>"; };
@@ -203,6 +205,7 @@
 				74936F3127256B6C79C16AE3 /* ArtworkResponseLimitTests.swift */,
 				A31252B3F929B645C52A91F9 /* CodecCapabilityDeviceTests.swift */,
 				7DBCF6D4893AA8269341A32F /* DownloadRelocationTests.swift */,
+				72CAD4E4C8526BEB670CFA90 /* DownloadResumeLiveTests.swift */,
 				B8E1D4A647EC1DB86A1FB685 /* OriginalTransportStreamRenderDeviceTests.swift */,
 				2AE060CFC6E546D1AE4848E5 /* OriginalVideoRenderDeviceTests.swift */,
 				E8FF06ECFBA48D28B9556414 /* PDFPerformanceView.h */,
@@ -500,6 +503,7 @@
 				1194CE52844AAFB3377DB4F0 /* ArtworkResponseLimitTests.swift in Sources */,
 				4E7886C99627066D41A780CD /* CodecCapabilityDeviceTests.swift in Sources */,
 				315F272717BD431394C0726A /* DownloadRelocationTests.swift in Sources */,
+				FEE2684258F2F3D53007D641 /* DownloadResumeLiveTests.swift in Sources */,
 				C9045F96F8D56D43BFC8DF56 /* FunstonUIPresentationTests.swift in Sources */,
 				193FCD3292B04912E1A21DAB /* OriginalTransportStreamRenderDeviceTests.swift in Sources */,
 				10CF2268ED17B270EB147450 /* OriginalVideoRenderDeviceTests.swift in Sources */,
