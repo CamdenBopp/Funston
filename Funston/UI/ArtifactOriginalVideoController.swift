@@ -43,6 +43,7 @@ final class ArtifactOriginalVideoController: UIViewController {
     private let bookmark: OriginalVideoBookmark
     private static let seekTimescale: CMTimeScale = 1_000
     private var engine: SampleBufferPlaybackEngine?
+    private var remote: OriginalVideoRemoteControl?
     private var captionDemuxer: OriginalCaptionDemuxer?
     private var lease: URL?
     private var audioOwnership: UInt64?
@@ -79,10 +80,13 @@ final class ArtifactOriginalVideoController: UIViewController {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     /// Read-only view of the engine for tests.
     var playbackEngine: SampleBufferPlaybackEngine? { engine }
+    /// Lock Screen and headphone controls; nil until the view loads.
+    var remoteControl: OriginalVideoRemoteControl? { remote }
 
     isolated deinit {
         preparation?.cancel(); operation?.cancel(); ticker?.cancel()
         notifications.forEach(NotificationCenter.default.removeObserver)
+        remote?.deactivate()
         let engine = engine, lease = lease, token = audioOwnership, environment = environment
         Task { @MainActor in
             await engine?.stop()
@@ -95,6 +99,7 @@ final class ArtifactOriginalVideoController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         view.accessibilityIdentifier = "original.video.viewer"
+        remote = OriginalVideoRemoteControl { [weak self] command in self?.handleRemote(command) ?? false }
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.close() })
         canvas.translatesAutoresizingMaskIntoConstraints = false
@@ -244,9 +249,10 @@ final class ArtifactOriginalVideoController: UIViewController {
                 contentUnavailableConfiguration = nil
                 view.backgroundColor = .black; canvas.isHidden = false; controlsContainer.isHidden = false
                 rebuildMenus(); setEnabled(true)
+                remote?.activate()
                 if interruptionPauseRequested { status.text = "Paused" }
                 else { try playback.play(rate: rate) }
-                startTicker(); showControls()
+                startTicker(); showControls(); publishNowPlaying()
             } catch {
                 await releasePlayback()
                 if !closing && !(error is CancellationError) { showFailure(error) }
@@ -270,6 +276,27 @@ final class ArtifactOriginalVideoController: UIViewController {
             status.text = "Finished"; showControls(); savePosition()
         default: break
         }
+        publishNowPlaying()
+    }
+
+    private func publishNowPlaying() {
+        guard let engine else { return }
+        let playing = engine.state == .playing || engine.state == .finishedEnqueuing
+        remote?.publish(title: summary.title, elapsed: engine.currentTime.seconds, duration: file.duration,
+                        rate: playing ? rate : 0)
+    }
+
+    private func handleRemote(_ command: OriginalVideoRemoteControl.Command) -> Bool {
+        guard !closing, let engine else { return false }
+        let playing = engine.state == .playing || engine.state == .finishedEnqueuing
+        switch command {
+        case .play: if !playing { togglePlayback() }
+        case .pause: if playing { togglePlayback() }
+        case .toggle: togglePlayback()
+        case .seek(let seconds): seek(to: seconds)
+        case .skip(let interval): seek(by: interval)
+        }
+        return true
     }
 
     private func togglePlayback() {
@@ -454,6 +481,8 @@ final class ArtifactOriginalVideoController: UIViewController {
     }
 
     private func releasePlayback() async {
+        // Before the audio player gets its token back, so its Now Playing stands.
+        remote?.deactivate()
         ticker?.cancel(); ticker = nil
         bookmark.suspend()
         let old = engine; engine = nil

@@ -1,6 +1,7 @@
 import XCTest
 import AVFoundation
 import UIKit
+import MediaPlayer
 import ArchivePlayerCore
 @testable import Funston
 
@@ -165,5 +166,91 @@ final class OriginalVideoPlaybackTests: XCTestCase {
         await bookmark.flush()
         let finished = try await store.playbackPosition(identifier: "item", fileName: "film.mkv")
         XCTAssertEqual(finished, 0)
+    }
+
+    // MARK: Now Playing and remote commands
+
+    func nowPlaying(_ key: String) -> Any? { MPNowPlayingInfoCenter.default().nowPlayingInfo?[key] }
+
+    func testNowPlayingAndRemoteCommandsControlTheFilm() async throws {
+        let environment = try await makeEnvironment()
+        let player = await present(environment)
+        try await until { self.playing(player) }
+        let engine = try XCTUnwrap(player.playbackEngine)
+        try await until { self.nowPlaying(MPNowPlayingInfoPropertyPlaybackRate) as? Float == 1 }
+        XCTAssertEqual(nowPlaying(MPMediaItemPropertyTitle) as? String, "Fixture film")
+        XCTAssertEqual(nowPlaying(MPNowPlayingInfoPropertyMediaType) as? UInt, MPNowPlayingInfoMediaType.video.rawValue)
+        XCTAssertEqual(nowPlaying(MPMediaItemPropertyPlaybackDuration) as? Double, Self.fixtureDuration)
+        let center = MPRemoteCommandCenter.shared()
+        XCTAssertTrue(center.skipForwardCommand.isEnabled)
+        XCTAssertEqual(center.skipForwardCommand.preferredIntervals, [15])
+
+        let remote = try XCTUnwrap(player.remoteControl)
+        XCTAssertEqual(remote.perform(.pause), .success)
+        try await until { engine.state == .paused && self.nowPlaying(MPNowPlayingInfoPropertyPlaybackRate) as? Float == 0 }
+        let pausedAt = engine.currentTime.seconds
+        remote.perform(.skip(by: OriginalVideoRemoteControl.skipInterval))
+        try await until { abs(engine.currentTime.seconds - (pausedAt + 15)) < 0.1 }
+        try await until { (self.nowPlaying(MPNowPlayingInfoPropertyElapsedPlaybackTime) as? Double).map { $0 >= pausedAt + 14.9 } ?? false }
+        remote.perform(.seek(to: 5))
+        try await until { abs(engine.currentTime.seconds - 5) < 0.1 }
+        remote.perform(.skip(by: -OriginalVideoRemoteControl.skipInterval))
+        try await until { engine.currentTime.seconds < 0.1 }
+        remote.perform(.toggle)
+        try await until { self.playing(player) && self.nowPlaying(MPNowPlayingInfoPropertyPlaybackRate) as? Float == 1 }
+        remote.perform(.toggle)
+        try await until { engine.state == .paused }
+        remote.perform(.play)
+        try await until { self.playing(player) }
+        await close(player)
+        try await until { !remote.isActive }
+        XCTAssertEqual(remote.perform(.play), .noActionableNowPlayingItem, "A closed film must not answer remote commands")
+    }
+
+    /// PlaybackController takes its commands back in releaseVideoPlayback and
+    /// republishes the listening Now Playing. The film must not clear it afterwards.
+    func testClosingTheFilmLeavesTheAudioPlayersNowPlaying() async throws {
+        let environment = try await makeEnvironment()
+        let audioURL = FileManager.default.temporaryDirectory.appending(path: "mkv-audio-" + UUID().uuidString + ".wav")
+        addTeardownBlock { try? FileManager.default.removeItem(at: audioURL) }
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 8_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8_000))
+        buffer.frameLength = 8_000
+        try AVAudioFile(forWriting: audioURL, settings: format.settings).write(from: buffer)
+        let media = try XCTUnwrap(environment.downloads.completedLocalURL(identifier: Self.identifier, fileName: Self.fileName))
+            .deletingLastPathComponent()
+        let local = media.appending(path: "track.wav")
+        try FileManager.default.copyItem(at: audioURL, to: local)
+        try await environment.store.upsertDownload(DownloadRecord(
+            key: DownloadManager.key(identifier: "album", fileName: "track.wav"), identifier: "album",
+            fileName: "track.wav", title: "Album", expectedBytes: nil, localPath: local.path, state: .completed,
+            receivedBytes: 0, totalBytes: nil, errorMessage: nil, updatedAt: .now))
+        let audioEnvironment = AppEnvironment(store: environment.store, mediaDirectory: media, downloadSession: .ephemeral)
+        await audioEnvironment.downloads.waitUntilReady()
+        let track = PlayableTrack(id: "track.wav", title: "Recording", candidates: [ArchiveFile(name: "track.wav")])
+        audioEnvironment.playback.load(artifact: ArtifactSummary(identifier: "album", title: "Album", mediaType: .audio),
+                                       tracks: [track], trackIndex: 0, autoplay: false)
+        try await until { self.nowPlaying(MPMediaItemPropertyAlbumTitle) as? String == "Album" }
+
+        let player = await present(audioEnvironment)
+        try await until { self.playing(player) && self.nowPlaying(MPMediaItemPropertyTitle) as? String == "Fixture film" }
+        XCTAssertNil(nowPlaying(MPMediaItemPropertyAlbumTitle))
+        await close(player)
+        try await until { self.nowPlaying(MPMediaItemPropertyAlbumTitle) as? String == "Album" }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(nowPlaying(MPMediaItemPropertyTitle) as? String, "Recording",
+                       "Closing the film cleared the audio player's Now Playing")
+        // The audio player owns these again, including the headset's toggle and
+        // its own choice of skip buttons for this short track.
+        let center = MPRemoteCommandCenter.shared()
+        let audioCommands = audioEnvironment.playback.registeredRemoteCommands
+        for command in [center.playCommand, center.pauseCommand, center.togglePlayPauseCommand,
+                        center.skipForwardCommand, center.skipBackwardCommand, center.changePlaybackPositionCommand] {
+            XCTAssertTrue(audioCommands.contains { $0 === command }, "The audio player lost \(command)")
+        }
+        XCTAssertTrue(center.togglePlayPauseCommand.isEnabled, "Closing the film disabled the headset's play and pause")
+        XCTAssertTrue(center.changePlaybackPositionCommand.isEnabled)
+        XCTAssertEqual(center.skipForwardCommand.isEnabled, PlaybackController.prefersSkipButtons(duration: 1))
+        XCTAssertEqual(center.skipForwardCommand.preferredIntervals, [NSNumber(value: PlaybackController.remoteSkipInterval)])
     }
 }
