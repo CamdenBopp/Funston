@@ -85,6 +85,8 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var elapsed: Double = 0
     @Published private(set) var duration: Double?
     var loadGeneration: UInt64 { generation }
+    /// The speed play() uses, even while paused, for time-left estimates.
+    var playbackRate: Double { Double(player.defaultRate) }
 
     private let player: AVPlayer
     private let audioSessionActivator: @MainActor () async throws -> Void

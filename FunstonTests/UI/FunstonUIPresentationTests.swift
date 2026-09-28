@@ -219,6 +219,19 @@ final class FunstonUIPresentationTests: XCTestCase {
         XCTAssertEqual(storedValues, [false, false, true], "The label must not read this old @Published backing property.")
     }
 
+    func testPositionValueSaysTimeLeftAtTheCurrentSpeed() {
+        let elapsed = 4.0 * 60 + 12, duration = 28.0 * 60 + 57
+        XCTAssertEqual(PlayerTimePresentation.spokenPosition(elapsed, duration: duration, rate: 1),
+                       "4 minutes, 12 seconds of 28 minutes, 57 seconds, 25 minutes left")
+        XCTAssertEqual(PlayerTimePresentation.spokenPosition(elapsed, duration: duration, rate: 2),
+                       "4 minutes, 12 seconds of 28 minutes, 57 seconds, 12 minutes left")
+        XCTAssertEqual(PlayerTimePresentation.spokenPosition(elapsed, duration: duration, rate: 0),
+                       "4 minutes, 12 seconds of 28 minutes, 57 seconds, 25 minutes left",
+                       "A paused or unset rate counts as normal speed.")
+        XCTAssertTrue(PlayerTimePresentation.spokenPosition(duration - 10, duration: duration, rate: 1)
+            .hasSuffix(", less than a minute left"))
+    }
+
     func testPlayerTimePresentationRejectsOversizedAndNonfiniteValues() {
         for value in [Double.greatestFiniteMagnitude, Double(Int64.max), .infinity, .nan, -1] {
             XCTAssertEqual(PlayerTimePresentation.clock(value), "—")
