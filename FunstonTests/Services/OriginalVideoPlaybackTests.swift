@@ -1,5 +1,6 @@
 import XCTest
 import AVFoundation
+import AVKit
 import UIKit
 import MediaPlayer
 import ArchivePlayerCore
@@ -335,5 +336,58 @@ final class OriginalVideoPlaybackTests: XCTestCase {
         XCTAssertEqual(TrackMemory.normalizedLanguage("fre"), "fr")
         XCTAssertEqual(TrackMemory.normalizedLanguage("fra"), "fr")
         XCTAssertNil(TrackMemory.normalizedLanguage("und"))
+    }
+
+    // MARK: Picture in Picture
+
+    func testPictureInPictureAnswersFromTheFilm() async throws {
+        let environment = try await makeEnvironment()
+        let player = await present(environment)
+        try await until { self.playing(player) && (player.playbackEngine?.currentTime.seconds ?? 0) > 0.5 }
+        if AVPictureInPictureController.isPictureInPictureSupported() {
+            XCTAssertNotNil(player.pictureInPictureSupport)
+            XCTAssertEqual(player.navigationItem.leftBarButtonItem?.accessibilityLabel, "Picture in Picture")
+        } else {
+            XCTAssertNil(player.pictureInPictureSupport)
+            XCTAssertNil(player.navigationItem.leftBarButtonItem, "Never offer Picture in Picture where it can't start")
+        }
+        // The same answers the system gets through the sample-buffer playback delegate.
+        let transport = player.pictureInPictureTransport
+        let engine = try XCTUnwrap(player.playbackEngine)
+        XCTAssertEqual(transport.duration(), Self.fixtureDuration)
+        XCTAssertFalse(transport.isPaused())
+        transport.setPlaying(false)
+        try await until { engine.state == .paused }
+        XCTAssertTrue(transport.isPaused())
+        let before = engine.currentTime.seconds
+        var skipped = 0
+        transport.skip(5) { skipped += 1 }
+        // A second skip while the first is still seeking must still be answered,
+        // or the system's skip button waits forever.
+        transport.skip(5) { skipped += 1 }
+        try await until { skipped == 2 }
+        XCTAssertEqual(engine.currentTime.seconds, before + 5, accuracy: 0.1)
+        transport.skip(-15) { skipped += 1 }
+        try await until { skipped == 3 }
+        XCTAssertEqual(engine.currentTime.seconds, 0, accuracy: 0.1, "Skipping back past the start lands on the start")
+        transport.setPlaying(true)
+        try await until { self.playing(player) && !transport.isPaused() }
+
+        await close(player)
+        XCTAssertNil(player.pictureInPictureSupport)
+        XCTAssertNil(player.navigationItem.leftBarButtonItem)
+        var afterClose = false
+        transport.skip(5) { afterClose = true }
+        XCTAssertTrue(afterClose, "A skip after close must still be answered")
+    }
+
+    func testPictureInPictureRange() {
+        XCTAssertEqual(OriginalVideoPictureInPicture.timeRange(duration: 20),
+                       CMTimeRange(start: .zero, duration: CMTime(seconds: 20, preferredTimescale: 600)))
+        for unknown in [nil, 0, -1, Double.nan, .infinity] as [Double?] {
+            let range = OriginalVideoPictureInPicture.timeRange(duration: unknown)
+            XCTAssertEqual(range.start, .negativeInfinity)
+            XCTAssertEqual(range.duration, .positiveInfinity)
+        }
     }
 }

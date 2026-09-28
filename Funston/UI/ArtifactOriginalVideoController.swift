@@ -1,5 +1,6 @@
 import UIKit
 import AVFoundation
+import AVKit
 import ArchivePlayerCore
 
 /// Keeps timed text beside the demux clock without treating subtitles as audio/video samples.
@@ -45,6 +46,7 @@ final class ArtifactOriginalVideoController: UIViewController {
     private static let seekTimescale: CMTimeScale = 1_000
     private var engine: SampleBufferPlaybackEngine?
     private var remote: OriginalVideoRemoteControl?
+    private var pictureInPicture: OriginalVideoPictureInPicture?
     private var captionDemuxer: OriginalCaptionDemuxer?
     private var lease: URL?
     private var audioOwnership: UInt64?
@@ -85,6 +87,8 @@ final class ArtifactOriginalVideoController: UIViewController {
     /// Lock Screen and headphone controls; nil until the view loads.
     var remoteControl: OriginalVideoRemoteControl? { remote }
     var selectedCaptionTrackID: UInt32? { selectedCaption }
+    /// Nil until the film is ready, and always nil where Picture in Picture isn't supported.
+    var pictureInPictureSupport: OriginalVideoPictureInPicture? { pictureInPicture }
     /// True until the film has handed audio back to the audio player.
     var holdsPlayback: Bool { audioOwnership != nil }
 
@@ -181,7 +185,11 @@ final class ArtifactOriginalVideoController: UIViewController {
         ])
         setEnabled(false)
         observe(UIAccessibility.voiceOverStatusDidChangeNotification) { [weak self] in self?.showControls() }
-        observe(UIApplication.didEnterBackgroundNotification) { [weak self] in self?.pauseForInterruption(); self?.savePosition() }
+        observe(UIApplication.didEnterBackgroundNotification) { [weak self] in
+            // Picture in Picture keeps the film playing outside the app.
+            if self?.pictureInPicture?.isActive != true { self?.pauseForInterruption() }
+            self?.savePosition()
+        }
         observe(AVAudioSession.interruptionNotification) { [weak self] in self?.pauseForInterruption() }
         observe(AVAudioSession.routeChangeNotification) { [weak self] in self?.pauseForInterruption() }
         start()
@@ -270,6 +278,7 @@ final class ArtifactOriginalVideoController: UIViewController {
                 view.backgroundColor = .black; canvas.isHidden = false; controlsContainer.isHidden = false
                 rebuildMenus(); setEnabled(true)
                 remote?.activate()
+                if let layer = playback.displayLayer { installPictureInPicture(layer: layer) }
                 if interruptionPauseRequested { status.text = "Paused" }
                 else { try playback.play(rate: rate) }
                 startTicker(); showControls(); publishNowPlaying()
@@ -297,6 +306,36 @@ final class ArtifactOriginalVideoController: UIViewController {
         default: break
         }
         publishNowPlaying()
+        pictureInPicture?.invalidate()
+    }
+
+    /// What Picture in Picture's buttons do. Built separately so tests reach it on
+    /// simulators that don't support Picture in Picture.
+    var pictureInPictureTransport: OriginalVideoPictureInPicture.Transport {
+        .init(
+            isPaused: { [weak self] in
+                guard let engine = self?.engine else { return true }
+                return !(engine.state == .playing || engine.state == .finishedEnqueuing)
+            },
+            setPlaying: { [weak self] playing in _ = self?.handleRemote(playing ? .play : .pause) },
+            skip: { [weak self] interval, completion in
+                guard let self else { completion(); return }
+                self.seek(to: max(0, (self.engine?.currentTime.seconds ?? 0) + interval), completion: completion)
+            },
+            duration: { [weak self] in self?.file.duration },
+            stoppedInBackground: { [weak self] in self?.pauseForInterruption() })
+    }
+
+    private func installPictureInPicture(layer: AVSampleBufferDisplayLayer) {
+        pictureInPicture = OriginalVideoPictureInPicture(layer: layer, transport: pictureInPictureTransport)
+        guard pictureInPicture != nil else { return }
+        let button = UIBarButtonItem(image: AVPictureInPictureController.pictureInPictureButtonStartImage,
+                                     primaryAction: UIAction { [weak self] _ in
+            guard let pictureInPicture = self?.pictureInPicture else { return }
+            if pictureInPicture.isActive { pictureInPicture.stop() } else { pictureInPicture.start() }
+        })
+        button.accessibilityLabel = "Picture in Picture"
+        navigationItem.leftBarButtonItem = button
     }
 
     private func publishNowPlaying() {
@@ -339,13 +378,19 @@ final class ArtifactOriginalVideoController: UIViewController {
     }
 
     private func seek(by interval: Double) { seek(to: max(0, (engine?.currentTime.seconds ?? 0) + interval)) }
-    private func seek(to seconds: Double) {
-        guard seconds.isFinite, seconds >= 0 else { return }
-        perform { engine in try await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: Self.seekTimescale)) }
+    /// `completion` runs once the seek lands, fails, or can't start.
+    private func seek(to seconds: Double, completion: (@MainActor () -> Void)? = nil) {
+        guard seconds.isFinite, seconds >= 0 else { completion?(); return }
+        let started = perform { engine in
+            defer { completion?() }
+            try await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: Self.seekTimescale))
+        }
+        if !started { completion?() }
     }
 
-    private func perform(_ work: @escaping @MainActor (SampleBufferPlaybackEngine) async throws -> Void) {
-        guard !busy, !closing, let engine else { return }
+    @discardableResult
+    private func perform(_ work: @escaping @MainActor (SampleBufferPlaybackEngine) async throws -> Void) -> Bool {
+        guard !busy, !closing, let engine else { return false }
         busy = true; setEnabled(false); status.text = "Updating playback"; showControls()
         operation = Task { [weak self] in
             var operationFailed = false
@@ -369,6 +414,7 @@ final class ArtifactOriginalVideoController: UIViewController {
             self.setEnabled(true); self.rebuildMenus(); self.stateChanged(engine.state)
             if operationFailed { self.status.text = "Could not update playback. Try again." }
         }
+        return true
     }
 
     private func trackTitle(_ track: MediaTrack) -> String {
@@ -523,6 +569,8 @@ final class ArtifactOriginalVideoController: UIViewController {
         remote?.deactivate()
         ticker?.cancel(); ticker = nil
         bookmark.suspend()
+        pictureInPicture?.stop(); pictureInPicture = nil
+        navigationItem.leftBarButtonItem = nil
         let old = engine; engine = nil
         old?.onStateChange = nil
         await old?.stop(); old?.displayLayer?.removeFromSuperlayer()
