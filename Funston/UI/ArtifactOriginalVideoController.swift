@@ -89,6 +89,9 @@ final class ArtifactOriginalVideoController: UIViewController {
     var selectedCaptionTrackID: UInt32? { selectedCaption }
     /// Nil until the film is ready, and always nil where Picture in Picture isn't supported.
     var pictureInPictureSupport: OriginalVideoPictureInPicture? { pictureInPicture }
+    var videoSurface: UIView { canvas }
+    var controlsShown: Bool { controlsContainer.alpha == 1 && !controls.accessibilityElementsHidden }
+    var trackMenus: (audio: UIMenu?, captions: UIMenu?, speed: UIMenu?) { (audioButton.menu, captionsButton.menu, speedButton.menu) }
     /// True until the film has handed audio back to the audio player.
     var holdsPlayback: Bool { audioOwnership != nil }
 
@@ -114,6 +117,16 @@ final class ArtifactOriginalVideoController: UIViewController {
         canvas.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(canvas)
         canvas.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(canvasTapped)))
+        // The controls fade while the film plays. From the film itself, VoiceOver
+        // can bring them back and land on Play without hunting for them.
+        canvas.isAccessibilityElement = true
+        canvas.accessibilityLabel = "Video"
+        canvas.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Show playback controls") { [weak self] _ in
+            guard let self else { return false }
+            self.showControls()
+            UIAccessibility.post(notification: .layoutChanged, argument: self.playButton)
+            return true
+        }]
         controls.axis = .vertical; controls.spacing = 8
         controls.isLayoutMarginsRelativeArrangement = true
         controls.directionalLayoutMargins = .init(top: 12, leading: 16, bottom: 12, trailing: 16)

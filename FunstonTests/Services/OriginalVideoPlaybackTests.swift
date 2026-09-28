@@ -390,4 +390,53 @@ final class OriginalVideoPlaybackTests: XCTestCase {
             XCTAssertEqual(range.duration, .positiveInfinity)
         }
     }
+
+    // MARK: VoiceOver
+
+    func testShowPlaybackControlsActionOnTheVideo() async throws {
+        let environment = try await makeEnvironment()
+        let player = await present(environment)
+        try await until { self.playing(player) && player.controlsShown }
+        let surface = player.videoSurface
+        XCTAssertTrue(surface.isAccessibilityElement)
+        XCTAssertEqual(surface.accessibilityLabel, "Video")
+        let action = try XCTUnwrap(surface.accessibilityCustomActions?.first { $0.name == "Show playback controls" })
+        // Without VoiceOver the controls fade after a few seconds of playback.
+        try await until(timeout: 10) { !player.controlsShown }
+        XCTAssertEqual(action.actionHandler?(action), true)
+        XCTAssertTrue(player.controlsShown, "The action must bring the controls back for VoiceOver")
+        await close(player)
+    }
+
+    /// VoiceOver says "selected" for a menu item whose state is .on. Exactly one
+    /// item per menu may carry it, and it must follow the viewer's choice.
+    func testTrackAndSpeedMenusMarkTheSelectedOption() async throws {
+        let environment = try await makeEnvironment()
+        let player = await present(environment)
+        try await until { self.playing(player) && (player.playbackEngine?.currentTime.seconds ?? 0) > 0.5 }
+        func selected(_ menu: UIMenu?) -> [Int] {
+            (menu?.children ?? []).enumerated().compactMap { ($0.element as? UIAction)?.state == .on ? $0.offset : nil }
+        }
+        let engine = try XCTUnwrap(player.playbackEngine)
+        let audio = engine.tracks.filter { $0.kind == .audio }
+        let captions = engine.tracks.filter { $0.kind == .subtitle }
+        let japaneseAudio = try XCTUnwrap(audio.firstIndex { $0.language == "jpn" })
+        let japaneseCaptions = try XCTUnwrap(captions.firstIndex { $0.language == "jpn" })
+        // Each menu lists Off first, then the file's tracks in order.
+        XCTAssertEqual(selected(player.trackMenus.audio), [1 + (audio.firstIndex { $0.id == engine.selectedAudioTrackID } ?? -2)])
+        XCTAssertEqual(selected(player.trackMenus.captions), [0])
+        XCTAssertEqual((player.trackMenus.speed?.children ?? []).compactMap { ($0 as? UIAction)?.state == .on ? $0.title : nil }, ["1×"])
+
+        player.chooseAudio(audio[japaneseAudio].id)
+        try await until { engine.selectedAudioTrackID == audio[japaneseAudio].id && self.selected(player.trackMenus.audio) == [1 + japaneseAudio] }
+        player.chooseCaption(captions[japaneseCaptions].id)
+        XCTAssertEqual(selected(player.trackMenus.captions), [1 + japaneseCaptions])
+        player.chooseCaption(nil)
+        XCTAssertEqual(selected(player.trackMenus.captions), [0])
+        await close(player)
+    }
+
+    func selected(_ menu: UIMenu?) -> [Int] {
+        (menu?.children ?? []).enumerated().compactMap { ($0.element as? UIAction)?.state == .on ? $0.offset : nil }
+    }
 }
