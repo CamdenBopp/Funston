@@ -13,7 +13,7 @@ Explore shows the most downloaded items from a few collections, and Search cover
 
 Multi-track items play as a queue. A mini-player stays open while you browse, the Lock Screen shows the item's artwork, and each recording remembers where you stopped.
 
-Books that come with their own EPUB, such as Project Gutenberg's, open in a Readium-based reader that follows your text size and remembers your place. PDFs open in PDFKit with search and a remembered page. For scanned books, Page Text recognizes the page on the device (Live Text, then Vision) instead of trusting Internet Archive's OCR, and Reading options lets you pick the engine yourself.
+Books that come with their own EPUB, such as Project Gutenberg's, open in a Readium-based reader that follows your text size and remembers your place. PDFs open in PDFKit with search and a remembered page. For scanned books, Page Text recognizes the page on the device instead of trusting Internet Archive's OCR, reading multi-column magazine pages column by column, and Reading options lets you pick the engine yourself.
 
 MP4, M4V and MOV films play in the system player. MKV originals play through [ArchivePlayerCore](https://github.com/CamdenBopp/ArchivePlayerCore), with audio-track and caption menus. That path is experimental.
 
