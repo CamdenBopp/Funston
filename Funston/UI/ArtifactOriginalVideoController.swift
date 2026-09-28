@@ -40,6 +40,8 @@ final class ArtifactOriginalVideoController: UIViewController {
     private let file: ArchiveFile
     private let environment: AppEnvironment
     private let downloadedOnly: Bool
+    private let bookmark: OriginalVideoBookmark
+    private static let seekTimescale: CMTimeScale = 1_000
     private var engine: SampleBufferPlaybackEngine?
     private var captionDemuxer: OriginalCaptionDemuxer?
     private var lease: URL?
@@ -70,10 +72,13 @@ final class ArtifactOriginalVideoController: UIViewController {
 
     init(summary: ArtifactSummary, file: ArchiveFile, environment: AppEnvironment, downloadedOnly: Bool) {
         self.summary = summary; self.file = file; self.environment = environment; self.downloadedOnly = downloadedOnly
+        bookmark = OriginalVideoBookmark(store: environment.store, identifier: summary.identifier, fileName: file.name)
         super.init(nibName: nil, bundle: nil)
         title = summary.title
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    /// Read-only view of the engine for tests.
+    var playbackEngine: SampleBufferPlaybackEngine? { engine }
 
     isolated deinit {
         preparation?.cancel(); operation?.cancel(); ticker?.cancel()
@@ -166,7 +171,7 @@ final class ArtifactOriginalVideoController: UIViewController {
         ])
         setEnabled(false)
         observe(UIAccessibility.voiceOverStatusDidChangeNotification) { [weak self] in self?.showControls() }
-        observe(UIApplication.didEnterBackgroundNotification) { [weak self] in self?.pauseForInterruption() }
+        observe(UIApplication.didEnterBackgroundNotification) { [weak self] in self?.pauseForInterruption(); self?.savePosition() }
         observe(AVAudioSession.interruptionNotification) { [weak self] in self?.pauseForInterruption() }
         observe(AVAudioSession.routeChangeNotification) { [weak self] in self?.pauseForInterruption() }
         start()
@@ -231,6 +236,11 @@ final class ArtifactOriginalVideoController: UIViewController {
                 guard !closing else { throw CancellationError() }
                 guard playback.selectedVideoTrackID != nil else { throw DemuxError.unsupported("The video format in this file cannot be played. Choose another version of the film.") }
                 if let layer = playback.displayLayer { layer.videoGravity = .resizeAspect; canvas.layer.addSublayer(layer); layer.frame = canvas.bounds }
+                try await bookmark.restore(duration: self.file.duration) { seconds in
+                    try await playback.seek(to: CMTime(seconds: seconds, preferredTimescale: Self.seekTimescale))
+                }
+                try Task.checkCancellation()
+                guard !closing else { throw CancellationError() }
                 contentUnavailableConfiguration = nil
                 view.backgroundColor = .black; canvas.isHidden = false; controlsContainer.isHidden = false
                 rebuildMenus(); setEnabled(true)
@@ -253,11 +263,11 @@ final class ArtifactOriginalVideoController: UIViewController {
             status.text = engine?.selectedAudioTrackID == nil ? "Playing without sound. No audio track in this file can be played." : "Playing"
         case .paused:
             playButton.setImage(UIImage(systemName: "play.fill"), for: .normal); playButton.accessibilityLabel = "Play"
-            status.text = "Paused"; showControls()
+            status.text = "Paused"; showControls(); savePosition()
         case .ended:
             playButton.setImage(UIImage(systemName: "arrow.counterclockwise"), for: .normal)
             playButton.accessibilityLabel = "Replay"
-            status.text = "Finished"; showControls()
+            status.text = "Finished"; showControls(); savePosition()
         default: break
         }
     }
@@ -284,7 +294,7 @@ final class ArtifactOriginalVideoController: UIViewController {
     private func seek(by interval: Double) { seek(to: max(0, (engine?.currentTime.seconds ?? 0) + interval)) }
     private func seek(to seconds: Double) {
         guard seconds.isFinite, seconds >= 0 else { return }
-        perform { engine in try await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: 1_000)) }
+        perform { engine in try await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: Self.seekTimescale)) }
     }
 
     private func perform(_ work: @escaping @MainActor (SampleBufferPlaybackEngine) async throws -> Void) {
@@ -389,6 +399,7 @@ final class ArtifactOriginalVideoController: UIViewController {
                 do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
                 guard let self, !self.closing, let engine = self.engine else { return }
                 let time = engine.currentTime
+                self.bookmark.saveIfDue(seconds: time.seconds, ended: engine.state == .ended)
                 if time.seconds.isFinite {
                     self.timeLabel.text = PlayerTimePresentation.clock(max(0, time.seconds))
                     self.slider.accessibilityValue = self.timeLabel.text
@@ -411,6 +422,10 @@ final class ArtifactOriginalVideoController: UIViewController {
     }
 
     @objc private func canvasTapped() { showControls() }
+    private func savePosition() {
+        guard let engine else { return }
+        bookmark.save(seconds: engine.currentTime.seconds, ended: engine.state == .ended)
+    }
     private func showControls() { lastInteraction = Date(); controlsContainer.alpha = 1; controls.accessibilityElementsHidden = false }
     private func pauseForInterruption() {
         if engine != nil { interruptionPauseRequested = true }
@@ -418,6 +433,7 @@ final class ArtifactOriginalVideoController: UIViewController {
     }
 
     private func showFailure(_ error: Error) {
+        savePosition()
         ticker?.cancel(); ticker = nil
         setEnabled(false); showControls()
         view.backgroundColor = .systemBackground
@@ -439,6 +455,7 @@ final class ArtifactOriginalVideoController: UIViewController {
 
     private func releasePlayback() async {
         ticker?.cancel(); ticker = nil
+        bookmark.suspend()
         let old = engine; engine = nil
         old?.onStateChange = nil
         await old?.stop(); old?.displayLayer?.removeFromSuperlayer()
@@ -448,7 +465,8 @@ final class ArtifactOriginalVideoController: UIViewController {
     }
     private func close() { finish(); navigationController?.dismiss(animated: true) }
     private func finish() {
-        guard !closing else { return }; closing = true
+        guard !closing else { return }
+        savePosition(); closing = true
         ticker?.cancel(); preparation?.cancel(); operation?.cancel()
         let prepare = preparation, update = operation
         Task { [self] in await prepare?.value; await update?.value; await releasePlayback() }
