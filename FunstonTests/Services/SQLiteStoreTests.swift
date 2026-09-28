@@ -102,6 +102,53 @@ final class SQLiteStoreTests: XCTestCase {
         XCTAssertEqual(reopenedDownloads.map(\.key), ["k"])
     }
 
+    /// A phone on schema 2 (resume data) must gain the remembered-track tables
+    /// without losing rows, and the choices must round-trip, including "off".
+    func testSchemaTwoDatabaseGainsRememberedTracks() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "v2.sqlite3")
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &handle), SQLITE_OK)
+        let schemaTwo = """
+        CREATE TABLE saved_artifacts(identifier TEXT PRIMARY KEY, snapshot BLOB NOT NULL, saved_at REAL NOT NULL);
+        CREATE TABLE playback_positions(identifier TEXT NOT NULL, file_name TEXT NOT NULL, seconds REAL NOT NULL, updated_at REAL NOT NULL, PRIMARY KEY(identifier, file_name));
+        CREATE TABLE last_playback(singleton INTEGER PRIMARY KEY CHECK(singleton=1), identifier TEXT NOT NULL, file_name TEXT NOT NULL, seconds REAL NOT NULL);
+        CREATE TABLE downloads(key TEXT PRIMARY KEY, identifier TEXT NOT NULL, file_name TEXT NOT NULL, title TEXT NOT NULL, expected_bytes INTEGER, local_path TEXT NOT NULL, state TEXT NOT NULL, received_bytes INTEGER NOT NULL, total_bytes INTEGER, error_message TEXT, updated_at REAL NOT NULL, resume_data BLOB);
+        CREATE TABLE cache_entries(key TEXT PRIMARY KEY, kind TEXT NOT NULL, response BLOB NOT NULL, snapshot BLOB, stored_at REAL NOT NULL, accessed_at REAL NOT NULL, max_age REAL NOT NULL, byte_count INTEGER NOT NULL);
+        INSERT INTO playback_positions VALUES('film', 'film.mkv', 61.5, 1790000000);
+        PRAGMA user_version=2;
+        """
+        XCTAssertEqual(sqlite3_exec(handle, schemaTwo, nil, nil, nil), SQLITE_OK)
+        sqlite3_close(handle)
+
+        let store = try SQLiteStore(url: url)
+        let position = try await store.playbackPosition(identifier: "film", fileName: "film.mkv")
+        XCTAssertEqual(position, 61.5)
+        let untouched = try await store.trackChoice(.audio, identifier: "film", fileName: "film.mkv")
+        XCTAssertNil(untouched)
+        try await store.setTrackChoice(.track(3), kind: .audio, identifier: "film", fileName: "film.mkv")
+        try await store.setTrackChoice(.off, kind: .caption, identifier: "film", fileName: "film.mkv")
+        try await store.setTrackChoice(.track(4), kind: .audio, identifier: "film", fileName: "film.mkv")
+        try await store.setPreferredLanguage(.language("ja"), kind: .audio)
+        try await store.setPreferredLanguage(.off, kind: .caption)
+        let audio = try await store.trackChoice(.audio, identifier: "film", fileName: "film.mkv")
+        let caption = try await store.trackChoice(.caption, identifier: "film", fileName: "film.mkv")
+        let otherFile = try await store.trackChoice(.audio, identifier: "film", fileName: "other.mkv")
+        let audioLanguage = try await store.preferredLanguage(.audio)
+        let captionLanguage = try await store.preferredLanguage(.caption)
+        XCTAssertEqual(audio, .track(4))
+        XCTAssertEqual(caption, .off)
+        XCTAssertNil(otherFile)
+        XCTAssertEqual(audioLanguage, .language("ja"))
+        XCTAssertEqual(captionLanguage, .off)
+        XCTAssertEqual(SQLiteStore.schemaVersion, 3)
+        XCTAssertEqual(sqlite3_open(url.path, &handle), SQLITE_OK)
+        XCTAssertEqual(try SQLiteStore.userVersion(handle), 3)
+        sqlite3_close(handle)
+    }
+
     func testDownloadRecordRoundTrip() async throws {
         let (store, _) = try makeStore()
         let record = DownloadRecord(

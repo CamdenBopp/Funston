@@ -41,6 +41,7 @@ final class ArtifactOriginalVideoController: UIViewController {
     private let environment: AppEnvironment
     private let downloadedOnly: Bool
     private let bookmark: OriginalVideoBookmark
+    private let trackMemory: OriginalVideoTrackMemory
     private static let seekTimescale: CMTimeScale = 1_000
     private var engine: SampleBufferPlaybackEngine?
     private var remote: OriginalVideoRemoteControl?
@@ -74,6 +75,7 @@ final class ArtifactOriginalVideoController: UIViewController {
     init(summary: ArtifactSummary, file: ArchiveFile, environment: AppEnvironment, downloadedOnly: Bool) {
         self.summary = summary; self.file = file; self.environment = environment; self.downloadedOnly = downloadedOnly
         bookmark = OriginalVideoBookmark(store: environment.store, identifier: summary.identifier, fileName: file.name)
+        trackMemory = OriginalVideoTrackMemory(store: environment.store, identifier: summary.identifier, fileName: file.name)
         super.init(nibName: nil, bundle: nil)
         title = summary.title
     }
@@ -82,6 +84,9 @@ final class ArtifactOriginalVideoController: UIViewController {
     var playbackEngine: SampleBufferPlaybackEngine? { engine }
     /// Lock Screen and headphone controls; nil until the view loads.
     var remoteControl: OriginalVideoRemoteControl? { remote }
+    var selectedCaptionTrackID: UInt32? { selectedCaption }
+    /// True until the film has handed audio back to the audio player.
+    var holdsPlayback: Bool { audioOwnership != nil }
 
     isolated deinit {
         preparation?.cancel(); operation?.cancel(); ticker?.cancel()
@@ -241,6 +246,21 @@ final class ArtifactOriginalVideoController: UIViewController {
                 guard !closing else { throw CancellationError() }
                 guard playback.selectedVideoTrackID != nil else { throw DemuxError.unsupported("The video format in this file cannot be played. Choose another version of the film.") }
                 if let layer = playback.displayLayer { layer.videoGravity = .resizeAspect; canvas.layer.addSublayer(layer); layer.frame = canvas.bounds }
+                // Tracks first: a track change before the first packet does not seek,
+                // so the restore seek below stays the last word on position.
+                let playable = Set(playback.tracks.map(\.id)).subtracting(playback.unsupportedTracks.map(\.id))
+                let remembered = await trackMemory.startingChoices(
+                    tracks: playback.tracks, playableAudio: { playable.contains($0.id) },
+                    playableCaption: { CaptionPipeline.supportedCodecs.contains($0.codec) })
+                try Task.checkCancellation()
+                switch remembered.audio {
+                case .track(let id) where id != playback.selectedAudioTrackID:
+                    try await playback.selectTracks(audio: id, video: playback.selectedVideoTrackID)
+                case .off where playback.selectedAudioTrackID != nil && playback.selectedVideoTrackID != nil:
+                    try await playback.selectTracks(audio: nil, video: playback.selectedVideoTrackID)
+                default: break
+                }
+                if case .track(let id) = remembered.caption { selectedCaption = id }
                 try await bookmark.restore(duration: self.file.duration) { seconds in
                     try await playback.seek(to: CMTime(seconds: seconds, preferredTimescale: Self.seekTimescale))
                 }
@@ -361,42 +381,60 @@ final class ArtifactOriginalVideoController: UIViewController {
         return ([track.name, language, "Track \(track.id)"] + roles.map(Optional.some)).compactMap { $0 }.joined(separator: " · ")
     }
 
+    /// The audio menu's action. Remembered for this file only once the switch succeeds.
+    func chooseAudio(_ trackID: UInt32?) {
+        guard let engine, engine.selectedAudioTrackID != trackID else { return }
+        let language = trackID.flatMap { id in engine.tracks.first { $0.id == id }?.language }
+        perform { [weak self] engine in
+            guard let self else { return }
+            if let trackID, engine.state == .playing {
+                let source: any ByteSource
+                if let lease = self.lease { source = try LocalByteSource(url: lease) }
+                else {
+                    source = HTTPRangeByteSource(
+                        url: ArchiveURLs.download(identifier: self.summary.identifier, fileName: self.file.name))
+                }
+                try await engine.selectAudio(trackID: trackID, using: MatroskaDemuxer(source: source))
+            } else {
+                try await engine.selectTracks(audio: trackID, video: engine.selectedVideoTrackID)
+            }
+            self.trackMemory.remember(.audio, choice: trackID.map(TrackChoice.track) ?? .off, language: language)
+        }
+    }
+
+    /// The captions menu's action.
+    func chooseCaption(_ trackID: UInt32?) {
+        guard let engine else { return }
+        selectedCaption = trackID
+        if trackID == nil { captionLabel.text = nil }
+        let language = trackID.flatMap { id in engine.tracks.first { $0.id == id }?.language }
+        trackMemory.remember(.caption, choice: trackID.map(TrackChoice.track) ?? .off, language: language)
+        rebuildMenus(); showControls()
+    }
+
     private func rebuildMenus() {
         guard let engine else { return }
         let unsupported = Set(engine.unsupportedTracks.map(\.id))
         let audio = engine.tracks.filter { $0.kind == .audio }
         var audioActions = [UIAction(title: "Audio Off", state: engine.selectedAudioTrackID == nil ? .on : .off) { [weak self] _ in
-            self?.perform { engine in try await engine.selectTracks(audio: nil, video: engine.selectedVideoTrackID) }
+            self?.chooseAudio(nil)
         }]
         audioActions += audio.map { track in
             UIAction(title: trackTitle(track) + (unsupported.contains(track.id) ? " · Unavailable" : ""),
                      attributes: unsupported.contains(track.id) ? .disabled : [], state: engine.selectedAudioTrackID == track.id ? .on : .off) { [weak self] _ in
-                guard let self, engine.selectedAudioTrackID != track.id else { return }
-                self.perform { engine in
-                    if engine.state == .playing {
-                        let source: any ByteSource
-                        if let lease = self.lease { source = try LocalByteSource(url: lease) }
-                        else {
-                            source = HTTPRangeByteSource(
-                                url: ArchiveURLs.download(identifier: self.summary.identifier, fileName: self.file.name))
-                        }
-                        try await engine.selectAudio(trackID: track.id, using: MatroskaDemuxer(source: source))
-                    } else {
-                        try await engine.selectTracks(audio: track.id, video: engine.selectedVideoTrackID)
-                    }
-                }
+                self?.chooseAudio(track.id)
             }
         }
         audioButton.menu = UIMenu(title: "Audio track", children: audioActions)
         audioButton.accessibilityValue = engine.selectedAudioTrackID.flatMap { id in audio.first { $0.id == id }.map(trackTitle) } ?? "Off"
         var captionActions = [UIAction(title: "Off", state: selectedCaption == nil ? .on : .off) { [weak self] _ in
-            self?.selectedCaption = nil; self?.captionLabel.text = nil; self?.rebuildMenus(); self?.showControls()
+            self?.chooseCaption(nil)
         }]
         captionActions += engine.tracks.filter { $0.kind == .subtitle }.map { track in
             let supported = CaptionPipeline.supportedCodecs.contains(track.codec)
             return UIAction(title: trackTitle(track) + (supported ? "" : " · Unavailable"), attributes: supported ? [] : .disabled,
                             state: selectedCaption == track.id ? .on : .off) { [weak self] _ in
-                self?.selectedCaption = track.id; self?.rebuildMenus(); self?.showControls()
+                self?.chooseCaption(track.id)
             }
         }
         captionsButton.menu = UIMenu(title: "Captions", children: captionActions)

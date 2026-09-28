@@ -61,6 +61,7 @@
 		C9045F96F8D56D43BFC8DF56 /* FunstonUIPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10FEF644850A1FE3D34C96F0 /* FunstonUIPresentationTests.swift */; };
 		CF8F7256F8008AF7345B3CA4 /* ArtifactMediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FC31D2391A678F056CDEB5 /* ArtifactMediaController.swift */; };
 		DD6E6429D23A191C8DF02C3A /* FunstonPlayerPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F42D64BFE13F26B5291D02C /* FunstonPlayerPresentation.swift */; };
+		F133CEE06D6390C2F74AB9A6 /* OriginalVideoTrackMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 892AA9E3E0B1E928B9A42438 /* OriginalVideoTrackMemory.swift */; };
 		F30D5650C3CB4BE3C874A25F /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 09D88D22F618DAE5A39639D0 /* libsqlite3.tbd */; };
 		F5B8A7086BC9A4D26B859DC0 /* PlaybackLifecyclePolishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 233DB5EE909DC936BDB88C04 /* PlaybackLifecyclePolishTests.swift */; };
 		F5B97A27324D31423F0FA693 /* MediaPlayer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8184368EFE3E38AB32EB6C7F /* MediaPlayer.framework */; };
@@ -120,6 +121,7 @@
 		81DC90056E59A1CB9040BE47 /* LNPopupController */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LNPopupController; path = Vendor/LNPopupController; sourceTree = SOURCE_ROOT; };
 		81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFScreenRenderingExperiment.swift; sourceTree = "<group>"; };
 		83FA6742BCE70DB39C50A79E /* ArtifactOriginalVideoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactOriginalVideoController.swift; sourceTree = "<group>"; };
+		892AA9E3E0B1E928B9A42438 /* OriginalVideoTrackMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoTrackMemory.swift; sourceTree = "<group>"; };
 		9059921AE97E122328AC8EC5 /* PlayerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViews.swift; sourceTree = "<group>"; };
 		90E76B9A4F6B4D55BA45EEFE /* ArchiveNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNormalizer.swift; sourceTree = "<group>"; };
 		97C4A1A2218332A1F56B2F54 /* ContinueListening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueListening.swift; sourceTree = "<group>"; };
@@ -304,6 +306,7 @@
 				ABEC399375132D18A85258F1 /* DownloadManager.swift */,
 				29ACD0865BCD826414E2B675 /* OriginalVideoBookmark.swift */,
 				AB47764A2EAA6737E450F564 /* OriginalVideoRemoteControl.swift */,
+				892AA9E3E0B1E928B9A42438 /* OriginalVideoTrackMemory.swift */,
 				A6C0ABD85EEF2749ED6AE3E4 /* PlaybackController.swift */,
 				A582B4688E196BF2BD0D69CC /* SleepTimer.swift */,
 				4B6AC7E7D67A26404F8526F1 /* SQLiteStore.swift */,
@@ -532,6 +535,7 @@
 				8946332DBAD4F9DFFF2C2A05 /* FunstonRootController.swift in Sources */,
 				793B43E0E3E05D1BD0963CFB /* OriginalVideoBookmark.swift in Sources */,
 				670A25A66B3475B39199A7CC /* OriginalVideoRemoteControl.swift in Sources */,
+				F133CEE06D6390C2F74AB9A6 /* OriginalVideoTrackMemory.swift in Sources */,
 				8342B387FAA23AD0D722C77A /* PDFReadingState.swift in Sources */,
 				4619E6C13BE93409CB710B3D /* PlaybackController.swift in Sources */,
 				B91E26B2C53A79404FEDF866 /* PlayerViews.swift in Sources */,

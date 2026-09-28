@@ -21,6 +21,8 @@ final class OriginalVideoPlaybackTests: XCTestCase {
     static let identifier = "mkv-fixture"
     static let fileName = "fixture.mkv"
     static let fixtureDuration = 20.0
+    /// A second item holding the same film, for choices that carry across items.
+    static let otherIdentifier = "mkv-fixture-other"
 
     private var windows: [UIWindow] = []
 
@@ -41,28 +43,30 @@ final class OriginalVideoPlaybackTests: XCTestCase {
         try FileManager.default.createDirectory(at: media, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         let fixture = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "original-video-fixture", withExtension: "mkv"))
-        let local = media.appending(path: Self.fileName)
-        try FileManager.default.copyItem(at: fixture, to: local)
         // Player tasks can outlive a test's last statement. An in-memory store
         // avoids unlinking an open SQLite database at teardown.
         let store = try SQLiteStore(url: URL(string: "file::memory:")!)
-        try await store.upsertDownload(DownloadRecord(
-            key: DownloadManager.key(identifier: Self.identifier, fileName: Self.fileName), identifier: Self.identifier,
-            fileName: Self.fileName, title: "Fixture", expectedBytes: nil, localPath: local.path, state: .completed,
-            receivedBytes: 0, totalBytes: nil, errorMessage: nil, updatedAt: .now))
+        for identifier in [Self.identifier, Self.otherIdentifier] {
+            let local = media.appending(path: identifier + ".mkv")
+            try FileManager.default.copyItem(at: fixture, to: local)
+            try await store.upsertDownload(DownloadRecord(
+                key: DownloadManager.key(identifier: identifier, fileName: Self.fileName), identifier: identifier,
+                fileName: Self.fileName, title: "Fixture", expectedBytes: nil, localPath: local.path, state: .completed,
+                receivedBytes: 0, totalBytes: nil, errorMessage: nil, updatedAt: .now))
+        }
         let environment = AppEnvironment(store: store, mediaDirectory: media, downloadSession: .ephemeral)
         await environment.downloads.waitUntilReady()
         return environment
     }
 
-    func present(_ environment: AppEnvironment) async -> ArtifactOriginalVideoController {
+    func present(_ environment: AppEnvironment, identifier: String = identifier) async -> ArtifactOriginalVideoController {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let root = UIViewController()
         window.rootViewController = root
         window.makeKeyAndVisible()
         windows.append(window)
         let player = ArtifactOriginalVideoController(
-            summary: ArtifactSummary(identifier: Self.identifier, title: "Fixture film", mediaType: .movies),
+            summary: ArtifactSummary(identifier: identifier, title: "Fixture film", mediaType: .movies),
             file: ArchiveFile(name: Self.fileName, duration: Self.fixtureDuration),
             environment: environment, downloadedOnly: true)
         let modal = UINavigationController(rootViewController: player)
@@ -71,9 +75,14 @@ final class OriginalVideoPlaybackTests: XCTestCase {
         return player
     }
 
+    /// Dismisses like Done and waits until the film has handed audio back, as a
+    /// person reopening a film seconds later would find it.
     func close(_ player: ArtifactOriginalVideoController) async {
         guard let modal = player.navigationController else { return }
         await withCheckedContinuation { continuation in modal.dismiss(animated: false) { continuation.resume() } }
+        let deadline = Date().addingTimeInterval(5)
+        while player.holdsPlayback, Date() < deadline { try? await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(player.holdsPlayback, "The film did not release playback after closing")
     }
 
     func playing(_ player: ArtifactOriginalVideoController) -> Bool {
@@ -252,5 +261,79 @@ final class OriginalVideoPlaybackTests: XCTestCase {
         XCTAssertTrue(center.changePlaybackPositionCommand.isEnabled)
         XCTAssertEqual(center.skipForwardCommand.isEnabled, PlaybackController.prefersSkipButtons(duration: 1))
         XCTAssertEqual(center.skipForwardCommand.preferredIntervals, [NSNumber(value: PlaybackController.remoteSkipInterval)])
+    }
+
+    // MARK: Remembered tracks
+
+    func track(_ player: ArtifactOriginalVideoController, _ kind: MediaKind, _ language: String) throws -> MediaTrack {
+        try XCTUnwrap(player.playbackEngine?.tracks.first { $0.kind == kind && $0.language == language })
+    }
+
+    func testChosenTracksAreRememberedPerFileAndLanguageCarriesAcrossItems() async throws {
+        let environment = try await makeEnvironment()
+        var player = await present(environment)
+        try await until { self.playing(player) }
+        let japaneseAudio = try track(player, .audio, "jpn")
+        let japaneseCaptions = try track(player, .subtitle, "jpn")
+        XCTAssertNotEqual(player.playbackEngine?.selectedAudioTrackID, japaneseAudio.id, "The fixture must start in English")
+        // Let the first frames present; a switch before that is a separate, known edge.
+        try await until { (player.playbackEngine?.currentTime.seconds ?? 0) > 0.5 }
+        player.chooseAudio(japaneseAudio.id)
+        try await until { player.playbackEngine?.selectedAudioTrackID == japaneseAudio.id && self.playing(player) }
+        player.chooseCaption(japaneseCaptions.id)
+        await close(player)
+
+        player = await present(environment)
+        try await until { self.playing(player) }
+        XCTAssertEqual(player.playbackEngine?.selectedAudioTrackID, japaneseAudio.id, "This file's audio choice was forgotten")
+        XCTAssertEqual(player.selectedCaptionTrackID, japaneseCaptions.id, "This file's caption choice was forgotten")
+        await close(player)
+
+        player = await present(environment, identifier: Self.otherIdentifier)
+        try await until { self.playing(player) }
+        XCTAssertEqual(player.playbackEngine?.selectedAudioTrackID, japaneseAudio.id, "The preferred audio language did not carry over")
+        XCTAssertEqual(player.selectedCaptionTrackID, japaneseCaptions.id, "The preferred caption language did not carry over")
+        player.chooseCaption(nil)
+        await close(player)
+
+        player = await present(environment)
+        try await until { self.playing(player) }
+        XCTAssertEqual(player.selectedCaptionTrackID, japaneseCaptions.id,
+                       "Turning captions off elsewhere must not override this file's own choice")
+        await close(player)
+        player = await present(environment, identifier: Self.otherIdentifier)
+        try await until { self.playing(player) }
+        XCTAssertNil(player.selectedCaptionTrackID)
+        await close(player)
+    }
+
+    func testTrackMemoryResolution() {
+        let tracks = [
+            MediaTrack(id: 1, kind: .video, codec: "V_MPEG4/ISO/AVC"),
+            MediaTrack(id: 2, kind: .audio, codec: "A_AAC", language: "eng"),
+            MediaTrack(id: 3, kind: .audio, codec: "A_AAC", language: "ger", roles: [.commentary]),
+            MediaTrack(id: 4, kind: .audio, codec: "A_AAC", language: "ger"),
+            MediaTrack(id: 5, kind: .audio, codec: "A_DTS", language: "jpn"),
+            MediaTrack(id: 6, kind: .subtitle, codec: "S_TEXT/UTF8", language: "und")
+        ]
+        let playable: (MediaTrack) -> Bool = { $0.codec != "A_DTS" }
+        func audio(_ remembered: TrackChoice?, _ preferred: LanguagePreference?) -> TrackChoice? {
+            TrackMemory.resolve(kind: .audio, tracks: tracks, isPlayable: playable, remembered: remembered, preferred: preferred)
+        }
+        XCTAssertEqual(audio(.track(2), .language("de")), .track(2), "This file's choice beats the language")
+        XCTAssertEqual(audio(nil, .language("de")), .track(4), "German matches ger and skips the commentary")
+        XCTAssertEqual(audio(.track(9), .language("deu")), .track(4), "A track the file no longer has falls back to language")
+        XCTAssertNil(audio(nil, .language("ja")), "An unplayable match keeps the default")
+        XCTAssertNil(audio(nil, nil))
+        XCTAssertEqual(audio(.off, .language("en")), .off)
+        XCTAssertNil(TrackMemory.resolve(kind: .subtitle, tracks: tracks, isPlayable: { _ in true }, remembered: nil,
+                                         preferred: .language("und")), "Undetermined is never a preference")
+        XCTAssertEqual(TrackMemory.resolve(kind: .subtitle, tracks: tracks, isPlayable: { _ in true }, remembered: nil,
+                                           preferred: .off), .off)
+        XCTAssertEqual(TrackMemory.normalizedLanguage("jpn"), "ja")
+        XCTAssertEqual(TrackMemory.normalizedLanguage("ja-JP"), "ja")
+        XCTAssertEqual(TrackMemory.normalizedLanguage("fre"), "fr")
+        XCTAssertEqual(TrackMemory.normalizedLanguage("fra"), "fr")
+        XCTAssertNil(TrackMemory.normalizedLanguage("und"))
     }
 }
