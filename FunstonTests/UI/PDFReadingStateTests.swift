@@ -55,6 +55,33 @@ final class PDFReadingStateTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(view.currentPage?.string).contains("Searchable page 6"))
     }
 
+    /// A page smaller than the OCR canvas must fill it. getDrawingTransform never
+    /// scales up, so the page used to sit at 1x in the middle of a white canvas:
+    /// Vision read 11 lines of 73 Magazine page 40 that way, 214 at full size.
+    func testOCRRenderFillsTheCanvasForSmallPages() throws {
+        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 600, height: 800))
+        let data = renderer.pdfData { context in
+            context.beginPage()
+            UIColor.black.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 600, height: 800))
+        }
+        let page = try XCTUnwrap(PDFDocument(data: data)?.page(at: 0))
+        let image = try XCTUnwrap(PDFPageRenderSource(page: page)?.image(maxDimension: 3_000))
+        XCTAssertEqual(image.width, 1_800, "Scale is capped at 3x")
+        XCTAssertEqual(image.height, 2_400)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let probe = UIGraphicsImageRenderer(size: CGSize(width: image.width, height: image.height), format: format).image { context in
+            context.cgContext.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        }
+        let pixels = try XCTUnwrap(probe.cgImage?.dataProvider?.data as Data?)
+        let bytesPerRow = try XCTUnwrap(probe.cgImage?.bytesPerRow)
+        for (x, y) in [(10, 10), (image.width - 10, 10), (10, image.height - 10), (image.width - 10, image.height - 10)] {
+            let brightness = pixels[y * bytesPerRow + x * 4]
+            XCTAssertLessThan(brightness, 40, "Corner (\(x), \(y)) is blank: the page didn't fill the canvas")
+        }
+    }
+
     func testAutomaticTextPolicyUsesLocalRecognitionForArchiveDerivatives() {
         let textPDF = ArchiveFile(
             name: "book_text.pdf",

@@ -279,8 +279,13 @@ final class PDFPageRenderSource: @unchecked Sendable {
         context.setFillColor(gray: 1, alpha: 1)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         context.interpolationQuality = .high
-        let destination = CGRect(x: 0, y: 0, width: width, height: height)
-        context.concatenate(page.getDrawingTransform(.cropBox, rect: destination, rotate: 0, preserveAspectRatio: true))
+        // getDrawingTransform never scales a page up. Asked to fill a canvas larger
+        // than the page, it draws the page at its own size in the middle, so OCR got
+        // a 1283-point magazine page at 1x inside a 3000-pixel canvas. Scale the
+        // context ourselves and let the transform fit the page at its own size,
+        // which keeps its handling of the page's rotation.
+        context.scaleBy(x: CGFloat(width) / bounds.width, y: CGFloat(height) / bounds.height)
+        context.concatenate(page.getDrawingTransform(.cropBox, rect: CGRect(origin: .zero, size: bounds.size), rotate: 0, preserveAspectRatio: true))
         context.drawPDFPage(page)
         return context.makeImage()
     }
@@ -298,7 +303,8 @@ struct PDFPageTextRequest: Sendable {
 /// The default path remains automatic, while a remembered engine preference is
 /// respected when present. Results live in the existing bounded app cache.
 actor PDFPageTextRecognizer {
-    private static let cacheVersion = 2
+    // 3: pages were recognized from a render at 1x in the middle of the canvas.
+    private static let cacheVersion = 3
     private static let cacheLifetime: TimeInterval = 60 * 60 * 24 * 365 * 10
     private let store: SQLiteStore
     let engineDescriptors: [PDFTextEngineDescriptor]
