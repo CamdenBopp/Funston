@@ -5,6 +5,22 @@ import XCTest
 @testable import Funston
 
 final class FunstonUIPresentationTests: XCTestCase {
+    /// The Explore shelf's "Gunsmoke - Single Episodes" item carries this exact
+    /// date string; VoiceOver used to read the whole timestamp aloud.
+    func testDatesNeverExposeTimestamps() {
+        let gunsmoke = ArtifactSummary(identifier: "gunsmoke", title: "Gunsmoke - Single Episodes",
+                                       creators: ["Old Time Radio Researchers Group"], date: "2020-01-05T00:00:00Z", mediaType: .audio)
+        XCTAssertEqual(gunsmoke.displayDate, "2020-01-05")
+        XCTAssertEqual(gunsmoke.displayYear, "2020")
+        XCTAssertEqual(gunsmoke.spokenSummary, "Gunsmoke - Single Episodes, Old Time Radio Researchers Group, 2020, Audio")
+        XCTAssertFalse(FunstonRow.artifact(gunsmoke).subtitle?.contains("T00") ?? true)
+
+        let circa = ArtifactSummary(identifier: "circa", title: "Circa", date: "c. 1950")
+        XCTAssertEqual(circa.displayDate, "c. 1950")
+        XCTAssertEqual(circa.displayYear, "1950")
+        XCTAssertEqual(ArtifactSummary(identifier: "month", title: "Month", date: "1950-03").displayDate, "1950-03")
+    }
+
     func testTransportButtonMatchesActionWhilePreparing() {
         XCTAssertTrue(PlaybackPhase.preparing.showsPauseControl(wantsToPlay: true))
         XCTAssertFalse(PlaybackPhase.preparing.showsPauseControl(wantsToPlay: false))

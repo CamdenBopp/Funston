@@ -302,7 +302,7 @@ struct ArtifactOverview: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text(summary.mediaType.title.uppercased()).font(.caption.weight(.semibold)).tracking(1.2).foregroundStyle(Color.funstonSecondaryText)
                 Text(summary.title).font(.title.weight(.semibold)).accessibilityAddTraits(.isHeader)
-                let identity = (summary.creators.prefix(2) + [summary.date].compactMap { $0 }).joined(separator: " · ")
+                let identity = (summary.creators.prefix(2) + [summary.displayDate].compactMap { $0 }).joined(separator: " · ")
                 if !identity.isEmpty { Text(identity).font(.subheadline).foregroundStyle(Color.funstonSecondaryText) }
             }
             ViewThatFits(in: .horizontal) {

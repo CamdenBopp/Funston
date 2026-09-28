@@ -240,7 +240,7 @@ extension MediaType {
 extension FunstonRow {
     static func artifact(_ artifact: ArtifactSummary, prefix: String = "") -> FunstonRow {
         let creator = artifact.creators.prefix(2).joined(separator: ", ")
-        let metadata = [artifact.date.map { String($0.prefix(10)) }, artifact.mediaType.title].compactMap { $0 }.joined(separator: " · ")
+        let metadata = [artifact.displayDate, artifact.mediaType.title].compactMap { $0 }.joined(separator: " · ")
         return FunstonRow(id: prefix + artifact.identifier, title: artifact.title,
                           subtitle: [creator.isEmpty ? nil : creator, metadata].compactMap { $0 }.joined(separator: "\n"),
                           artworkIdentifier: artifact.identifier, mediaType: artifact.mediaType)
@@ -248,8 +248,24 @@ extension FunstonRow {
 }
 
 extension ArtifactSummary {
-    var rowSubtitle: String {
-        (creators.prefix(2) + [date, mediaType.title].compactMap { $0 }).joined(separator: " · ")
+    /// Internet Archive dates arrive as free text ("1950", "c. 1950", "1950-03")
+    /// or as ISO timestamps ("2020-01-05T00:00:00Z"). A timestamp shows its
+    /// calendar date; anything else shows as written.
+    var displayDate: String? {
+        guard let date else { return nil }
+        if date.firstMatch(of: /^\d{4}-\d{2}-\d{2}T/) != nil { return String(date.prefix(10)) }
+        return date
+    }
+
+    /// The first four-digit year, for places that only have room for one.
+    var displayYear: String? {
+        guard let date else { return nil }
+        return date.firstMatch(of: /\d{4}/).map { String($0.output) } ?? date
+    }
+
+    /// What VoiceOver reads for a shelf tile: the same facts the tile shows, plus the media type.
+    var spokenSummary: String {
+        ([title] + creators.prefix(2) + [displayYear, mediaType.title].compactMap { $0 }).joined(separator: ", ")
     }
 }
 

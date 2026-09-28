@@ -288,10 +288,10 @@ private final class ExploreArtifactCell: UICollectionViewCell {
         }
         placeholder.image = UIImage(systemName: artifact.mediaType.artworkSymbol)
         titleLabel.text = artifact.title
-        let metadata = [artifact.creators.first, artifact.date.map { String($0.prefix(4)) }].compactMap { $0 }.joined(separator: " · ")
+        let metadata = [artifact.creators.first, artifact.displayYear].compactMap { $0 }.joined(separator: " · ")
         metadataLabel.text = metadata
         metadataLabel.isHidden = metadata.isEmpty
-        button.accessibilityLabel = [artifact.title, artifact.rowSubtitle].joined(separator: ". ")
+        button.accessibilityLabel = artifact.spokenSummary
         button.accessibilityIdentifier = "explore.artifact." + artifact.identifier
         if let action { button.removeAction(action, for: .primaryActionTriggered) }
         let next = UIAction { _ in open() }; action = next
