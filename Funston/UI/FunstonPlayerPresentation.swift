@@ -5,6 +5,11 @@ import LNPopupController
 /// Owns player presentation only; playback, downloads and image caching stay in the app.
 @MainActor
 final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate {
+    /// Bare glass over a white page measured 2.17:1 behind the title and
+    /// 3.29:1 behind the subtitle. Darkening that glass (sRGB ~0.69) to the
+    /// 0.29 the grey subtitle needs for 4.5:1 takes at least 0.58 of the
+    /// background color composited on top.
+    private static let legibilityBackingOpacity: CGFloat = 0.6
     private let environment: AppEnvironment
     private weak var container: UIViewController?
     private var content: UIHostingController<FullPlayer>?
@@ -35,6 +40,7 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate {
         let appearance = LNPopupBarAppearance()
         appearance.marqueeScrollEnabled = false
         appearance.subtitleTextAttributes = AttributeContainer().foregroundColor(UIColor.funstonSecondaryLabel)
+        appearance.floatingBackgroundColor = UIColor.systemBackground.withAlphaComponent(Self.legibilityBackingOpacity)
         container.popupBar.inheritsAppearanceFromDockingView = false
         container.popupBar.standardAppearance = appearance
         container.popupBar.accessibilityIdentifier = "compactPlayer.open"
