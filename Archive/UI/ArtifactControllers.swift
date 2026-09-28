@@ -14,6 +14,7 @@ final class ArtifactController: ArchiveListController {
     private var task: Task<Void, Never>?
     private let savedState: ArtifactSavedState
     private var undoSave: Bool?
+    private var isSaving = false
     private var lastOverview: OverviewIdentity?
     private var descriptionExpanded = false
     private var playbackSubscription: AnyCancellable?
@@ -131,6 +132,7 @@ final class ArtifactController: ArchiveListController {
                                  restricted: detail?.access == .restricted,
                                  isSaved: savedState.isSaved,
                                  saveTitle: savedState.actionTitle,
+                                 isSaving: isSaving,
                                  downloads: environment.downloads,
                                  file: detail?.tracks.first?.preferredFile,
                                  playTitle: currentPlaybackTitle,
@@ -204,9 +206,12 @@ final class ArtifactController: ArchiveListController {
     }
 
     private func toggleSaved() {
+        guard !isSaving else { return }
         let previous = savedState.isSaved
+        setSaving(true)
         Task { [weak self] in
             guard let self else { return }
+            defer { setSaving(false) }
             do {
                 try await environment.setSaved(summary, saved: !previous)
                 undoSave = previous
@@ -217,13 +222,21 @@ final class ArtifactController: ArchiveListController {
     }
 
     private func undoLibraryChange() {
-        guard let previous = undoSave else { return }
+        guard !isSaving, let previous = undoSave else { return }
+        setSaving(true)
         Task {
+            defer { setSaving(false) }
             do {
                 try await environment.setSaved(summary, saved: previous)
                 undoSave = nil; navigationItem.leftBarButtonItem = nil
             } catch { showError(error) }
         }
+    }
+
+    private func setSaving(_ saving: Bool) {
+        isSaving = saving
+        navigationItem.leftBarButtonItem?.isEnabled = !saving
+        refreshRow("overview")
     }
 
     private func share() {
@@ -272,6 +285,7 @@ struct ArtifactOverview: View {
     let restricted: Bool
     let isSaved: Bool
     let saveTitle: String
+    var isSaving = false
     let downloads: DownloadManager
     let file: ArchiveFile?
     var playTitle = "Play"
@@ -305,6 +319,8 @@ struct ArtifactOverview: View {
         Button(isSaved ? "Saved" : "Save", systemImage: isSaved ? "bookmark.fill" : "bookmark", action: save)
             .buttonStyle(.bordered).controlSize(.large).accessibilityIdentifier("artifact.save")
             .accessibilityLabel(saveTitle)
+            .accessibilityValue(isSaving ? "Saving change" : "")
+            .disabled(isSaving)
     }
 }
 
@@ -313,11 +329,30 @@ struct ArtifactArtwork: View {
     var size: CGFloat = 180
     var mediaType: MediaType = .unknown
     var url: URL? = nil
+    var imageLoader: @MainActor (URL, CGSize, CGFloat) async throws -> SendableImage = { url, size, scale in
+        try await ArtworkPipeline.shared.image(url: url, pointSize: size, scale: scale)
+    }
     @State private var image: UIImage?
+    @State private var imageIdentity: Identity?
     @Environment(\.displayScale) private var scale
+
+    private struct Identity: Equatable {
+        let identifier: String
+        let preferred: URL
+    }
+    private struct Request: Equatable {
+        let identity: Identity
+        let size: CGFloat
+        let scale: CGFloat
+    }
+    private var identity: Identity {
+        Identity(identifier: identifier, preferred: url ?? ArchiveURLs.thumbnail(identifier: identifier))
+    }
     var body: some View {
-        Group {
-            if let image { Image(uiImage: image).resizable().scaledToFit() }
+        // Keep a stable task owner and retain a loaded cover while the same
+        // artifact requests a different display size or scale.
+        ZStack {
+            if imageIdentity == identity, let image { Image(uiImage: image).resizable().scaledToFit() }
             else {
                 ZStack {
                     Rectangle().fill(Color(uiColor: .secondarySystemBackground))
@@ -327,16 +362,25 @@ struct ArtifactArtwork: View {
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
-        .task(id: "\((url ?? ArchiveURLs.thumbnail(identifier: identifier)).absoluteString):\(size)") {
-            image = nil
+        .task(id: Request(identity: identity, size: size, scale: scale)) {
+            let requestedIdentity = identity
+            if imageIdentity != requestedIdentity {
+                image = nil
+                imageIdentity = requestedIdentity
+            }
             let thumbnail = ArchiveURLs.thumbnail(identifier: identifier)
-            let preferred = url ?? thumbnail
-            var result = try? await ArtworkPipeline.shared.image(url: preferred, pointSize: CGSize(width: size, height: size), scale: scale)
+            let preferred = requestedIdentity.preferred
+            var result = try? await imageLoader(preferred, CGSize(width: size, height: size), scale)
             if result == nil, preferred != thumbnail, !Task.isCancelled {
-                result = try? await ArtworkPipeline.shared.image(url: thumbnail, pointSize: CGSize(width: size, height: size), scale: scale)
+                result = try? await imageLoader(thumbnail, CGSize(width: size, height: size), scale)
             }
             guard !Task.isCancelled else { return }
-            image = result?.value
+            // Keep an existing cover during a same-artifact size/scale reload,
+            // including a failed reload. Never resurrect a cancelled request.
+            if let result {
+                imageIdentity = requestedIdentity
+                image = result.value
+            }
         }
     }
     private var placeholder: String {
@@ -351,22 +395,81 @@ struct ArtifactArtwork: View {
     }
 }
 
+/// Fold immutable catalog strings once; keystrokes only perform inexpensive substring checks.
+struct ArtifactContentsSearchIndex {
+    private let keys: [String]
+    init(keys: [String]) { self.keys = keys.map(Self.fold) }
+    func matchingIndices(_ query: String) -> [Int] {
+        let terms = Self.fold(query).split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !terms.isEmpty else { return Array(keys.indices) }
+        return keys.indices.filter { index in terms.allSatisfy { keys[index].contains($0) } }
+    }
+    private static func fold(_ value: String) -> String {
+        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
+}
+
 @MainActor
-final class TracksController: ArchiveListController {
+class SearchableArtifactContentsController: ArchiveListController, UISearchResultsUpdating {
+    private let search = UISearchController(searchResultsController: nil)
+    private let allRows: [ArchiveRow]
+    private let index: ArtifactContentsSearchIndex
+    private let placeholder: String
+    private let emptyTitle: String
+    private var query = ""
+
+    init(title: String, rows: [ArchiveRow], searchKeys: [String], placeholder: String, emptyTitle: String) {
+        precondition(rows.count == searchKeys.count)
+        allRows = rows; index = ArtifactContentsSearchIndex(keys: searchKeys)
+        self.placeholder = placeholder; self.emptyTitle = emptyTitle
+        super.init(title: title)
+        apply(rows)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        search.searchResultsUpdater = self
+        search.obscuresBackgroundDuringPresentation = false
+        search.searchBar.placeholder = placeholder
+        navigationItem.searchController = search
+        navigationItem.hidesSearchBarWhenScrolling = false
+        definesPresentationContext = true
+        collectionView.keyboardDismissMode = .interactive
+    }
+
+    func updateSearchResults(for searchController: UISearchController) {
+        let nextQuery = searchController.searchBar.text ?? ""
+        guard query != nextQuery else { return }
+        query = nextQuery
+        let matches = index.matchingIndices(query)
+        apply(matches.map { allRows[$0] })
+        if matches.isEmpty { showMessage(emptyTitle, detail: "Try a different word or clear the search.") }
+        else { clearMessage() }
+    }
+
+    func dismissSearchKeyboard() { search.searchBar.resignFirstResponder() }
+}
+
+@MainActor
+final class TracksController: SearchableArtifactContentsController {
     private let environment: AppEnvironment
     private let detail: ArtifactDetail
     init(environment: AppEnvironment, detail: ArtifactDetail) {
         self.environment = environment; self.detail = detail
-        super.init(title: "Recordings")
-        apply(detail.tracks.enumerated().map { index, track in
+        let rows = detail.tracks.enumerated().map { index, track in
             ArchiveRow(id: String(index), title: track.title, subtitle: track.duration.map(PlayerTimePresentation.clock), navigates: false)
-        })
+        }
+        super.init(title: "Recordings", rows: rows,
+                   searchKeys: detail.tracks.enumerated().map { "\($0.offset + 1) \($0.element.title)" },
+                   placeholder: "Find a recording", emptyTitle: "No matching recordings")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func configure(_ cell: UICollectionViewListCell, row: ArchiveRow) {
         guard let index = Int(row.id), detail.tracks.indices.contains(index) else { return }
-        configureRecordingCell(cell, detail: detail, index: index, environment: environment) { [weak self] in
+        configureRecordingCell(cell, detail: detail, index: index, environment: environment, willPlay: { [weak self] in self?.dismissSearchKeyboard() }) { [weak self] in
             guard let self else { return }
+            dismissSearchKeyboard()
             navigationController?.pushViewController(TrackController(environment: environment, detail: detail, index: index), animated: true)
         }
     }
@@ -378,11 +481,12 @@ private func collectionDisplayName(_ identifier: String) -> String {
 }
 
 @MainActor
-private func configureRecordingCell(_ cell: UICollectionViewListCell, detail: ArtifactDetail, index: Int, environment: AppEnvironment, information: @escaping () -> Void) {
+private func configureRecordingCell(_ cell: UICollectionViewListCell, detail: ArtifactDetail, index: Int, environment: AppEnvironment, willPlay: @escaping () -> Void = {}, information: @escaping () -> Void) {
     cell.isAccessibilityElement = false; cell.accessories = []
     cell.contentConfiguration = UIHostingConfiguration {
         RecordingRow(track: detail.tracks[index], artifactID: detail.summary.identifier, playback: environment.playback, number: index + 1, available: detail.access == .available,
                      play: {
+                         willPlay()
                          if environment.playback.context?.artifact.identifier == detail.summary.identifier,
                             environment.playback.context?.track.id == detail.tracks[index].id {
                              environment.playback.play()
@@ -471,19 +575,22 @@ final class TrackController: ArchiveListController {
 }
 
 @MainActor
-final class FilesController: ArchiveListController {
+final class FilesController: SearchableArtifactContentsController {
     private let environment: AppEnvironment
     private let detail: ArtifactDetail
     init(environment: AppEnvironment, detail: ArtifactDetail) {
         self.environment = environment; self.detail = detail
-        super.init(title: "Files")
-        apply(detail.files.enumerated().map { index, file in
+        let rows = detail.files.enumerated().map { index, file in
             ArchiveRow(id: String(index), title: file.name, subtitle: [file.source?.capitalized, file.format, file.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }, file.isPrivate ? "Restricted" : nil].compactMap { $0 }.joined(separator: " · "))
-        })
+        }
+        super.init(title: "Files", rows: rows,
+                   searchKeys: detail.files.map { [$0.name, $0.format, $0.source].compactMap { $0 }.joined(separator: " ") },
+                   placeholder: "Find a file or format", emptyTitle: "No matching files")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func selected(_ id: String) {
         guard let index = Int(id), detail.files.indices.contains(index) else { return }
+        dismissSearchKeyboard()
         navigationController?.pushViewController(FileController(environment: environment, summary: detail.summary, file: detail.files[index], access: detail.access), animated: true)
     }
 }

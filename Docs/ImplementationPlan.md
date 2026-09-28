@@ -2,7 +2,7 @@
 
 ## Product contract
 
-Support complete journeys through real Internet Archive artifacts: discover or search, understand provenance, play supported audio while browsing, save items, download files, and resume later. Artwork-led collection shelves and illustrated result rows make discovery visible. Supported PDFs open in a native PDFKit reader with text search and saved page position; compatible films open in AVKit. Restricted and unsupported artifacts retain normalized identity, description, provenance, file inspection and an external Archive link. EPUB, OCR-specific navigation and expanded reader capabilities remain later work.
+Support complete journeys through real Internet Archive artifacts: discover or search, understand provenance, play supported audio while browsing, save items, download files, and resume later. Artwork-led collection shelves and illustrated result rows make discovery visible. Supported PDFs open in a native PDFKit reader with text search, saved page position, and an automatic on-device recognized-text view for scanned pages; compatible films open in AVKit. Restricted and unsupported artifacts retain normalized identity, description, provenance, file inspection and an external Archive link. EPUB and expanded reader capabilities remain later work.
 
 The four persistent destinations are Explore, Search, Library, and Downloads. iPhone uses the system tab bar with an independent navigation stack per destination. iPad adapts to a native split view. Artifact detail is a push destination from any collection. LNPopupController presents a native compact player whenever audio is loaded and opens the app-owned SwiftUI full player interactively; the app retains ownership of playback state and transport actions.
 
@@ -54,7 +54,7 @@ Library mutations become visible only after a successful database transaction. A
 
 ## Deferred work
 
-EPUB reading, OCR-specific navigation, richer PDF annotations and video workflows, Wayback, radio mode, CarPlay, iCloud, App Intents, Spotlight, SharePlay, custom time browsing, custom rotors, rich provenance timelines, and personalized recommendations are later slices. The existing PDFKit reader and AVKit playback are part of the current app.
+EPUB reading, document-wide OCR search, richer PDF annotations and video workflows, Wayback, radio mode, CarPlay, iCloud, App Intents, Spotlight, SharePlay, custom time browsing, custom rotors, rich provenance timelines, and personalized recommendations are later slices. The existing PDFKit reader, page-by-page on-device OCR view, and AVKit playback are part of the current app. OCR defaults to an automatic no-prompt route, while a remembered Reading Options preference and engine registry preserve user choice and future extensibility.
 
 ## Acceptance gates
 

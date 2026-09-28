@@ -7,19 +7,28 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		019F43BF9C50DFB2E81B4180 /* OriginalVideoRenderDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 544ABB0101069E046D1869A7 /* OriginalVideoRenderDeviceTests.swift */; };
 		0612C9D289398FBC428E3C27 /* ArchiveRootController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1035E1C542DD31B5AF7DA5 /* ArchiveRootController.swift */; };
+		0819BC0D3AD54ACB1B3AD9FC /* PDFScreenRenderingExperiment.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBCD39E1DE37EC819F9F1398 /* PDFScreenRenderingExperiment.swift */; };
+		08B7896C8AE647DB850803BD /* PDFReadingStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B7C8987A024C9057C69CF6 /* PDFReadingStateTests.swift */; };
 		092650D186C0B80450B1D68E /* LNPopupController-Static in Frameworks */ = {isa = PBXBuildFile; productRef = 742D49DB08C0D41ED81D861D /* LNPopupController-Static */; };
+		11120B2CB600AC429F6D4D17 /* ArtifactArtworkLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DEE43DE424342DD4A0FCE85 /* ArtifactArtworkLifecycleTests.swift */; };
 		12EBD26AF65C1AFA4C1E947C /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = C925D409AFD884B695992B66 /* ThirdPartyNotices.txt */; };
 		164B9838D5DDC6D630A2DE26 /* VideoPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6679DD07E857CF400A8D0F0E /* VideoPlaybackTests.swift */; };
+		174756E5B1FB2D86439A6516 /* PDFRenderingPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900320E6DAC58388CC56DD39 /* PDFRenderingPerformanceTests.swift */; };
 		2016C53218798F51A2BCCEB2 /* ExploreController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4EF1C0EE49DCA68E9AFD2B0 /* ExploreController.swift */; };
 		215B14AA35CFE0591A9B5FAD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 103CE391383F5D565780C3E9 /* Assets.xcassets */; };
+		2B6A34F8C3A91C18CD3C130B /* PDFScreenRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D142BB15B17BA9324DE06A1 /* PDFScreenRenderingTests.swift */; };
 		2D94097E74A4A32E057E294D /* CachingArchiveRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FEDE3B0C8AB4E2FBF9FC989 /* CachingArchiveRepository.swift */; };
 		4293535FB23D248856848CD0 /* ArchiveUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C490AC808C395166DE878D /* ArchiveUITests.swift */; };
+		4371177FF55211A371993C12 /* CodecCapabilityDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81249D29E1DDE1BB3E376962 /* CodecCapabilityDeviceTests.swift */; };
 		50BEF2FF5C45963C4B83D12A /* ArchiveListController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6884F84A9B04DA89629283F /* ArchiveListController.swift */; };
 		5E367CCC36735B9303A49A1D /* ArchiveModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A819EEE6AC857483897CBD0 /* ArchiveModels.swift */; };
+		69964F8F9B530CE3463E1233 /* OriginalTransportStreamRenderDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DCF0D8A795C5119BBF82F4D /* OriginalTransportStreamRenderDeviceTests.swift */; };
 		720421C9D4E25BFCA6FF0C39 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 46EAFF53F2D17F57742C1C37 /* libsqlite3.tbd */; };
 		7B6517A430C47B011853C7C6 /* ArtworkPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = D90AB8B93AD96812B85F699B /* ArtworkPipeline.swift */; };
 		7E09BDED5505351B0C074BFC /* ArchiveUIPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 355F68841FB29E31D32D99AE /* ArchiveUIPresentationTests.swift */; };
+		80AC69295D0EE8EECA9F6008 /* PDFPerformanceView.m in Sources */ = {isa = PBXBuildFile; fileRef = 53E6A0331F18A3289FA9BE94 /* PDFPerformanceView.m */; };
 		81AB102D6120E40C43D6F13C /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 043BE4AD828A8ABBC3A386A6 /* DownloadManager.swift */; };
 		90739DE8C0FDEE9A78E25E99 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4CCC5ADA876B0E1B0AF748 /* AppPaths.swift */; };
 		92CF659EE7A8D09402EEF8D6 /* ArchivePlayerPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52E044D35EA7C21FD59F57C5 /* ArchivePlayerPresentation.swift */; };
@@ -29,17 +38,25 @@
 		A7406F2069E87E0CA875411F /* ArchiveDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53EF5E48760ECBC1F7583C8 /* ArchiveDTO.swift */; };
 		A772A45EEF100C313D302609 /* BrowseControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBA346ABB347E2055889C6A2 /* BrowseControllers.swift */; };
 		AB8C1E6248741198877BF28F /* ArchiveCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E440837EE40F583370EE8C8 /* ArchiveCoreTests.swift */; };
+		B1DF8555CF308B1C56B9CF7D /* ArchivePlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0FBBA983C27DE2C7898375EF /* ArchivePlayerCore */; };
 		B2C33504E889A75598009F50 /* ArchiveNetworking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DC0E76A9035183BE9E4B2E7 /* ArchiveNetworking.swift */; };
+		B4C7279E0698DA5A4B45C34B /* ArchivePlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 57F95B05DB59371B0B41D735 /* ArchivePlayerCore */; };
+		B6AC169B724C8C289AFC9021 /* PlaybackLifecyclePolishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F615BA74D2FA82535C0D4E9 /* PlaybackLifecyclePolishTests.swift */; };
 		B83545780C9EAD1676E9A235 /* ArtifactVideoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8B08A3D2FAF6646D67DF1A /* ArtifactVideoController.swift */; };
 		C14924A51C2250A3C9725388 /* PlayerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4AF4771CEBE63845D8E5D4F /* PlayerViews.swift */; };
+		C59A67F3E4EA2B0EAEF76A42 /* ArtifactOriginalVideoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC3C356E17958DA56967EBF5 /* ArtifactOriginalVideoController.swift */; };
+		CE8BC2821F54AEC13A137043 /* DownloadRelocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF5C957D2E224953497E16C /* DownloadRelocationTests.swift */; };
 		D04EE9380ADD7324B7AB736D /* SQLiteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E516ACD3AD11D14B706E0C28 /* SQLiteStore.swift */; };
 		D1C3D38AD3898F6ABB9984BF /* ArchiveAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7CAA3CDEBC13A36AA68A7A /* ArchiveAppearance.swift */; };
+		DAEEAA4F71CD0C58819FF582 /* ArtifactContentsSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A627121EEF226542A5B2DF69 /* ArtifactContentsSearchTests.swift */; };
 		E41AE2C251801129911B910C /* ArchiveApplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33DCA7998E516417CBBEA3D0 /* ArchiveApplication.swift */; };
 		E70AF3DEB6A1BEBC38B68630 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1946853707F8C1C26943C96E /* AVFoundation.framework */; };
 		EE8360AE16A8B71D2614FCF7 /* ArchiveNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD4D33176C0752D9CFCDB1C /* ArchiveNormalizer.swift */; };
+		EFAED3724E3A23D2A19DBD98 /* ArtworkResponseLimitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAF3357BCA6D35D07AA083F7 /* ArtworkResponseLimitTests.swift */; };
 		F4642BE417DB93BF48BF6609 /* SQLiteStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E7C22B44310841D0282CB5 /* SQLiteStoreTests.swift */; };
 		F72345E780EC6B8B352DED05 /* VideoPlaybackSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AA70860A616B18183A423A6 /* VideoPlaybackSession.swift */; };
 		FCA99AABF469AEB2BA77C656 /* ArtifactMediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F53DCF49CD3329AA10C0A6C3 /* ArtifactMediaController.swift */; };
+		FD9309BA95590ED0B4712769 /* PDFReadingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42175C5BE4281A67E151BB2A /* PDFReadingState.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -60,39 +77,57 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		003640CE87D7D19F81837B9B /* ArchivePlayerCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ArchivePlayerCore; path = ArchivePlayerCore; sourceTree = SOURCE_ROOT; };
 		043BE4AD828A8ABBC3A386A6 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		103CE391383F5D565780C3E9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1946853707F8C1C26943C96E /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		1FEDE3B0C8AB4E2FBF9FC989 /* CachingArchiveRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachingArchiveRepository.swift; sourceTree = "<group>"; };
 		23C490AC808C395166DE878D /* ArchiveUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveUITests.swift; sourceTree = "<group>"; };
+		2DCF0D8A795C5119BBF82F4D /* OriginalTransportStreamRenderDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalTransportStreamRenderDeviceTests.swift; sourceTree = "<group>"; };
 		33DCA7998E516417CBBEA3D0 /* ArchiveApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveApplication.swift; sourceTree = "<group>"; };
 		355F68841FB29E31D32D99AE /* ArchiveUIPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveUIPresentationTests.swift; sourceTree = "<group>"; };
 		3AA70860A616B18183A423A6 /* VideoPlaybackSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlaybackSession.swift; sourceTree = "<group>"; };
+		40B7C8987A024C9057C69CF6 /* PDFReadingStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReadingStateTests.swift; sourceTree = "<group>"; };
+		42175C5BE4281A67E151BB2A /* PDFReadingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReadingState.swift; sourceTree = "<group>"; };
 		46EAFF53F2D17F57742C1C37 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		4A819EEE6AC857483897CBD0 /* ArchiveModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveModels.swift; sourceTree = "<group>"; };
 		52E044D35EA7C21FD59F57C5 /* ArchivePlayerPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePlayerPresentation.swift; sourceTree = "<group>"; };
+		53E6A0331F18A3289FA9BE94 /* PDFPerformanceView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PDFPerformanceView.m; sourceTree = "<group>"; };
+		544ABB0101069E046D1869A7 /* OriginalVideoRenderDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoRenderDeviceTests.swift; sourceTree = "<group>"; };
 		5B4CCC5ADA876B0E1B0AF748 /* AppPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPaths.swift; sourceTree = "<group>"; };
 		608C583C931F1CC5E8CD680A /* Archive.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Archive.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6679DD07E857CF400A8D0F0E /* VideoPlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlaybackTests.swift; sourceTree = "<group>"; };
 		6DC0E76A9035183BE9E4B2E7 /* ArchiveNetworking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNetworking.swift; sourceTree = "<group>"; };
 		6E440837EE40F583370EE8C8 /* ArchiveCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveCoreTests.swift; sourceTree = "<group>"; };
 		7989253B6407415D527AFE12 /* ArchiveUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ArchiveUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		79B0BE6A46B715A078A9F922 /* PDFPerformanceView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PDFPerformanceView.h; sourceTree = "<group>"; };
+		7DEE43DE424342DD4A0FCE85 /* ArtifactArtworkLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactArtworkLifecycleTests.swift; sourceTree = "<group>"; };
+		7F615BA74D2FA82535C0D4E9 /* PlaybackLifecyclePolishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackLifecyclePolishTests.swift; sourceTree = "<group>"; };
+		81249D29E1DDE1BB3E376962 /* CodecCapabilityDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodecCapabilityDeviceTests.swift; sourceTree = "<group>"; };
 		8AD4D33176C0752D9CFCDB1C /* ArchiveNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNormalizer.swift; sourceTree = "<group>"; };
 		8C1035E1C542DD31B5AF7DA5 /* ArchiveRootController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveRootController.swift; sourceTree = "<group>"; };
+		900320E6DAC58388CC56DD39 /* PDFRenderingPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFRenderingPerformanceTests.swift; sourceTree = "<group>"; };
+		9D142BB15B17BA9324DE06A1 /* PDFScreenRenderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFScreenRenderingTests.swift; sourceTree = "<group>"; };
 		9E8DF7FE393CD62CCBD41B0D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A11558A4F74CA0129D4F93F6 /* LNPopupController */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LNPopupController; path = Vendor/LNPopupController; sourceTree = SOURCE_ROOT; };
 		A1E7C22B44310841D0282CB5 /* SQLiteStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteStoreTests.swift; sourceTree = "<group>"; };
+		A627121EEF226542A5B2DF69 /* ArtifactContentsSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactContentsSearchTests.swift; sourceTree = "<group>"; };
+		A9A98292ACC4F4584E275AF1 /* ArchiveTests-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ArchiveTests-Bridging-Header.h"; sourceTree = "<group>"; };
+		AC3C356E17958DA56967EBF5 /* ArtifactOriginalVideoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactOriginalVideoController.swift; sourceTree = "<group>"; };
 		B6884F84A9B04DA89629283F /* ArchiveListController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveListController.swift; sourceTree = "<group>"; };
+		BBCD39E1DE37EC819F9F1398 /* PDFScreenRenderingExperiment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFScreenRenderingExperiment.swift; sourceTree = "<group>"; };
 		C4AF4771CEBE63845D8E5D4F /* PlayerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViews.swift; sourceTree = "<group>"; };
 		C4EF1C0EE49DCA68E9AFD2B0 /* ExploreController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreController.swift; sourceTree = "<group>"; };
 		C53EF5E48760ECBC1F7583C8 /* ArchiveDTO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveDTO.swift; sourceTree = "<group>"; };
 		C74258D3484C1CD6C744E2A4 /* ArchiveTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ArchiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C925D409AFD884B695992B66 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
+		CAF3357BCA6D35D07AA083F7 /* ArtworkResponseLimitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkResponseLimitTests.swift; sourceTree = "<group>"; };
 		CBA346ABB347E2055889C6A2 /* BrowseControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseControllers.swift; sourceTree = "<group>"; };
 		CF8B08A3D2FAF6646D67DF1A /* ArtifactVideoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactVideoController.swift; sourceTree = "<group>"; };
 		D90AB8B93AD96812B85F699B /* ArtworkPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkPipeline.swift; sourceTree = "<group>"; };
 		DB7CAA3CDEBC13A36AA68A7A /* ArchiveAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveAppearance.swift; sourceTree = "<group>"; };
 		DC1B482EE8E82E8E3AB40443 /* MediaPlayer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaPlayer.framework; path = System/Library/Frameworks/MediaPlayer.framework; sourceTree = SDKROOT; };
+		DDF5C957D2E224953497E16C /* DownloadRelocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadRelocationTests.swift; sourceTree = "<group>"; };
 		E516ACD3AD11D14B706E0C28 /* SQLiteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteStore.swift; sourceTree = "<group>"; };
 		E6A753F121A7BAD90761B065 /* PlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackController.swift; sourceTree = "<group>"; };
 		EE5D8BD139973DA755837BB7 /* ArtifactControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactControllers.swift; sourceTree = "<group>"; };
@@ -100,11 +135,20 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		B77ECDF2A90D4481CFA62ECD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1DF8555CF308B1C56B9CF7D /* ArchivePlayerCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FC99DAFD50585101CAF7590A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				092650D186C0B80450B1D68E /* LNPopupController-Static in Frameworks */,
+				B4C7279E0698DA5A4B45C34B /* ArchivePlayerCore in Frameworks */,
 				720421C9D4E25BFCA6FF0C39 /* libsqlite3.tbd in Frameworks */,
 				E70AF3DEB6A1BEBC38B68630 /* AVFoundation.framework in Frameworks */,
 				9D2E9DA2D262426A16D68B67 /* MediaPlayer.framework in Frameworks */,
@@ -179,6 +223,16 @@
 		508BCCF74D669B559D2A13D7 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				CAF3357BCA6D35D07AA083F7 /* ArtworkResponseLimitTests.swift */,
+				81249D29E1DDE1BB3E376962 /* CodecCapabilityDeviceTests.swift */,
+				DDF5C957D2E224953497E16C /* DownloadRelocationTests.swift */,
+				2DCF0D8A795C5119BBF82F4D /* OriginalTransportStreamRenderDeviceTests.swift */,
+				544ABB0101069E046D1869A7 /* OriginalVideoRenderDeviceTests.swift */,
+				79B0BE6A46B715A078A9F922 /* PDFPerformanceView.h */,
+				53E6A0331F18A3289FA9BE94 /* PDFPerformanceView.m */,
+				900320E6DAC58388CC56DD39 /* PDFRenderingPerformanceTests.swift */,
+				BBCD39E1DE37EC819F9F1398 /* PDFScreenRenderingExperiment.swift */,
+				7F615BA74D2FA82535C0D4E9 /* PlaybackLifecyclePolishTests.swift */,
 				A1E7C22B44310841D0282CB5 /* SQLiteStoreTests.swift */,
 				6679DD07E857CF400A8D0F0E /* VideoPlaybackTests.swift */,
 			);
@@ -189,6 +243,10 @@
 			isa = PBXGroup;
 			children = (
 				355F68841FB29E31D32D99AE /* ArchiveUIPresentationTests.swift */,
+				7DEE43DE424342DD4A0FCE85 /* ArtifactArtworkLifecycleTests.swift */,
+				A627121EEF226542A5B2DF69 /* ArtifactContentsSearchTests.swift */,
+				40B7C8987A024C9057C69CF6 /* PDFReadingStateTests.swift */,
+				9D142BB15B17BA9324DE06A1 /* PDFScreenRenderingTests.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -202,9 +260,11 @@
 				8C1035E1C542DD31B5AF7DA5 /* ArchiveRootController.swift */,
 				EE5D8BD139973DA755837BB7 /* ArtifactControllers.swift */,
 				F53DCF49CD3329AA10C0A6C3 /* ArtifactMediaController.swift */,
+				AC3C356E17958DA56967EBF5 /* ArtifactOriginalVideoController.swift */,
 				CF8B08A3D2FAF6646D67DF1A /* ArtifactVideoController.swift */,
 				CBA346ABB347E2055889C6A2 /* BrowseControllers.swift */,
 				C4EF1C0EE49DCA68E9AFD2B0 /* ExploreController.swift */,
+				42175C5BE4281A67E151BB2A /* PDFReadingState.swift */,
 				C4AF4771CEBE63845D8E5D4F /* PlayerViews.swift */,
 			);
 			path = UI;
@@ -213,6 +273,7 @@
 		978FCE93DB12F0FC018A7EA5 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
+				003640CE87D7D19F81837B9B /* ArchivePlayerCore */,
 				A11558A4F74CA0129D4F93F6 /* LNPopupController */,
 			);
 			name = Packages;
@@ -244,6 +305,7 @@
 		E38B16EFC2EF6BDA23EEEF5E /* ArchiveTests */ = {
 			isa = PBXGroup;
 			children = (
+				A9A98292ACC4F4584E275AF1 /* ArchiveTests-Bridging-Header.h */,
 				E7CD617E6869638A2B5CA175 /* Core */,
 				508BCCF74D669B559D2A13D7 /* Services */,
 				56C067DC1C747EB749A5E384 /* UI */,
@@ -305,6 +367,7 @@
 			name = Archive;
 			packageProductDependencies = (
 				742D49DB08C0D41ED81D861D /* LNPopupController-Static */,
+				57F95B05DB59371B0B41D735 /* ArchivePlayerCore */,
 			);
 			productName = Archive;
 			productReference = 608C583C931F1CC5E8CD680A /* Archive.app */;
@@ -315,6 +378,7 @@
 			buildConfigurationList = 55B635B843F0A9D600B34F16 /* Build configuration list for PBXNativeTarget "ArchiveTests" */;
 			buildPhases = (
 				9657B9CE5ABD22F44BAB6A36 /* Sources */,
+				B77ECDF2A90D4481CFA62ECD /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -323,6 +387,7 @@
 			);
 			name = ArchiveTests;
 			packageProductDependencies = (
+				0FBBA983C27DE2C7898375EF /* ArchivePlayerCore */,
 			);
 			productName = ArchiveTests;
 			productReference = C74258D3484C1CD6C744E2A4 /* ArchiveTests.xctest */;
@@ -338,10 +403,15 @@
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					40613CDE3A2A74C83C7FB9E3 = {
+						DevelopmentTeam = 68Z6A6ACWF;
 						TestTargetID = 7799D946E1C7C16E007E0C50;
 					};
 					7799D946E1C7C16E007E0C50 = {
+						DevelopmentTeam = 68Z6A6ACWF;
 						ProvisioningStyle = Automatic;
+					};
+					7B6BDEBC6571B882F9565E67 = {
+						DevelopmentTeam = 68Z6A6ACWF;
 					};
 				};
 			};
@@ -356,6 +426,7 @@
 			mainGroup = 25CF119C35E2E693DE60586D;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				452FD58833C2F1A78C500B24 /* XCLocalSwiftPackageReference "ArchivePlayerCore" */,
 				3A9B3E523AFB0F847195C2FB /* XCLocalSwiftPackageReference "Vendor/LNPopupController" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -396,6 +467,19 @@
 			files = (
 				AB8C1E6248741198877BF28F /* ArchiveCoreTests.swift in Sources */,
 				7E09BDED5505351B0C074BFC /* ArchiveUIPresentationTests.swift in Sources */,
+				11120B2CB600AC429F6D4D17 /* ArtifactArtworkLifecycleTests.swift in Sources */,
+				DAEEAA4F71CD0C58819FF582 /* ArtifactContentsSearchTests.swift in Sources */,
+				EFAED3724E3A23D2A19DBD98 /* ArtworkResponseLimitTests.swift in Sources */,
+				4371177FF55211A371993C12 /* CodecCapabilityDeviceTests.swift in Sources */,
+				CE8BC2821F54AEC13A137043 /* DownloadRelocationTests.swift in Sources */,
+				69964F8F9B530CE3463E1233 /* OriginalTransportStreamRenderDeviceTests.swift in Sources */,
+				019F43BF9C50DFB2E81B4180 /* OriginalVideoRenderDeviceTests.swift in Sources */,
+				80AC69295D0EE8EECA9F6008 /* PDFPerformanceView.m in Sources */,
+				08B7896C8AE647DB850803BD /* PDFReadingStateTests.swift in Sources */,
+				174756E5B1FB2D86439A6516 /* PDFRenderingPerformanceTests.swift in Sources */,
+				0819BC0D3AD54ACB1B3AD9FC /* PDFScreenRenderingExperiment.swift in Sources */,
+				2B6A34F8C3A91C18CD3C130B /* PDFScreenRenderingTests.swift in Sources */,
+				B6AC169B724C8C289AFC9021 /* PlaybackLifecyclePolishTests.swift in Sources */,
 				F4642BE417DB93BF48BF6609 /* SQLiteStoreTests.swift in Sources */,
 				164B9838D5DDC6D630A2DE26 /* VideoPlaybackTests.swift in Sources */,
 			);
@@ -417,12 +501,14 @@
 				0612C9D289398FBC428E3C27 /* ArchiveRootController.swift in Sources */,
 				98B0E585008E93F6BB57BFAB /* ArtifactControllers.swift in Sources */,
 				FCA99AABF469AEB2BA77C656 /* ArtifactMediaController.swift in Sources */,
+				C59A67F3E4EA2B0EAEF76A42 /* ArtifactOriginalVideoController.swift in Sources */,
 				B83545780C9EAD1676E9A235 /* ArtifactVideoController.swift in Sources */,
 				7B6517A430C47B011853C7C6 /* ArtworkPipeline.swift in Sources */,
 				A772A45EEF100C313D302609 /* BrowseControllers.swift in Sources */,
 				2D94097E74A4A32E057E294D /* CachingArchiveRepository.swift in Sources */,
 				81AB102D6120E40C43D6F13C /* DownloadManager.swift in Sources */,
 				2016C53218798F51A2BCCEB2 /* ExploreController.swift in Sources */,
+				FD9309BA95590ED0B4712769 /* PDFReadingState.swift in Sources */,
 				954F61784AD426D713AFAC9B /* PlaybackController.swift in Sources */,
 				C14924A51C2250A3C9725388 /* PlayerViews.swift in Sources */,
 				D04EE9380ADD7324B7AB736D /* SQLiteStore.swift in Sources */,
@@ -483,6 +569,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 68Z6A6ACWF;
 				ENABLE_CODE_COVERAGE = NO;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -519,6 +606,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.camden.ArchiveTests;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "ArchiveTests/ArchiveTests-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Archive.app/Archive";
 			};
@@ -560,6 +648,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 68Z6A6ACWF;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -630,7 +719,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Archive/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Archive;
@@ -663,6 +752,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.camden.ArchiveTests;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "ArchiveTests/ArchiveTests-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Archive.app/Archive";
 			};
@@ -674,7 +764,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Archive/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Archive;
@@ -741,9 +831,21 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Vendor/LNPopupController;
 		};
+		452FD58833C2F1A78C500B24 /* XCLocalSwiftPackageReference "ArchivePlayerCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ArchivePlayerCore;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		0FBBA983C27DE2C7898375EF /* ArchivePlayerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ArchivePlayerCore;
+		};
+		57F95B05DB59371B0B41D735 /* ArchivePlayerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ArchivePlayerCore;
+		};
 		742D49DB08C0D41ED81D861D /* LNPopupController-Static */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = "LNPopupController-Static";

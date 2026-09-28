@@ -186,13 +186,24 @@ final class LibraryController: ArchiveListController {
         environment.$saved.combineLatest(environment.$libraryError).sink { [weak self] saved, error in
             guard let self else { return }
             self.clearMessage()
-            self.apply(saved.map { ArchiveRow.artifact($0) })
-            if let error { self.showMessage("Library could not be loaded", detail: error, retry: { Task { await self.environment.reloadLibrary() } }) }
+            var rows = saved.map { ArchiveRow.artifact($0, prefix: "saved:") }
+            if let error, !saved.isEmpty { rows.append(ArchiveRow(id: "__libraryRetry", title: "Try Again", subtitle: "Library could not be updated. " + error)) }
+            self.apply(rows)
+            if let error, saved.isEmpty { self.showMessage("Library could not be loaded", detail: error, retry: { [weak self] in Task { await self?.environment.reloadLibrary() } }) }
             else if saved.isEmpty { self.showMessage("Your saved artifacts", detail: "Save an artifact to keep it here. Your library is stored on this device.") }
         }.store(in: &subscriptions)
     }
     override func selected(_ id: String) {
-        if let artifact = environment.saved.first(where: { $0.identifier == id }) { open(artifact) }
+        if id == "__libraryRetry" { Task { await environment.reloadLibrary() }; return }
+        guard id.hasPrefix("saved:") else { return }
+        if let artifact = environment.saved.first(where: { $0.identifier == String(id.dropFirst(6)) }) { open(artifact) }
+    }
+    override func configure(_ cell: UICollectionViewListCell, row: ArchiveRow) {
+        super.configure(cell, row: row)
+        if row.id == "__libraryRetry" {
+            cell.accessories = []
+            cell.accessibilityHint = "Retries loading saved artifacts"
+        } else { cell.accessibilityHint = nil }
     }
 }
 

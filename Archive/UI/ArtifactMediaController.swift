@@ -8,7 +8,9 @@ import Combine
 /// no PDFView or delegate is attached before that handoff.
 private final class PreparedPDF: @unchecked Sendable {
     let document: PDFDocument
-    init(_ document: PDFDocument) { self.document = document }
+    init(_ document: PDFDocument) {
+        self.document = document
+    }
 }
 
 @MainActor
@@ -22,10 +24,13 @@ enum ArtifactMediaPresentation {
         let candidates = detail.files.filter { file in
             guard !file.isPrivate else { return false }
             let suffix = (file.name as NSString).pathExtension.lowercased()
-            return detail.summary.mediaType == .movies ? ["mp4", "m4v", "mov"].contains(suffix) : suffix == "pdf"
+            return detail.summary.mediaType == .movies ? ["mp4", "m4v", "mov", "mkv"].contains(suffix) : suffix == "pdf"
         }
         return candidates.sorted { lhs, rhs in
             // Stable display order only; multiple files always require selection.
+            let lhsOriginal = (lhs.name as NSString).pathExtension.lowercased() == "mkv"
+            let rhsOriginal = (rhs.name as NSString).pathExtension.lowercased() == "mkv"
+            if lhsOriginal != rhsOriginal { return !lhsOriginal }
             if lhs.size != rhs.size { return (lhs.size ?? .max) < (rhs.size ?? .max) }
             return lhs.name < rhs.name
         }
@@ -37,12 +42,19 @@ enum ArtifactMediaPresentation {
     }
 
     static func isVideoFile(_ fileName: String) -> Bool {
-        ["mp4", "m4v", "mov"].contains((fileName as NSString).pathExtension.lowercased())
+        ["mp4", "m4v", "mov", "mkv"].contains((fileName as NSString).pathExtension.lowercased())
     }
 
     static func watch(file: ArchiveFile, summary: ArtifactSummary, from controller: UIViewController,
                       environment: AppEnvironment, downloadedOnly: Bool = false) {
         guard !file.isPrivate, isVideoFile(file.name), controller.presentedViewController == nil else { return }
+        if (file.name as NSString).pathExtension.lowercased() == "mkv" {
+            let viewer = UINavigationController(rootViewController: ArtifactOriginalVideoController(
+                summary: summary, file: file, environment: environment, downloadedOnly: downloadedOnly))
+            viewer.modalPresentationStyle = .fullScreen
+            controller.present(viewer, animated: true)
+            return
+        }
         let session = VideoPlaybackSession(summary: summary, file: file,
             source: downloadedOnly ? .downloadedOnly : .archive,
             store: environment.store, downloads: environment.downloads,
@@ -69,7 +81,7 @@ enum ArtifactMediaPresentation {
             watch(file: file, summary: summary, from: controller, environment: environment)
         } else {
             controller.navigationController?.pushViewController(
-                ArtifactPDFController(summary: summary, file: file, downloads: environment.downloads), animated: true)
+                ArtifactPDFController(summary: summary, file: file, downloads: environment.downloads, store: environment.store), animated: true)
         }
     }
 }
@@ -100,28 +112,37 @@ private final class ArtifactMediaFilePicker: ArchiveListController {
 /// Documents use the same validated, durable transfers and file leases as audio.
 /// Leaving the reader preserves the download; Cancel is an explicit transfer action.
 @MainActor
-private final class ArtifactPDFController: UIViewController, UISearchBarDelegate, @preconcurrency PDFDocumentDelegate {
+private final class ArtifactPDFController: UIViewController {
     private let summary: ArtifactSummary
     private let file: ArchiveFile
     private let downloads: DownloadManager
+    private let textRecognizer: PDFPageTextRecognizer
+    private let textEngineRegistry: PDFPageTextEngineRegistry
+    private let textEnginePreference = PDFTextEnginePreference()
     private let pdfView = PDFView()
     private let pageLabel = UILabel()
     private let previous = UIButton(type: .system)
     private let nextPageButton = UIButton(type: .system)
-    private let search = UISearchController(searchResultsController: nil)
     private var subscriptions = Set<AnyCancellable>()
     private var lease: URL?
     private var startTask: Task<Void, Never>?
     private var documentTask: Task<Void, Never>?
+    private var textPrefetchTask: Task<Void, Never>?
+    private var removalTask: Task<Void, Never>?
     private var loadingPDF = false
-    private var matches: [PDFSelection] = []
-    private var matchIndex = 0
     private var currentRecord: DownloadRecord?
     private var restoringPage = false
+    private var closed = false
+    private var displayedPage: Int?
+    private var readingLayout = PDFReadingLayout.saved
+    private lazy var progress = PDFReadingProgress(key: resumeKey)
     private var resumeKey: String { "pdf.page.\(DownloadManager.key(identifier: summary.identifier, fileName: file.name))" }
 
-    init(summary: ArtifactSummary, file: ArchiveFile, downloads: DownloadManager) {
+    init(summary: ArtifactSummary, file: ArchiveFile, downloads: DownloadManager, store: SQLiteStore) {
         self.summary = summary; self.file = file; self.downloads = downloads
+        let textEngineRegistry = PDFPageTextEngineRegistry.builtIn
+        self.textEngineRegistry = textEngineRegistry
+        textRecognizer = PDFPageTextRecognizer(store: store, registry: textEngineRegistry)
         super.init(nibName: nil, bundle: nil)
         title = summary.title
     }
@@ -129,6 +150,8 @@ private final class ArtifactPDFController: UIViewController, UISearchBarDelegate
     deinit {
         startTask?.cancel()
         documentTask?.cancel()
+        textPrefetchTask?.cancel()
+        removalTask?.cancel()
         if let lease {
             let downloads = downloads
             Task { @MainActor in downloads.releaseLocalURL(lease) }
@@ -139,9 +162,12 @@ private final class ArtifactPDFController: UIViewController, UISearchBarDelegate
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         navigationItem.largeTitleDisplayMode = .never
+        navigationItem.backButtonDisplayMode = .minimal
         pdfView.autoScales = true
-        pdfView.displayMode = .singlePageContinuous
-        pdfView.displayDirection = .vertical
+        readingLayout.apply(to: pdfView)
+        pdfView.pageShadowsEnabled = false
+        pdfView.isFindInteractionEnabled = true
+        pdfView.accessibilityIdentifier = "reader.document"
         pdfView.backgroundColor = .secondarySystemBackground
         pdfView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(pdfView)
@@ -150,10 +176,10 @@ private final class ArtifactPDFController: UIViewController, UISearchBarDelegate
         pageLabel.adjustsFontForContentSizeCategory = true
         pageLabel.textAlignment = .center
         pageLabel.numberOfLines = 0
-        previous.setImage(UIImage(systemName: "chevron.up"), for: .normal)
+        previous.setImage(UIImage(systemName: readingLayout.previousSymbol), for: .normal)
         previous.accessibilityLabel = "Previous page"
         previous.isEnabled = false
-        nextPageButton.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        nextPageButton.setImage(UIImage(systemName: readingLayout.nextSymbol), for: .normal)
         nextPageButton.accessibilityLabel = "Next page"
         nextPageButton.isEnabled = false
         previous.addAction(UIAction { [weak self] _ in self?.pdfView.goToPreviousPage(nil) }, for: .touchUpInside)
@@ -173,14 +199,13 @@ private final class ArtifactPDFController: UIViewController, UISearchBarDelegate
             previous.widthAnchor.constraint(equalToConstant: 44), previous.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
             nextPageButton.widthAnchor.constraint(equalToConstant: 44), nextPageButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
         ])
-        search.obscuresBackgroundDuringPresentation = false
-        search.searchBar.placeholder = "Find in document"
-        search.searchBar.delegate = self
-        search.searchBar.isUserInteractionEnabled = false
-        navigationItem.searchController = search
         definesPresentationContext = true
         NotificationCenter.default.publisher(for: .PDFViewPageChanged, object: pdfView)
             .sink { [weak self] _ in self?.updatePage() }.store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
+            .sink { [weak self] _ in self?.progress.flush() }.store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)
+            .sink { [weak self] _ in self?.prefetchTextForVoiceOver() }.store(in: &subscriptions)
         let identifier = summary.identifier, fileName = file.name
         downloads.$records.map { records in
             records.first { $0.identifier == identifier && $0.fileName == fileName }
@@ -192,11 +217,34 @@ private final class ArtifactPDFController: UIViewController, UISearchBarDelegate
         startDownload()
     }
 
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        if isMovingFromParent {
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        if pdfView.document != nil { installDocumentActions() }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        progress.flush()
+    }
+
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        // An interactive Back gesture can be cancelled. Only abandon work once
+        // UIKit has actually removed this controller from the navigation stack.
+        removalTask?.cancel()
+        guard parent == nil else { return }
+        // The adaptive iPad layout reparents its existing detail stack. Give
+        // that synchronous transfer time to finish before considering a removal.
+        removalTask = Task { [weak self] in
+            await Task.yield()
+            guard !Task.isCancelled, let self, self.parent == nil else { return }
+            closed = true
+            progress.flush()
+            pdfView.findInteraction.dismissFindNavigator()
             pdfView.document?.cancelFindString()
+            startTask?.cancel()
             documentTask?.cancel()
+            textPrefetchTask?.cancel()
         }
     }
 
@@ -208,13 +256,14 @@ private final class ArtifactPDFController: UIViewController, UISearchBarDelegate
             await downloads.waitUntilReady()
             guard !Task.isCancelled else { return }
             await downloads.start(identifier: summary.identifier, artifactTitle: summary.title, file: file)
+            guard !Task.isCancelled, !closed else { return }
             receive(downloads.records.first { $0.identifier == summary.identifier && $0.fileName == file.name })
         }
     }
 
     private func receive(_ record: DownloadRecord?) {
         currentRecord = record
-        guard pdfView.document == nil, let record else { return }
+        guard !closed, pdfView.document == nil, let record else { return }
         switch record.state {
         case .completed:
             guard !loadingPDF, lease == nil, let url = downloads.acquireLocalURL(identifier: summary.identifier, fileName: file.name) else { return }
@@ -249,7 +298,7 @@ private final class ArtifactPDFController: UIViewController, UISearchBarDelegate
             } onCancel: { worker.cancel() }
             // The awaiting task owns this lease until parsing ends, including
             // after navigation cancels it. Deletion cannot race the worker.
-            guard !Task.isCancelled, let self else {
+            guard !Task.isCancelled, let self, !self.closed else {
                 downloads.releaseLocalURL(url)
                 return
             }
@@ -265,10 +314,8 @@ private final class ArtifactPDFController: UIViewController, UISearchBarDelegate
             contentUnavailableConfiguration = nil
             restoringPage = true
             pdfView.document = document
-            document.delegate = self
             if let page = document.page(at: min(max(0, saved), document.pageCount - 1)) { pdfView.go(to: page) }
             restoringPage = false
-            search.searchBar.isUserInteractionEnabled = true
             installDocumentActions()
             updatePage()
         }
@@ -289,59 +336,116 @@ private final class ArtifactPDFController: UIViewController, UISearchBarDelegate
     private func updatePage() {
         guard !restoringPage, let document = pdfView.document, let page = pdfView.currentPage else { return }
         let index = document.index(for: page)
-        guard index != NSNotFound else { return }
+        guard index != NSNotFound, index != displayedPage else { return }
+        displayedPage = index
         pageLabel.text = "Page \(index + 1) of \(document.pageCount)"
         previous.isEnabled = pdfView.canGoToPreviousPage
         nextPageButton.isEnabled = pdfView.canGoToNextPage
-        UserDefaults.standard.set(index, forKey: resumeKey)
-    }
-
-    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        guard let term = searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines), !term.isEmpty,
-              let document = pdfView.document else { return }
-        document.cancelFindString()
-        matches = []; matchIndex = 0
-        document.beginFindString(term, withOptions: .caseInsensitive)
-        searchBar.resignFirstResponder()
-    }
-
-    func didMatchString(_ instance: PDFSelection) {
-        guard matches.count < 500 else { return }
-        matches.append(instance)
-        if matches.count == 1 { showMatch() }
-    }
-
-    func documentDidEndDocumentFind(_ notification: Notification) {
-        installDocumentActions()
-        if matches.isEmpty {
-            pageLabel.text = "No matches in searchable text"
-            UIAccessibility.post(notification: .announcement, argument: "No matches in searchable text")
-        } else { showMatch() }
-    }
-
-    private func showMatch() {
-        guard matches.indices.contains(matchIndex) else { return }
-        pdfView.setCurrentSelection(matches[matchIndex], animate: !UIAccessibility.isReduceMotionEnabled)
-        pdfView.go(to: matches[matchIndex])
-        pageLabel.text = "Match \(matchIndex + 1) of \(matches.count)\(matches.count == 500 ? "+" : "")"
+        progress.record(page: index)
+        prefetchTextForVoiceOver()
     }
 
     private func installDocumentActions() {
-        let share = UIBarButtonItem(image: UIImage(systemName: "square.and.arrow.up"), primaryAction: UIAction { [weak self] _ in self?.share() })
-        share.accessibilityLabel = "Share PDF"
-        let goToPage = UIBarButtonItem(image: UIImage(systemName: "number.square"), primaryAction: UIAction { [weak self] _ in self?.choosePage() })
-        goToPage.accessibilityLabel = "Go to page"
-        var items = [share, goToPage]
-        if matches.count > 1 {
-            let nextMatch = UIBarButtonItem(image: UIImage(systemName: "text.magnifyingglass"), primaryAction: UIAction { [weak self] _ in
-                guard let self, !self.matches.isEmpty else { return }
-                self.matchIndex = (self.matchIndex + 1) % self.matches.count
-                self.showMatch()
-            })
-            nextMatch.accessibilityLabel = "Next search match"
-            items.append(nextMatch)
+        let find = UIBarButtonItem(image: UIImage(systemName: "magnifyingglass"), primaryAction: UIAction { [weak self] _ in
+            self?.pdfView.findInteraction.presentFindNavigator(showingReplace: false)
+        })
+        find.accessibilityLabel = "Find in document"
+        let readText = UIBarButtonItem(image: UIImage(systemName: "text.viewfinder"), primaryAction: UIAction { [weak self] _ in
+            self?.readRecognizedText()
+        })
+        readText.accessibilityLabel = "Read recognized text"
+        readText.accessibilityHint = "Opens this page as selectable text using the remembered text recognition preference."
+        let layouts = PDFReadingLayout.allCases.map { layout in
+            UIAction(title: layout.title, state: layout == readingLayout ? .on : .off) { [weak self] _ in
+                self?.changeLayout(to: layout)
+            }
         }
-        navigationItem.rightBarButtonItems = items
+        let engineOptions = textEnginePreference.options(ocrEngines: textEngineRegistry.descriptors)
+        let selectedEngineID = textEnginePreference.selectedID
+        let engines = engineOptions.map { engine in
+            UIAction(
+                title: engine.title,
+                attributes: engine.isAvailable ? [] : [.disabled],
+                state: engine.id == selectedEngineID ? .on : .off
+            ) { [weak self] _ in
+                self?.changeTextEngine(to: engine.id)
+            }
+        }
+        let page = UIAction(title: "Go to Page", image: UIImage(systemName: "number.square")) { [weak self] _ in self?.choosePage() }
+        let share = UIAction(title: "Share PDF", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in self?.share() }
+        let menu = UIMenu(children: [
+            page,
+            share,
+            UIMenu(title: "Text Recognition", children: engines),
+            UIMenu(title: "Reading Layout", options: .displayInline, children: layouts)
+        ])
+        let options = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), menu: menu)
+        options.accessibilityLabel = "Reading options"
+        options.accessibilityValue = "\(readingLayout.title), \(textEnginePreference.title(ocrEngines: textEngineRegistry.descriptors))"
+        navigationItem.rightBarButtonItems = [options, find, readText]
+    }
+
+    private func pageTextRequest(index: Int) -> PDFPageTextRequest? {
+        guard let document = pdfView.document, let page = document.page(at: index),
+              let source = PDFPageRenderSource(page: page) else { return nil }
+        return PDFPageTextRequest(
+            page: source,
+            documentKey: DownloadManager.key(identifier: summary.identifier, fileName: file.name),
+            pageIndex: index,
+            expectedBytes: file.size,
+            preferLocalRecognition: PDFPageTextPolicy.prefersLocalRecognition(for: file),
+            selectedEngineID: textEnginePreference.selectedID
+        )
+    }
+
+    private func prefetchTextForVoiceOver() {
+        textPrefetchTask?.cancel()
+        guard UIAccessibility.isVoiceOverRunning, let index = displayedPage,
+              let request = pageTextRequest(index: index) else { return }
+        textPrefetchTask = Task { [textRecognizer] in
+            _ = await textRecognizer.text(for: request)
+        }
+    }
+
+    private func readRecognizedText() {
+        guard let document = pdfView.document, let currentPage = pdfView.currentPage else { return }
+        let index = document.index(for: currentPage)
+        guard index != NSNotFound else { return }
+        let reader = PDFTextReaderController(
+            document: document,
+            initialPage: index,
+            documentKey: DownloadManager.key(identifier: summary.identifier, fileName: file.name),
+            expectedBytes: file.size,
+            preferLocalRecognition: PDFPageTextPolicy.prefersLocalRecognition(for: file),
+            textEngineDescriptors: textEngineRegistry.descriptors,
+            recognizer: textRecognizer
+        ) { [weak self, weak document] index in
+            guard let self, let page = document?.page(at: index) else { return }
+            self.pdfView.go(to: page)
+        }
+        navigationController?.pushViewController(reader, animated: true)
+    }
+
+    private func changeTextEngine(to engineID: String) {
+        guard engineID != textEnginePreference.selectedID else { return }
+        textEnginePreference.select(engineID)
+        textPrefetchTask?.cancel()
+        installDocumentActions()
+        prefetchTextForVoiceOver()
+    }
+
+    private func changeLayout(to layout: PDFReadingLayout) {
+        guard layout != readingLayout else { return }
+        restoringPage = true
+        layout.apply(to: pdfView)
+        readingLayout = layout
+        layout.save()
+        previous.setImage(UIImage(systemName: layout.previousSymbol), for: .normal)
+        nextPageButton.setImage(UIImage(systemName: layout.nextSymbol), for: .normal)
+        restoringPage = false
+        displayedPage = nil
+        updatePage()
+        installDocumentActions()
     }
 
     private func choosePage() {
@@ -372,7 +476,170 @@ private final class ArtifactPDFController: UIViewController, UISearchBarDelegate
     private func share() {
         guard let lease else { return }
         let controller = UIActivityViewController(activityItems: [lease], applicationActivities: nil)
-        controller.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItem
+        controller.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItems?.first
         present(controller, animated: true)
+    }
+}
+
+@MainActor
+private final class PDFTextReaderController: UIViewController {
+    private let document: PDFDocument
+    private let documentKey: String
+    private let expectedBytes: Int64?
+    private let preferLocalRecognition: Bool
+    private let textEngineDescriptors: [PDFTextEngineDescriptor]
+    private let textEnginePreference = PDFTextEnginePreference()
+    private let recognizer: PDFPageTextRecognizer
+    private let showPage: (Int) -> Void
+    private let textView = UITextView()
+    private let pageLabel = UILabel()
+    private let previous = UIButton(type: .system)
+    private let nextPage = UIButton(type: .system)
+    private var pageIndex: Int
+    private var recognitionTask: Task<Void, Never>?
+
+    init(document: PDFDocument, initialPage: Int, documentKey: String, expectedBytes: Int64?,
+         preferLocalRecognition: Bool, textEngineDescriptors: [PDFTextEngineDescriptor],
+         recognizer: PDFPageTextRecognizer,
+         showPage: @escaping (Int) -> Void) {
+        self.document = document
+        self.pageIndex = initialPage
+        self.documentKey = documentKey
+        self.expectedBytes = expectedBytes
+        self.preferLocalRecognition = preferLocalRecognition
+        self.textEngineDescriptors = textEngineDescriptors
+        self.recognizer = recognizer
+        self.showPage = showPage
+        super.init(nibName: nil, bundle: nil)
+        title = "Recognized Text"
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    deinit { recognitionTask?.cancel() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+        navigationItem.largeTitleDisplayMode = .never
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.backgroundColor = .systemBackground
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.adjustsFontForContentSizeCategory = true
+        textView.textContainerInset = UIEdgeInsets(top: 20, left: 16, bottom: 20, right: 16)
+        textView.accessibilityIdentifier = "reader.recognizedText"
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(textView)
+
+        pageLabel.font = .preferredFont(forTextStyle: .footnote)
+        pageLabel.adjustsFontForContentSizeCategory = true
+        pageLabel.textAlignment = .center
+        previous.setImage(UIImage(systemName: "chevron.backward"), for: .normal)
+        previous.accessibilityLabel = "Previous page text"
+        nextPage.setImage(UIImage(systemName: "chevron.forward"), for: .normal)
+        nextPage.accessibilityLabel = "Next page text"
+        previous.addAction(UIAction { [weak self] _ in self?.move(by: -1) }, for: .touchUpInside)
+        nextPage.addAction(UIAction { [weak self] _ in self?.move(by: 1) }, for: .touchUpInside)
+        let controls = UIStackView(arrangedSubviews: [previous, pageLabel, nextPage])
+        controls.axis = .horizontal
+        controls.spacing = 12
+        controls.alignment = .center
+        controls.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(controls)
+
+        NSLayoutConstraint.activate([
+            textView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            textView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            textView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            textView.bottomAnchor.constraint(equalTo: controls.topAnchor, constant: -8),
+            controls.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            controls.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            controls.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
+            previous.widthAnchor.constraint(equalToConstant: 44),
+            previous.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            nextPage.widthAnchor.constraint(equalToConstant: 44),
+            nextPage.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+        ])
+        installTextEngineMenu()
+        loadPage()
+    }
+
+    private func installTextEngineMenu() {
+        let selectedEngineID = textEnginePreference.selectedID
+        let actions = textEnginePreference.options(ocrEngines: textEngineDescriptors).map { engine in
+            UIAction(
+                title: engine.title,
+                attributes: engine.isAvailable ? [] : [.disabled],
+                state: engine.id == selectedEngineID ? .on : .off
+            ) { [weak self] _ in
+                guard let self, engine.id != textEnginePreference.selectedID else { return }
+                textEnginePreference.select(engine.id)
+                installTextEngineMenu()
+                loadPage()
+            }
+        }
+        let item = UIBarButtonItem(title: "Text Engine", menu: UIMenu(title: "Text Recognition", children: actions))
+        item.accessibilityLabel = "Text recognition engine"
+        item.accessibilityValue = textEnginePreference.title(ocrEngines: textEngineDescriptors)
+        navigationItem.rightBarButtonItem = item
+    }
+
+    private func move(by amount: Int) {
+        let destination = pageIndex + amount
+        guard (0..<document.pageCount).contains(destination) else { return }
+        pageIndex = destination
+        showPage(destination)
+        loadPage()
+    }
+
+    private func loadPage() {
+        recognitionTask?.cancel()
+        pageLabel.text = "Page \(pageIndex + 1) of \(document.pageCount)"
+        previous.isEnabled = pageIndex > 0
+        nextPage.isEnabled = pageIndex + 1 < document.pageCount
+        textView.text = ""
+        textView.accessibilityLabel = "Recognized text, page \(pageIndex + 1)"
+        var loading = UIContentUnavailableConfiguration.loading()
+        loading.text = "Recognizing page \(pageIndex + 1)"
+        loading.secondaryText = "Using \(textEnginePreference.title(ocrEngines: textEngineDescriptors))."
+        contentUnavailableConfiguration = loading
+
+        guard let page = document.page(at: pageIndex), let source = PDFPageRenderSource(page: page) else {
+            showNoText()
+            return
+        }
+        let request = PDFPageTextRequest(
+            page: source,
+            documentKey: documentKey,
+            pageIndex: pageIndex,
+            expectedBytes: expectedBytes,
+            preferLocalRecognition: preferLocalRecognition,
+            selectedEngineID: textEnginePreference.selectedID
+        )
+        recognitionTask = Task { [weak self, recognizer] in
+            let result = await recognizer.text(for: request)
+            guard !Task.isCancelled, let self else { return }
+            if result.text.isEmpty {
+                showNoText()
+            } else {
+                contentUnavailableConfiguration = nil
+                textView.text = result.text
+                if let engineID = result.engineID {
+                    textView.accessibilityHint = textEnginePreference.options(ocrEngines: textEngineDescriptors)
+                        .first { $0.id == engineID }?.title
+                }
+                textView.setContentOffset(.zero, animated: false)
+                UIAccessibility.post(notification: .screenChanged, argument: textView)
+            }
+        }
+    }
+
+    private func showNoText() {
+        var unavailable = UIContentUnavailableConfiguration.empty()
+        unavailable.image = UIImage(systemName: "text.magnifyingglass")
+        unavailable.text = "No text found on page \(pageIndex + 1)"
+        unavailable.secondaryText = "Try another page; this page may not contain readable text."
+        contentUnavailableConfiguration = unavailable
+        UIAccessibility.post(notification: .screenChanged, argument: view)
     }
 }

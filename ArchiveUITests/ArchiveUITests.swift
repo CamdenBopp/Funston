@@ -122,11 +122,20 @@ final class ArchiveUITests: XCTestCase {
         XCTAssertTrue(page.waitForExistence(timeout: 60))
         app.buttons["Next page"].tap()
         let savedPage = page.label
+        app.buttons["Reading options"].tap()
+        app.buttons["Continuous Scroll"].tap()
+        XCTAssertTrue(app.staticTexts[savedPage].waitForExistence(timeout: 5))
+        app.buttons["Reading options"].tap()
+        app.buttons["Page by Page"].tap()
+        XCTAssertTrue(app.staticTexts[savedPage].waitForExistence(timeout: 5))
         capture(app, name: "07 Reader")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(read.waitForExistence(timeout: 5))
         read.tap()
         XCTAssertTrue(app.staticTexts[savedPage].waitForExistence(timeout: 10))
+        app.buttons["Find in document"].tap()
+        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        capture(app, name: "07b Native PDF Find")
     }
 
     @MainActor
@@ -180,6 +189,48 @@ final class ArchiveUITests: XCTestCase {
         if !transport.exists || !transport.isHittable { canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
         XCTAssertTrue(transport.waitForExistence(timeout: 5))
         done.tap()
+    }
+
+    @MainActor
+    func testOriginalMKVAudioTrackJourneyIfEnabled() throws {
+        guard ProcessInfo.processInfo.environment["IA_MKV_UI_TESTS"] == "1" else {
+            throw XCTSkip("Set IA_MKV_UI_TESTS=1 for the live original-file UI journey")
+        }
+        let app = XCUIApplication()
+        app.launchArguments += ["--skip-playback-restoration"]
+        app.launch()
+        app.tabBars.buttons["Search"].tap()
+        let field = app.searchFields["Search the Internet Archive"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("the-ancient-magus-bride-s-01-e-03-720p-hd-blu-ray-multi-audio-esub\n")
+        let result = app.collectionViews.cells["artifact:the-ancient-magus-bride-s-01-e-03-720p-hd-blu-ray-multi-audio-esub"]
+        XCTAssertTrue(result.waitForExistence(timeout: 40), app.debugDescription)
+        result.tap()
+        let watch = app.buttons["artifact.watch"]
+        XCTAssertTrue(watch.waitForExistence(timeout: 40))
+        watch.tap()
+        let original = app.collectionViews.cells.matching(NSPredicate(format: "label CONTAINS[c] %@", ".mkv")).firstMatch
+        XCTAssertTrue(original.waitForExistence(timeout: 10), app.debugDescription)
+        original.tap()
+        let audio = app.buttons["Audio"]
+        XCTAssertTrue(audio.waitForExistence(timeout: 60), app.debugDescription)
+        let originalValue = audio.value as? String
+        XCTAssertNotNil(originalValue)
+        if !audio.isHittable { app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).tap() }
+        audio.tap()
+        let alternate = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Japanese")).firstMatch
+        XCTAssertTrue(alternate.waitForExistence(timeout: 5), app.debugDescription)
+        alternate.tap()
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "value CONTAINS[c] %@", "Japanese"), object: audio)], timeout: 30),
+            .completed,
+            "An alternate audio track should become the selected accessible value")
+        let done = app.buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Close'")).firstMatch
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.tap()
+        XCTAssertTrue(original.waitForExistence(timeout: 5), "Closing the player should return to file selection")
     }
 
     @MainActor

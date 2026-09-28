@@ -314,11 +314,21 @@ final class DownloadManager: NSObject, ObservableObject {
         let tasks = await session.allTasks
         var reconciled: [DownloadRecord] = []
         for var record in stored {
+            // App container roots can change across reinstalls/restores/updates.
+            // Persisted absolute paths are not durable identities: recover only
+            // the exact managed filename for this record in today's Media folder.
+            let relocated = relocatedManagedURL(for: record)
+            if let relocated {
+                record.localPath = relocated.path
+            }
             let active = tasks.filter { DownloadTaskIdentity(taskDescription: $0.taskDescription)?.matches(record, directory: mediaDirectory) == true }
-            let attributes = try? FileManager.default.attributesOfItem(atPath: record.localPath)
+            let safePath = record.localPath.hasPrefix("/")
+                && !record.localPath.split(separator: "/").contains(where: { $0 == "." || $0 == ".." })
+            let attributes = safePath ? regularMediaFileAttributes(URL(fileURLWithPath: record.localPath)) : nil
             let bytes = (attributes?[.size] as? NSNumber)?.int64Value
             let validFile = bytes != nil && (record.expectedBytes == nil || bytes == record.expectedBytes)
-            if [.completed, .queued, .downloading].contains(record.state), validFile {
+            if ([.completed, .queued, .downloading].contains(record.state)
+                || (record.state == .missing && relocated != nil)), validFile {
                 record.state = .completed; record.errorMessage = nil; active.forEach { $0.cancel() }
             } else if [.queued, .downloading].contains(record.state), !active.isEmpty {
                 record.state = .downloading; active.dropFirst().forEach { $0.cancel() }; active.first?.resume()
@@ -330,14 +340,56 @@ final class DownloadManager: NSObject, ObservableObject {
             reconciled.append(record)
         }
         let knownPaths = Set(reconciled.map(\.localPath))
+        // An invalid or unrecognized record is not permission to delete a file
+        // with the same basename. Leave ambiguous data for explicit user action.
+        let referencedNames = Set(stored.map { URL(fileURLWithPath: $0.localPath).lastPathComponent })
         for task in tasks {
             if let identity = DownloadTaskIdentity(taskDescription: task.taskDescription),
                !reconciled.contains(where: { identity.matches($0, directory: mediaDirectory) }) { task.cancel() }
         }
         if let contents = try? FileManager.default.contentsOfDirectory(at: mediaDirectory, includingPropertiesForKeys: nil) {
-            for url in contents where !knownPaths.contains(url.path) { try? FileManager.default.removeItem(at: url) }
+            for url in contents where !knownPaths.contains(url.path)
+                && !referencedNames.contains(url.lastPathComponent)
+                && Self.isManagedFileName(url.lastPathComponent)
+                && regularMediaFileAttributes(url) != nil {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
         records = reconciled.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func regularMediaFileAttributes(_ url: URL) -> [FileAttributeKey: Any]? {
+        guard url.deletingLastPathComponent().standardizedFileURL == mediaDirectory.standardizedFileURL,
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              attributes[.type] as? FileAttributeType == .typeRegular else { return nil }
+        return attributes
+    }
+
+    private func relocatedManagedURL(for record: DownloadRecord) -> URL? {
+        guard record.localPath.hasPrefix("/"),
+              !record.localPath.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }),
+              record.key == Self.key(identifier: record.identifier, fileName: record.fileName) else { return nil }
+        let previous = URL(fileURLWithPath: record.localPath)
+        guard previous.deletingLastPathComponent().lastPathComponent == mediaDirectory.lastPathComponent else { return nil }
+        let name = previous.lastPathComponent
+        guard Self.isManagedFileName(name) else { return nil }
+        let legacyName = Self.localURL(key: record.key, fileName: record.fileName, directory: mediaDirectory).lastPathComponent
+        let suffix = String(legacyName.dropFirst(record.key.count))
+        let stem = suffix.isEmpty ? name : String(name.dropLast(suffix.count))
+        guard name.hasSuffix(suffix),
+              stem == record.key || (stem.hasPrefix(record.key + "-")
+                && UUID(uuidString: String(stem.dropFirst(record.key.count + 1))) != nil) else { return nil }
+        let candidate = mediaDirectory.appendingPathComponent(name)
+        guard candidate.path != record.localPath,
+              let attributes = regularMediaFileAttributes(candidate),
+              let bytes = (attributes[.size] as? NSNumber)?.int64Value,
+              record.expectedBytes == nil || bytes == record.expectedBytes else { return nil }
+        return candidate
+    }
+
+    nonisolated private static func isManagedFileName(_ name: String) -> Bool {
+        name.range(of: "^[a-f0-9]{64}(?:-[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12})?(?:\\.[a-z0-9]{1,8})?$",
+                   options: .regularExpression) != nil
     }
     private func upsertInMemory(_ record: DownloadRecord) {
         if let index = records.firstIndex(where: { $0.key == record.key }) { records[index] = record }

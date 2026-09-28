@@ -9,6 +9,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: 68Z6A6ACWF
     ENABLE_USER_SCRIPT_SANDBOXING: true
     ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: true
   configs:
@@ -18,6 +19,8 @@ settings:
 packages:
   LNPopupController:
     path: Vendor/LNPopupController
+  ArchivePlayerCore:
+    path: ArchivePlayerCore
 targets:
   Archive:
     type: application
@@ -27,6 +30,8 @@ targets:
     dependencies:
       - package: LNPopupController
         product: LNPopupController-Static
+      - package: ArchivePlayerCore
+        product: ArchivePlayerCore
       - sdk: libsqlite3.tbd
       - sdk: AVFoundation.framework
       - sdk: MediaPlayer.framework
@@ -44,7 +49,7 @@ targets:
         SUPPORTS_MACCATALYST: false
         TARGETED_DEVICE_FAMILY: "1,2"
         MARKETING_VERSION: "0.2.0"
-        CURRENT_PROJECT_VERSION: "7"
+        CURRENT_PROJECT_VERSION: "9"
         CODE_SIGN_STYLE: Automatic
     scheme:
       testTargets:
@@ -58,10 +63,13 @@ targets:
       - path: ArchiveTests
     dependencies:
       - target: Archive
+      - package: ArchivePlayerCore
+        product: ArchivePlayerCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.camden.ArchiveTests
         GENERATE_INFOPLIST_FILE: true
+        SWIFT_OBJC_BRIDGING_HEADER: ArchiveTests/ArchiveTests-Bridging-Header.h
   ArchiveUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -73,3 +81,20 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.camden.ArchiveUITests
         GENERATE_INFOPLIST_FILE: true
+schemes:
+  ArchivePDFPerformance:
+    build:
+      targets:
+        Archive: [test]
+    test:
+      config: Release
+      gatherCoverageData: false
+      environmentVariables:
+        IA_PDF_PERFORMANCE: "1"
+        IA_PDF_PERFORMANCE_MODE: "$(PDF_PERFORMANCE_MODE)"
+      commandLineArguments:
+        "--skip-playback-restoration": true
+      targets:
+        - name: ArchiveTests
+          selectedTests:
+            - PDFRenderingPerformanceTests

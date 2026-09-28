@@ -32,12 +32,15 @@ final class ArchiveUIPresentationTests: XCTestCase {
     }
 
     @MainActor
-    func testMediaPrimaryActionMatchesSupportedFileAndAvoidsUnsupportedVideo() {
+    func testMediaPrimaryActionPrefersNativeVideoAndSupportsMKVFallback() {
         let summary = ArtifactSummary(identifier: "film", title: "Film", mediaType: .movies)
-        let unsupported = ArchiveFile(name: "source.mkv", size: 100)
+        let unsupported = ArchiveFile(name: "source.avi", size: 100)
+        let mkv = ArchiveFile(name: "source.mkv", size: 100)
         let mp4 = ArchiveFile(name: "film.MP4", size: 200)
         XCTAssertNil(ArtifactMediaPresentation.actionTitle(for: ArtifactDetail(summary: summary, files: [unsupported])))
-        let detail = ArtifactDetail(summary: summary, files: [unsupported, mp4])
+        XCTAssertEqual(ArtifactMediaPresentation.preferredFile(in: ArtifactDetail(summary: summary, files: [mkv])), mkv)
+        XCTAssertEqual(ArtifactMediaPresentation.actionTitle(for: ArtifactDetail(summary: summary, files: [mkv])), "Watch Film")
+        let detail = ArtifactDetail(summary: summary, files: [unsupported, mkv, mp4])
         XCTAssertEqual(ArtifactMediaPresentation.preferredFile(in: detail), mp4)
         XCTAssertEqual(ArtifactMediaPresentation.actionTitle(for: detail), "Watch Film")
     }

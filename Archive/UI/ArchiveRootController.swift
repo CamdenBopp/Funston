@@ -70,7 +70,7 @@ final class ArchiveRootController: UIViewController {
             split.minimumSupplementaryColumnWidth = 320
             split.preferredSupplementaryColumnWidth = 320
             updateSplitDisplayMode()
-            let sidebar = DestinationController { [weak self] index in self?.choose(index) }
+            let sidebar = DestinationController(selectedIndex: selectedDestination) { [weak self] index in self?.choose(index) }
             split.setViewController(UINavigationController(rootViewController: sidebar), for: .primary)
             split.setViewController(destinations[selectedDestination], for: .supplementary)
             split.setViewController(histories[selectedDestination].detail ?? emptyDetail(), for: .secondary)
@@ -220,11 +220,27 @@ final class DestinationNavigationHistory {
 @MainActor
 private final class DestinationController: ArchiveListController {
     let choose: (Int) -> Void
-    init(choose: @escaping (Int) -> Void) {
+    private var selectedIndex: Int
+    init(selectedIndex: Int, choose: @escaping (Int) -> Void) {
+        self.selectedIndex = selectedIndex
         self.choose = choose
         super.init(title: "Archive", appearance: .sidebar)
         apply([ArchiveRow(id: "0", title: "Explore", symbol: "safari"), ArchiveRow(id: "1", title: "Search", symbol: "magnifyingglass"), ArchiveRow(id: "2", title: "Library", symbol: "books.vertical"), ArchiveRow(id: "3", title: "Downloads", symbol: "arrow.down.circle")])
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    override func selected(_ id: String) { if let index = Int(id) { choose(index) } }
+    override func configure(_ cell: UICollectionViewListCell, row: ArchiveRow) {
+        super.configure(cell, row: row)
+        let selected = Int(row.id) == selectedIndex
+        cell.accessories = selected ? [.checkmark()] : []
+        if selected { cell.accessibilityTraits.insert(.selected) }
+    }
+    override func selected(_ id: String) {
+        guard let index = Int(id) else { return }
+        if index != selectedIndex {
+            let previous = selectedIndex
+            selectedIndex = index
+            refreshRow(String(previous)); refreshRow(id)
+        }
+        choose(index)
+    }
 }

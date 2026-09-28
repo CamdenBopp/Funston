@@ -227,9 +227,12 @@ final class PlaybackController: ObservableObject {
         guard !interrupted, !restoringPosition else { return }
         if phase == .ended {
             let currentGeneration = generation
+            let currentIntent = intentRevision
+            let currentPositionRevision = positionRevision
             Task { @MainActor in
                 let completed = await player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
-                guard completed, currentGeneration == generation, wantsToPlay else { return }
+                guard completed, currentGeneration == generation, currentIntent == intentRevision,
+                      currentPositionRevision == positionRevision, wantsToPlay else { return }
                 elapsed = 0
                 persist(seconds: 0)
                 phase = .paused
@@ -284,6 +287,11 @@ final class PlaybackController: ObservableObject {
         phase = .paused
         saveCurrentPosition()
         updateNowPlaying()
+        deactivateAudioSession()
+    }
+
+    private func deactivateAudioSession() {
+        guard videoOwnership == nil else { return }
         let previous = audioSessionTail
         let deactivate = audioSessionDeactivator
         audioSessionTail = Task { @MainActor in
@@ -427,6 +435,10 @@ final class PlaybackController: ObservableObject {
                     let revision = self.positionRevision
                     let identifier = self.context?.artifact.identifier ?? ""
                     let fileName = self.context?.file.name ?? ""
+                    // Item replacement may become ready before older queued
+                    // bookmark writes finish. Restore the latest committed intent.
+                    await self.persistenceTail?.value
+                    guard self.generation == expectedGeneration, self.player.currentItem === item else { return }
                     let saved = (try? await self.store.playbackPosition(
                         identifier: identifier,
                         fileName: fileName
@@ -468,8 +480,10 @@ final class PlaybackController: ObservableObject {
         }
         restoringPosition = false
         wantsToPlay = false
+        intentRevision &+= 1
         player.pause()
         phase = .failed(message)
+        deactivateAudioSession()
         updateNowPlaying()
         UIAccessibility.post(notification: .announcement, argument: "Playback failed. The track remains selected.")
     }
@@ -545,6 +559,8 @@ final class PlaybackController: ObservableObject {
         } else {
             player.pause()
             wantsToPlay = false
+            intentRevision &+= 1
+            deactivateAudioSession()
             updateNowPlaying()
         }
     }

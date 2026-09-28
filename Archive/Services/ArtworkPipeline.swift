@@ -47,11 +47,13 @@ actor ArtworkPipeline {
     }
     private let cache = NSCache<NSString, SendableImage>()
     private let session: URLSession
+    private let maximumResponseBytes: Int
     private let fetchLimiter = ArtworkWorkLimiter(limit: 4)
     private let decodeLimiter = ArtworkWorkLimiter(limit: 2)
     private var inFlight: [String: Flight] = [:]
 
-    init(session: URLSession? = nil) {
+    init(session: URLSession? = nil, maximumResponseBytes: Int = 8 * 1_024 * 1_024) {
+        self.maximumResponseBytes = max(1, min(maximumResponseBytes, 16 * 1_024 * 1_024))
         if let session { self.session = session }
         else {
             let configuration = URLSessionConfiguration.default
@@ -85,6 +87,7 @@ actor ArtworkPipeline {
         if inFlight[key] != nil { inFlight[key]?.consumers[consumer] = continuation; return }
         let flightID = UUID()
         let session = session, fetchLimiter = fetchLimiter, decodeLimiter = decodeLimiter
+        let maximumResponseBytes = maximumResponseBytes
         let task = Task.detached(priority: .utility) { [weak self] in
             let result: Result<SendableImage, Error>
             do {
@@ -92,9 +95,7 @@ actor ArtworkPipeline {
                 let data: Data
                 do {
                     try Task.checkCancellation()
-                    let (received, response) = try await session.data(from: url)
-                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
-                    data = received
+                    data = try await ArtworkResponseLoader(maximumBytes: maximumResponseBytes).load(url, session: session)
                     // Keep the fetch permit until decode has capacity. This bounds
                     // compressed responses waiting in memory as well as network work.
                     try await decodeLimiter.acquire()
@@ -140,5 +141,92 @@ actor ArtworkPipeline {
                                       kCGImageSourceThumbnailMaxPixelSize: maxPixelSize]
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
         return UIImage(cgImage: image)
+    }
+}
+
+/// One request, with all mutable state protected by the lock. Data arrives in
+/// URLSession chunks, not per-byte async iteration. The existing session retains
+/// its cache/protocol configuration and shared-connection behavior.
+final class ArtworkResponseLoader: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let maximumBytes: Int
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Data, Error>?
+    private var task: URLSessionDataTask?
+    private var outcome: Result<Data, Error>?
+    private var acceptedResponse = false
+    private var body = Data()
+
+    init(maximumBytes: Int) { self.maximumBytes = max(1, maximumBytes) }
+
+    func load(_ url: URL, session: URLSession) async throws -> Data {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+                if let outcome {
+                    lock.unlock(); continuation.resume(with: outcome); return
+                }
+                self.continuation = continuation
+                let task = session.dataTask(with: url)
+                task.delegate = self
+                self.task = task
+                lock.unlock()
+                task.resume()
+            }
+        } onCancel: { self.finish(.failure(CancellationError()), cancel: true) }
+    }
+
+    private func finish(_ result: Result<Data, Error>, cancel: Bool) {
+        lock.lock()
+        guard outcome == nil else { lock.unlock(); return }
+        outcome = result
+        let continuation = self.continuation; self.continuation = nil
+        let task = self.task; self.task = nil
+        body = Data()
+        lock.unlock()
+        if cancel { task?.cancel() }
+        continuation?.resume(with: result)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+                    completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void) {
+        let error: URLError?
+        if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+            if response.expectedContentLength > Int64(maximumBytes) { error = URLError(.dataLengthExceedsMaximum) }
+            else if response.mimeType?.lowercased().hasPrefix("image/") != true { error = URLError(.cannotDecodeContentData) }
+            else { error = nil }
+        } else { error = URLError(.badServerResponse) }
+        if let error {
+            finish(.failure(error), cancel: true)
+            completionHandler(.cancel)
+            return
+        }
+        lock.lock()
+        let active = outcome == nil
+        if active { acceptedResponse = true }
+        lock.unlock()
+        completionHandler(active ? .allow : .cancel)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        lock.lock()
+        guard outcome == nil else { lock.unlock(); return }
+        guard acceptedResponse, data.count <= maximumBytes - body.count else {
+            lock.unlock()
+            finish(.failure(URLError(.dataLengthExceedsMaximum)), cancel: true)
+            return
+        }
+        body.append(data)
+        lock.unlock()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        lock.lock()
+        guard outcome == nil else { lock.unlock(); return }
+        let result: Result<Data, Error>
+        if let error { result = .failure(error) }
+        else if acceptedResponse, !body.isEmpty { result = .success(body) }
+        else { result = .failure(URLError(.cannotDecodeContentData)) }
+        lock.unlock()
+        finish(result, cancel: false)
     }
 }

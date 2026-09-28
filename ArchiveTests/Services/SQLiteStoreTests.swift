@@ -478,7 +478,9 @@ final class ServiceReviewTests: XCTestCase {
                     }
                 } else { resumed.fulfill() }
             }, audioSessionDeactivator: {
-                XCTAssertEqual(avPlayer.rate, 0, "The superseded activation must not start playback.")
+                if events == ["activate1"] {
+                    XCTAssertEqual(avPlayer.rate, 0, "The superseded activation must not start playback.")
+                }
                 events.append("deactivate")
             })
         playback.playDownloaded(record)
@@ -488,7 +490,10 @@ final class ServiceReviewTests: XCTestCase {
         finishActivation?.resume()
         await fulfillment(of: [resumed], timeout: 3)
         XCTAssertEqual(events, ["activate1", "deactivate", "activate2"])
-        playback.pause()
+        let stopped = await playback.pauseAndDeactivate()
+        XCTAssertTrue(stopped)
+        XCTAssertEqual(avPlayer.rate, 0)
+        XCTAssertEqual(events, ["activate1", "deactivate", "activate2", "deactivate"])
     }
 
     func testTrackNavigationContinuesPlayingIncludingRapidChanges() async throws {
