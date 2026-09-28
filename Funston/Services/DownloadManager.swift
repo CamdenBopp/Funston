@@ -114,6 +114,10 @@ enum DownloadFailurePresentation {
 @MainActor
 final class DownloadManager: NSObject, ObservableObject {
     @Published private(set) var records: [DownloadRecord] = []
+    /// Set when the saved download list can't be read. Without it the Downloads
+    /// tab would look empty, as if every download had been removed.
+    @Published private(set) var loadError: String?
+    private static let logger = Logger(subsystem: "com.camden.Funston", category: "Downloads")
     private let store: any DownloadPersistence
     private let mediaDirectory: URL
     private let delegate: DownloadSessionDelegate
@@ -193,7 +197,7 @@ final class DownloadManager: NSObject, ObservableObject {
         } catch {
             task?.cancel()
             record.state = .failed; record.errorMessage = error.localizedDescription
-            try? await store.upsertDownload(record)
+            await persistRecoverably(record)
             upsertInMemory(record)
         }
     }
@@ -299,7 +303,7 @@ final class DownloadManager: NSObject, ObservableObject {
         await serialize { [self] in
             guard var record = records.first(where: { identity.matches($0, directory: mediaDirectory) }), [.queued, .downloading].contains(record.state) else { return }
             record.state = .failed; record.errorMessage = message; record.updatedAt = .now
-            try? await store.upsertDownload(record)
+            await persistRecoverably(record)
             upsertInMemory(record)
         }
     }
@@ -309,8 +313,30 @@ final class DownloadManager: NSObject, ObservableObject {
             else { backgroundEventsDrained = true }
         }
     }
+    func reloadAfterFailure() async {
+        await serialize { [self] in await loadAndReconcile() }
+    }
+    /// For writes whose loss launch reconciliation repairs: a failed or reconciled
+    /// state that isn't saved is re-derived from the file system on next launch.
+    /// The failure is still logged rather than dropped.
+    private func persistRecoverably(_ record: DownloadRecord) async {
+        do { try await store.upsertDownload(record) }
+        catch {
+            Self.logger.error("Download record not saved (state \(record.state.rawValue, privacy: .public)): \(error.localizedDescription, privacy: .public)")
+        }
+    }
     private func loadAndReconcile() async {
-        guard let stored = try? await store.downloads() else { return }
+        let stored: [DownloadRecord]
+        do {
+            stored = try await store.downloads()
+            loadError = nil
+        } catch {
+            Self.logger.error("Download list not loaded: \(error.localizedDescription, privacy: .public)")
+            // Leave files and tasks untouched: an unreadable list is not evidence
+            // that anything on disk is orphaned.
+            loadError = error.localizedDescription
+            return
+        }
         let tasks = await session.allTasks
         var reconciled: [DownloadRecord] = []
         for var record in stored {
@@ -336,7 +362,7 @@ final class DownloadManager: NSObject, ObservableObject {
                 record.state = record.state == .completed ? .missing : .failed
                 record.errorMessage = "The download is unavailable on this device. Try again."
             } else { active.forEach { $0.cancel() } }
-            try? await store.upsertDownload(record)
+            await persistRecoverably(record)
             reconciled.append(record)
         }
         let knownPaths = Set(reconciled.map(\.localPath))

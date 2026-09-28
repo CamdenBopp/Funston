@@ -153,9 +153,14 @@ private final class BackgroundArtworkProbe: @unchecked Sendable {
 private actor FaultingDownloadStore: DownloadPersistence {
     var records: [DownloadRecord]
     var rejectWrites = false
+    var rejectReads = false
     init(records: [DownloadRecord]) { self.records = records }
     func setRejectWrites(_ value: Bool) { rejectWrites = value }
-    func downloads() -> [DownloadRecord] { records }
+    func setRejectReads(_ value: Bool) { rejectReads = value }
+    func downloads() throws -> [DownloadRecord] {
+        if rejectReads { throw DownloadTestError.persistence }
+        return records
+    }
     func upsertDownload(_ record: DownloadRecord) throws {
         if rejectWrites { throw DownloadTestError.persistence }
         records.removeAll { $0.key == record.key }; records.append(record)
@@ -328,8 +333,32 @@ final class ServiceReviewTests: XCTestCase {
         do { try await manager.remove(record); XCTFail("Expected persistence error") } catch DownloadTestError.persistence {}
         XCTAssertEqual(manager.records.first, record)
         XCTAssertTrue(FileManager.default.fileExists(atPath: path.path))
-        let durable = await store.downloads()
+        let durable = try await store.downloads()
         XCTAssertEqual(durable, [record])
+    }
+
+    /// An unreadable download list used to leave Downloads empty with no error,
+    /// indistinguishable from having no downloads. It must say so, touch no files,
+    /// and recover on Retry.
+    func testUnreadableDownloadListIsReportedAndRecoversOnRetry() async throws {
+        let (_, directory, media) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = media.appending(path: "track.mp3")
+        try Data([1, 2, 3]).write(to: path)
+        let record = DownloadRecord(key: "key", identifier: "item", fileName: "track.mp3", title: "Track", expectedBytes: 3,
+                                    localPath: path.path, state: .completed, receivedBytes: 3, totalBytes: 3, errorMessage: nil, updatedAt: .now)
+        let store = FaultingDownloadStore(records: [record])
+        await store.setRejectReads(true)
+        let manager = DownloadManager(store: store, mediaDirectory: media, sessionConfiguration: .ephemeral)
+        await manager.waitUntilReady()
+        XCTAssertNotNil(manager.loadError)
+        XCTAssertTrue(manager.records.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path.path), "An unreadable list must not delete files")
+
+        await store.setRejectReads(false)
+        await manager.reloadAfterFailure()
+        XCTAssertNil(manager.loadError)
+        XCTAssertEqual(manager.records.map(\.key), ["key"])
     }
 
     func testReconciliationRecoversMovedFileButNeverRevivesCancelledAttempt() async throws {

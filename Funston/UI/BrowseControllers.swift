@@ -215,14 +215,20 @@ final class DownloadsController: FunstonListController {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        subscription = environment.downloads.$records.sink { [weak self] records in
+        subscription = environment.downloads.$records.combineLatest(environment.downloads.$loadError).sink { [weak self] records, loadError in
             guard let self else { return }
             self.records = records
             self.clearMessage()
             let update = self.projection.update(records)
             if update.replacesContents { self.apply(update.rows) }
             else { self.updateRows(update.rows) }
-            if records.isEmpty { self.showMessage("No downloads", detail: "Downloaded files play and open without a connection.") }
+            if let loadError, records.isEmpty {
+                self.showMessage("Could not load downloads", detail: loadError, retry: { [weak self] in
+                    Task { await self?.environment.downloads.reloadAfterFailure() }
+                })
+            } else if records.isEmpty {
+                self.showMessage("No downloads", detail: "Downloaded files play and open without a connection.")
+            }
         }
     }
     override func viewDidDisappear(_ animated: Bool) {
