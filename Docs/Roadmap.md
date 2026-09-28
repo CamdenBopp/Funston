@@ -85,7 +85,7 @@ Still open; see [PDFScrollingPolish.md](PDFScrollingPolish.md). It shows up most
 ### 4.1 Split the item screen by experience, just before Books (M)
 `ArtifactController` knows about recordings, PDFs and films in one class. Before adding EPUB, pull the shared overview out and route each item to an experience (audio, film, book, generic) behind a small protocol. Swiftfin's engine-capability protocols are a good model for the playback side of that routing. Land it as a refactor with no behaviour change, in its own commit.
 
-### 4.2 EPUB through Readium (L)
+### 4.2 EPUB through Readium (L, done; needs a VoiceOver check on the iPhone)
 [readium/swift-toolkit](https://github.com/readium/swift-toolkit) 3.11, BSD-3. Use only its Shared, Streamer and Navigator products.
 - Born-digital EPUBs open in `EPUBNavigatorViewController`, a plain UIViewController.
 - Scanned books stay in PDFKit with on-device OCR. For those, Internet Archive's EPUB is generated from its own OCR (checked on `alicesadventures00carr`: EPUB, derived from ABBYY, derived from page scans). Offer it only as "Text version (from OCR)".

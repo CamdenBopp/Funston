@@ -13,7 +13,7 @@ Explore shows the most downloaded items from a few collections, and Search cover
 
 Multi-track items play as a queue. A mini-player stays open while you browse, the Lock Screen shows the item's artwork, and each recording remembers where you stopped.
 
-PDFs open in PDFKit with search and a remembered page. For scanned books, Page Text recognizes the page on the device (Live Text, then Vision) instead of trusting Internet Archive's OCR, and Reading options lets you pick the engine yourself.
+Books that come with their own EPUB, such as Project Gutenberg's, open in a Readium-based reader that follows your text size and remembers your place. PDFs open in PDFKit with search and a remembered page. For scanned books, Page Text recognizes the page on the device (Live Text, then Vision) instead of trusting Internet Archive's OCR, and Reading options lets you pick the engine yourself.
 
 MP4, M4V and MOV films play in the system player. MKV originals play through [ArchivePlayerCore](https://github.com/CamdenBopp/ArchivePlayerCore), with audio-track and caption menus. That path is experimental.
 
@@ -44,7 +44,7 @@ xcodebuild test -project Funston.xcodeproj -scheme Funston -destination 'platfor
 - The MKV player hasn't been tested on a physical iPhone or under VoiceOver on a device. WebM, VOB and MPEG-TS aren't offered yet.
 - Background downloads only run on a device. The Simulator uses an in-process session because its background transfer daemon fails; see [SimulatorDownloads.md](Docs/SimulatorDownloads.md).
 - AirPlay and Picture in Picture for films come from the system player but haven't been checked on a device.
-- EPUB isn't supported.
+- EPUBs Internet Archive generated from a scan's OCR aren't offered as books; those open as PDFs with on-device recognition instead.
 
 ## How it's put together
 
