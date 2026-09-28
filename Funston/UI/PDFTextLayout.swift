@@ -9,38 +9,63 @@ struct PDFTextBox: Sendable, Equatable {
 }
 
 /// Puts recognized text back into reading order on multi-column pages, without
-/// machine learning: it reads the white space between lines.
+/// machine learning: it reads where the lines sit.
 ///
-/// Measured on 73 Magazine (August 1976, pages 30 and 40, four columns): sorting
-/// lines top to bottom kept 3-10% of consecutive lines together; splitting at
-/// gutters first kept 90-91%; recognizing each detected column on its own kept
-/// 99-100%.
+/// Lines chain into blocks from the top down: a line continues the one directly
+/// above it when the two share columns. A line two lines could continue from (a
+/// headline over two columns) belongs to neither, so columns under it stay
+/// apart. Blocks are then read in Breuel's order ("High Performance Document
+/// Layout Analysis", 2003).
+///
+/// Lines in order, measured on 73 Magazine with each block re-recognized on its
+/// own: December 1981 page 6 (a headline over three columns, a prize box across
+/// three others) 14% with the old top-down page cuts, 99% with blocks. August
+/// 1976 pages 30 and 40 stayed at 100% and 99%.
 enum PDFTextLayout {
-    /// Narrowest empty vertical band treated as a gutter between columns.
-    static let minimumGutter: CGFloat = 0.008
-    /// Shortest empty horizontal band treated as a break between sections.
-    static let minimumSectionGap: CGFloat = 0.012
-
-    /// Recursive XY-cut: split at the widest empty band, preferring a gutter
-    /// between columns. A horizontal break comes first when the part above or
-    /// below it spans the gutter (a headline, a wide caption), so full-width
-    /// text isn't split down the middle. Each block is read top to bottom.
     static func blocks(_ lines: [PDFTextBox]) -> [[PDFTextBox]] {
-        guard lines.count > 1 else { return lines.isEmpty ? [] : [lines] }
-        let gutter = widestGap(lines.map { ($0.rect.minX, $0.rect.maxX) })
-        let section = widestGap(lines.map { ($0.rect.minY, $0.rect.maxY) })
-        if let gutter, gutter.width >= minimumGutter {
-            if let section, section.width >= minimumSectionGap {
-                let top = lines.filter { $0.rect.midY < section.at }, bottom = lines.filter { $0.rect.midY >= section.at }
-                let spansGutter = { (part: [PDFTextBox]) in part.contains { $0.rect.minX < gutter.at && $0.rect.maxX > gutter.at } }
-                if spansGutter(top) || spansGutter(bottom) { return blocks(top) + blocks(bottom) }
+        let lines = mergingRows(withoutEchoes(lines)).sorted { $0.rect.minY < $1.rect.minY }
+        let predecessor = lines.map { line in
+            lines.indices
+                .filter { continues(line, after: lines[$0]) }
+                .min { line.rect.minY - lines[$0].rect.maxY < line.rect.minY - lines[$1].rect.maxY }
+        }
+        var successors = [Int](repeating: 0, count: lines.count)
+        for case let index? in predecessor { successors[index] += 1 }
+        var blockOf = [Int?](repeating: nil, count: lines.count)
+        var blocks: [[PDFTextBox]] = []
+        for index in lines.indices {
+            if let previous = predecessor[index], successors[previous] == 1, let block = blockOf[previous] {
+                blocks[block].append(lines[index])
+                blockOf[index] = block
+            } else {
+                blocks.append([lines[index]])
+                blockOf[index] = blocks.count - 1
             }
-            return blocks(lines.filter { $0.rect.midX < gutter.at }) + blocks(lines.filter { $0.rect.midX >= gutter.at })
         }
-        if let section, section.width >= minimumSectionGap {
-            return blocks(lines.filter { $0.rect.midY < section.at }) + blocks(lines.filter { $0.rect.midY >= section.at })
+        return readingOrder(absorbingNested(blocks))
+    }
+
+    /// Consecutive blocks stacked in one column, to recognize as one crop: fewer
+    /// requests, same order. A run ends where its region would take in text
+    /// from any other block. On 73 Magazine page 40 this took 27 crops to 12.
+    static func runs(_ blocks: [[PDFTextBox]]) -> [[PDFTextBox]] {
+        let regions = blocks.map { region(of: $0, padding: 0) }
+        var runs: [(lines: [PDFTextBox], members: Set<Int>, region: CGRect)] = []
+        for (index, block) in blocks.enumerated() {
+            if let run = runs.last {
+                let a = run.region, b = regions[index]
+                let union = a.union(b)
+                let stacked = b.minY >= a.maxY - stackTolerance
+                    && sharedWidth(a, b) >= minimumColumnOverlap * min(a.width, b.width)
+                let clear = !regions.indices.contains { $0 != index && !run.members.contains($0) && regions[$0].intersects(union) }
+                if stacked, clear {
+                    runs[runs.count - 1] = (run.lines + block, run.members.union([index]), union)
+                    continue
+                }
+            }
+            runs.append((block, [index], regions[index]))
         }
-        return [lines.sorted { $0.rect.minY < $1.rect.minY }]
+        return runs.map(\.lines)
     }
 
     /// The region a block covers, grown slightly so crops don't clip ascenders.
@@ -51,16 +76,117 @@ enum PDFTextLayout {
             .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
     }
 
-    private static func widestGap(_ intervals: [(CGFloat, CGFloat)]) -> (at: CGFloat, width: CGFloat)? {
-        let sorted = intervals.sorted { $0.0 < $1.0 }
-        guard var reach = sorted.first?.1 else { return nil }
-        var best: (at: CGFloat, width: CGFloat)?
-        for (start, end) in sorted.dropFirst() {
-            if start > reach, start - reach > (best?.width ?? 0) { best = ((start + reach) / 2, start - reach) }
-            reach = max(reach, end)
-        }
-        return best
+    /// Whether `line` can continue `candidate`: directly below it (allowing a
+    /// line Vision missed in between) and sharing most of the narrower width.
+    private static func continues(_ line: PDFTextBox, after candidate: PDFTextBox) -> Bool {
+        let a = candidate.rect, b = line.rect
+        let height = max(a.height, b.height)
+        let drop = b.minY - a.maxY
+        return drop >= -maximumLineOverlap * height && drop <= maximumLineDrop * height
+            && sharedWidth(a, b) >= minimumColumnOverlap * min(a.width, b.width)
     }
+
+    private static func sharedWidth(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        min(a.maxX, b.maxX) - max(a.minX, b.minX)
+    }
+
+    /// Letter-spaced type makes Vision report a word or two again on top of the
+    /// whole line ("best" inside "in the best commercial"). A box mostly inside a
+    /// larger one is that kind of echo.
+    private static func withoutEchoes(_ lines: [PDFTextBox]) -> [PDFTextBox] {
+        func area(_ rect: CGRect) -> CGFloat { rect.isNull ? 0 : rect.width * rect.height }
+        return lines.filter { line in
+            !lines.contains { other in
+                area(other.rect) > area(line.rect) && area(other.rect.intersection(line.rect)) > echoShare * area(line.rect)
+            }
+        }
+    }
+
+    /// Vision sometimes splits one printed line at a wide space. Pieces on the
+    /// same baseline and nearly touching are one line.
+    private static func mergingRows(_ lines: [PDFTextBox]) -> [PDFTextBox] {
+        var merged: [PDFTextBox] = []
+        for line in lines.sorted(by: { ($0.rect.minY, $0.rect.minX) < ($1.rect.minY, $1.rect.minX) }) {
+            if let index = merged.firstIndex(where: { sameRow($0.rect, line.rect) }) {
+                let (left, right) = merged[index].rect.minX <= line.rect.minX ? (merged[index], line) : (line, merged[index])
+                merged[index] = PDFTextBox(text: left.text + " " + right.text, rect: left.rect.union(right.rect))
+            } else {
+                merged.append(line)
+            }
+        }
+        return merged
+    }
+
+    private static func sameRow(_ a: CGRect, _ b: CGRect) -> Bool {
+        let height = min(a.height, b.height)
+        let sharedHeight = min(a.maxY, b.maxY) - max(a.minY, b.minY)
+        let gap = max(a.minX, b.minX) - min(a.maxX, b.maxX)
+        return sharedHeight > sameLineOverlap * height && gap < maximumWordGap * height
+    }
+
+    /// A block that sits inside another block's region (a word the chain
+    /// skipped) is read as part of it.
+    private static func absorbingNested(_ blocks: [[PDFTextBox]]) -> [[PDFTextBox]] {
+        var blocks = blocks.sorted { $0.count > $1.count }
+        for index in blocks.indices.dropFirst().reversed() {
+            let inner = region(of: blocks[index], padding: 0)
+            let center = CGPoint(x: inner.midX, y: inner.midY)
+            guard let host = blocks[..<index].firstIndex(where: { region(of: $0, padding: 0).contains(center) }) else { continue }
+            blocks[host] = (blocks[host] + blocks[index]).sorted { $0.rect.minY < $1.rect.minY }
+            blocks.remove(at: index)
+        }
+        return blocks
+    }
+
+    /// Breuel's rules: a comes before b when they share columns and a is higher,
+    /// or when a is wholly left of b and nothing spanning both lies between them.
+    /// Of the blocks that are free to come next, the one continuing the column
+    /// just read wins, then the highest.
+    private static func readingOrder(_ blocks: [[PDFTextBox]]) -> [[PDFTextBox]] {
+        let rects = blocks.map { region(of: $0, padding: 0) }
+        func before(_ i: Int, _ j: Int) -> Bool {
+            let a = rects[i], b = rects[j]
+            if sharedWidth(a, b) > 0 { return a.midY < b.midY }
+            guard a.maxX <= b.minX else { return false }
+            let (upper, lower) = a.minY < b.minY ? (a, b) : (b, a)
+            return !rects.indices.contains { k in
+                k != i && k != j && rects[k].minY >= upper.maxY && rects[k].maxY <= lower.minY
+                    && rects[k].minX < a.maxX && rects[k].maxX > b.minX
+            }
+        }
+        var incoming = [Int](repeating: 0, count: blocks.count)
+        var edges = [[Int]](repeating: [], count: blocks.count)
+        for i in blocks.indices {
+            for j in blocks.indices where i != j && before(i, j) {
+                edges[i].append(j)
+                incoming[j] += 1
+            }
+        }
+        func higher(_ i: Int, _ j: Int) -> Bool { (rects[i].minY, rects[i].minX) < (rects[j].minY, rects[j].minX) }
+        var remaining = Set(blocks.indices)
+        var order: [Int] = []
+        while !remaining.isEmpty {
+            let ready = remaining.filter { incoming[$0] == 0 }
+            // Boxes that overlap can make a cycle; the highest block breaks it.
+            let pool = ready.isEmpty ? remaining : ready
+            let sameColumn = order.last.map { last in pool.filter { sharedWidth(rects[$0], rects[last]) > 0 } } ?? []
+            guard let next = (sameColumn.isEmpty ? pool : Set(sameColumn)).min(by: higher) else { break }
+            remaining.remove(next)
+            order.append(next)
+            for j in edges[next] { incoming[j] -= 1 }
+        }
+        return order.map { blocks[$0] }
+    }
+
+    /// A line may continue one this far below, in line heights: one missed line.
+    private static let maximumLineDrop: CGFloat = 2
+    private static let maximumLineOverlap: CGFloat = 0.5
+    private static let minimumColumnOverlap: CGFloat = 0.5
+    private static let sameLineOverlap: CGFloat = 0.5
+    /// Wider than a word space, narrower than any gutter measured.
+    private static let maximumWordGap: CGFloat = 0.3
+    private static let echoShare: CGFloat = 0.6
+    private static let stackTolerance: CGFloat = 0.002
 
     /// Justified, letter-spaced type makes Apple's document recognizer split one
     /// printed line into several paragraphs ("in the best" / "commercial"). A
@@ -104,7 +230,6 @@ enum PDFTextLayout {
         return merged.map(\.text)
     }
 
-    private static let sameLineOverlap: CGFloat = 0.5
     private static let continuationOverlap: CGFloat = 0.2
     private static let continuationDrop: CGFloat = 0.8
     private static let columnSlackInLines: CGFloat = 4

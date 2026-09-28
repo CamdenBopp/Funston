@@ -131,24 +131,27 @@ private struct PDFVisionTextEngine: PDFPageOCREngine {
     )
 
     /// Recognizes the page once to find where the text is, then recognizes each
-    /// column or section on its own, in reading order. Sorting a whole page's lines
-    /// top to bottom interleaves columns.
+    /// column run on its own, in reading order. Sorting a whole page's lines top
+    /// to bottom interleaves columns, and a whole-page pass misses lines a crop
+    /// finds (82% of the words on 73 Magazine, December 1981 page 6, against 90%).
     func recognize(_ image: CGImage) async -> String {
         let lines = await Self.lines(in: image)
-        let blocks = PDFTextLayout.blocks(lines)
-        guard blocks.count > 1 else { return Self.join(blocks.first ?? []) }
+        let runs = PDFTextLayout.runs(PDFTextLayout.blocks(lines))
+        guard runs.count > 1 else { return Self.join(runs.first ?? []) }
         var parts: [String] = []
-        for block in blocks {
+        for run in runs {
             guard !Task.isCancelled else { return "" }
-            let region = PDFTextLayout.region(of: block)
+            // One line has nothing a second pass would put in order.
+            guard run.count > 1 else { parts.append(Self.join(run)); continue }
+            let region = PDFTextLayout.region(of: run)
             let pixels = CGRect(x: region.minX * CGFloat(image.width), y: region.minY * CGFloat(image.height),
                                 width: region.width * CGFloat(image.width), height: region.height * CGFloat(image.height)).integral
             // A crop that can't be made falls back to the lines already found for it.
             if let crop = image.cropping(to: pixels) {
                 let cropped = await Self.lines(in: crop)
-                parts.append(Self.join(cropped.isEmpty ? block : cropped.sorted { $0.rect.minY < $1.rect.minY }))
+                parts.append(Self.join(cropped.isEmpty ? run : cropped.sorted { $0.rect.minY < $1.rect.minY }))
             } else {
-                parts.append(Self.join(block))
+                parts.append(Self.join(run))
             }
         }
         return parts.filter { !$0.isEmpty }.joined(separator: "\n\n")
