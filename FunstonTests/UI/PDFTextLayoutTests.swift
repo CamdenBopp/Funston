@@ -36,6 +36,17 @@ final class PDFTextLayoutTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(score.recall, Self.minimumScanRecall)
     }
 
+    /// The paragraph Camden read aloud from Live Text, as Vision now reads it:
+    /// one paragraph, line-break hyphens closed up.
+    func testVisionEngineReadsWholeParagraphs() async throws {
+        let paragraphs = try await recognize(decemberPage6, with: PDFTextEngineID.appleVision).components(separatedBy: "\n\n")
+        let opening = "touch with those being regulated, the FCC has established advisory committees, made up of people in the regulated industries, to work with them on needed regulations."
+        XCTAssertTrue(paragraphs.contains { $0.contains(opening) }, "No paragraph reads: \(opening)")
+        let bullet = try await recognize(augustPage40, with: PDFTextEngineID.appleVision).components(separatedBy: "\n\n")
+        XCTAssertTrue(bullet.contains { $0.hasPrefix("• Low component count") && $0.hasSuffix("discrete components).") },
+                      "The bullet item isn't one paragraph")
+    }
+
     func testDocumentReaderReadsMagazineColumnsInOrder() async throws {
         guard #available(iOS 26.0, *) else { throw XCTSkip("The document reader needs iOS 26") }
         let text = try await recognize(augustPage40, with: PDFTextEngineID.appleDocuments)
@@ -75,6 +86,46 @@ final class PDFTextLayoutTests: XCTestCase {
         let stitched = PDFTextLayout.stitch([("provide an on-", line, line), ("off switch.", line.offsetBy(dx: 0, dy: 0.025), line.offsetBy(dx: 0, dy: 0.025))],
                                             isWord: { _ in false })
         XCTAssertEqual(stitched, ["provide an on-off switch."])
+    }
+
+    func testParagraphsBreakAtIndentsShortLinesAndBullets() {
+        func line(_ text: String, _ x: CGFloat, _ y: CGFloat, _ maxX: CGFloat = 0.9) -> PDFTextBox {
+            PDFTextBox(text: text, rect: CGRect(x: x, y: y, width: maxX - x, height: 0.04))
+        }
+        let lines = [line("THE FCC ADVISORY", 0.3, 0.00, 0.7), line("COMMITTEE", 0.38, 0.05, 0.62),
+                     line("In order to keep in closer", 0.1, 0.10), line("touch with those being regu-", 0.05, 0.15),
+                     line("lated, the FCC has established", 0.05, 0.20), line("yearly meetings.", 0.05, 0.25, 0.5),
+                     line("The most recent meeting was", 0.1, 0.30), line("held at the FCC", 0.05, 0.35),
+                     line("• Low component", 0.05, 0.40), line("count (7 ICs)", 0.05, 0.45)]
+        let paragraphs = PDFTextLayout.paragraphs(lines, aspectRatio: 1, isWord: { $0 == "regulated" })
+        XCTAssertEqual(paragraphs, ["THE FCC ADVISORY COMMITTEE",
+                                    "In order to keep in closer touch with those being regulated, the FCC has established yearly meetings.",
+                                    "The most recent meeting was held at the FCC",
+                                    "• Low component count (7 ICs)"])
+    }
+
+    func testIndentsAreMeasuredInLinePitchesNotRawCoordinates() {
+        // A tall, narrow column crop: x and y are normalized to different lengths,
+        // so 0.012 across is under a third of a line pitch, not an indent.
+        let lines = [PDFTextBox(text: "ogy by industry, little change can be", rect: CGRect(x: 0.030, y: 0.699, width: 0.933, height: 0.0146)),
+                     PDFTextBox(text: "seen in our ham bands.", rect: CGRect(x: 0.042, y: 0.713, width: 0.599, height: 0.014))]
+        XCTAssertEqual(PDFTextLayout.paragraphs(lines, aspectRatio: 523.0 / 1860.0, isWord: { _ in false }),
+                       ["ogy by industry, little change can be seen in our ham bands."])
+    }
+
+    func testParagraphsContinueIntoTheNextColumnOnlyMidSentence() {
+        var paragraphs = ["aspects of getting local govern-"]
+        PDFTextLayout.appending(["ment cooperation for emergency communications", "At the last meeting"], to: &paragraphs, isWord: { $0 == "government" })
+        XCTAssertEqual(paragraphs, ["aspects of getting local government cooperation for emergency communications", "At the last meeting"])
+        var stray = ["we would have"]
+        PDFTextLayout.appending(["mac W2NSD/1 ON-THE-AIR"], to: &stray, isWord: { _ in true })
+        XCTAssertEqual(stray, ["we would have", "mac W2NSD/1 ON-THE-AIR"], "A stray word off a photo isn't the rest of the sentence")
+    }
+
+    func testALostLineBreakHyphenClosesUpOnlyIntoARealWord() {
+        let words: Set = ["transmissions", "the", "war"]
+        XCTAssertEqual(PDFTextLayout.joiningLine("high-speed transmis", "sions for", isWord: words.contains), "high-speed transmissions for")
+        XCTAssertEqual(PDFTextLayout.joiningLine("in the", "war to", isWord: words.contains), "in the war to")
     }
 
     func testSystemDictionaryClosesUpARealWordOnly() {

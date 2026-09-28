@@ -188,6 +188,97 @@ enum PDFTextLayout {
     private static let echoShare: CGFloat = 0.6
     private static let stackTolerance: CGFloat = 0.002
 
+    /// Joins one column's lines, top to bottom, into paragraphs. A paragraph
+    /// starts after extra space, at an indented or bulleted line, or after a
+    /// line that stops short: in justified type any short line, in ragged type
+    /// one that ends a sentence. Lines centered over the column are one heading.
+    /// `aspectRatio` is the width over the height of the image the boxes are
+    /// normalized to, so an indent (across) is measured in line pitches (down).
+    ///
+    /// On 73 Magazine, December 1981 page 6, this reads Wayne Green's first
+    /// paragraph as one paragraph instead of 15 lines, "regu-" / "lated" closed
+    /// up.
+    static func paragraphs(_ lines: [PDFTextBox], aspectRatio: CGFloat, isWord: (String) -> Bool) -> [String] {
+        let lines = withoutEchoes(lines).filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard let first = lines.first else { return [] }
+        let pitches = zip(lines, lines.dropFirst()).map { $1.rect.minY - $0.rect.minY }.filter { $0 > 0 }.sorted()
+        let verticalPitch = pitches.isEmpty ? first.rect.height : pitches[pitches.count / 2]
+        let pitch = verticalPitch / max(aspectRatio, .ulpOfOne)
+        let left = mostCommon(lines.map(\.rect.minX), tolerance: pitch * leftEdgeTolerance)
+        let rights = lines.map(\.rect.maxX).sorted()
+        let right = rights[min(rights.count - 1, Int(Double(rights.count) * rightEdgePercentile))]
+        let width = max(right - left, .ulpOfOne)
+        let fullLines = lines.filter { $0.rect.maxX >= right - fullLineSlack * width }.count
+        let justified = Double(fullLines) >= justifiedShare * Double(lines.count)
+        let centered = { (line: PDFTextBox) in
+            line.rect.minX - left > indentInPitches * pitch && line.rect.maxX < right - indentInPitches * pitch
+        }
+        var paragraphs = [first.text]
+        for (a, b) in zip(lines, lines.dropFirst()) {
+            let spaced = b.rect.minY - a.rect.minY > paragraphSpacing * verticalPitch
+            let indented = b.rect.minX - left > indentInPitches * pitch
+            let bulleted = b.text.first.map { bullets.contains($0) } ?? false
+            let short = a.rect.maxX < right - (justified ? justifiedShortSlack : raggedShortSlack) * width
+            let endsSentence = a.text.last.map { sentenceEnds.contains($0) } ?? false
+            if !spaced, centered(a), centered(b) {
+                paragraphs[paragraphs.count - 1] += " " + b.text
+            } else if spaced || indented || bulleted || (short && (justified || endsSentence)) {
+                paragraphs.append(b.text)
+            } else {
+                paragraphs[paragraphs.count - 1] = joiningLine(paragraphs[paragraphs.count - 1], b.text, isWord: isWord)
+            }
+        }
+        return paragraphs
+    }
+
+    /// Adds the next column's paragraphs, continuing the last one when it
+    /// stopped mid-sentence and the next starts in lower case ("local govern-" /
+    /// "ment cooperation"). Without a hyphen to go on, a short fragment (a stray
+    /// word read off a photo) doesn't count as the continuation.
+    static func appending(_ next: [String], to paragraphs: inout [String], isWord: (String) -> Bool) {
+        guard let previous = paragraphs.last, let end = previous.last, let first = next.first,
+              first.first?.isLowercase == true,
+              end == "-" || ((end == "," || end.isLowercase) && first.split(separator: " ").count >= minimumContinuationWords)
+        else { paragraphs += next; return }
+        paragraphs[paragraphs.count - 1] = joiningLine(previous, first, isWord: isWord)
+        paragraphs += next.dropFirst()
+    }
+
+    /// "com-" + "plementary" closes up when the joined word is a word; "on-" +
+    /// "off" keeps its hyphen. A hyphen the scan lost ("transmis" / "sions")
+    /// closes up when neither half is a word and the whole is.
+    static func joiningLine(_ text: String, _ next: String, isWord: (String) -> Bool) -> String {
+        let head = text.split(separator: " ").last.map(String.init) ?? ""
+        let tail = next.split(separator: " ").first.map(String.init) ?? ""
+        let trim = { (word: String) in word.trimmingCharacters(in: .punctuationCharacters) }
+        if text.hasSuffix("-") {
+            return isWord(trim(String(head.dropLast()) + tail)) ? String(text.dropLast()) + next : text + next
+        }
+        let lostHyphen = head.last?.isLetter == true && !isWord(trim(head)) && !isWord(trim(tail)) && isWord(trim(head + tail))
+        return lostHyphen ? text + next : text + " " + next
+    }
+
+    private static func mostCommon(_ values: [CGFloat], tolerance: CGFloat) -> CGFloat {
+        values.max { a, b in
+            values.filter { abs($0 - a) <= tolerance }.count < values.filter { abs($0 - b) <= tolerance }.count
+        } ?? 0
+    }
+
+    private static let bullets: Set<Character> = ["•", "●", "▪", "■", "◦"]
+    private static let sentenceEnds: Set<Character> = [".", ":", "?", "!", "\"", "”", ")"]
+    /// More than this many pitches from one line's top to the next is a break.
+    private static let paragraphSpacing: CGFloat = 1.6
+    /// A first-line indent is about an em, a line pitch is a bit more.
+    private static let indentInPitches: CGFloat = 0.5
+    private static let leftEdgeTolerance: CGFloat = 0.25
+    private static let rightEdgePercentile = 0.9
+    private static let fullLineSlack: CGFloat = 0.05
+    /// Share of lines reaching the right edge for a column to count as justified.
+    private static let justifiedShare = 0.6
+    private static let justifiedShortSlack: CGFloat = 0.08
+    private static let raggedShortSlack: CGFloat = 0.3
+    private static let minimumContinuationWords = 5
+
     /// Justified, letter-spaced type makes Apple's document recognizer split one
     /// printed line into several paragraphs ("in the best" / "commercial"). A
     /// fragment on the previous one's baseline is the same line; one starting
