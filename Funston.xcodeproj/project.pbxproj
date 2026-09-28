@@ -29,6 +29,7 @@
 		6F51B7CC80D382D750A3B5F9 /* PDFScreenRenderingExperiment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */; };
 		719B8E29AC09F5608E5F532D /* ExploreController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C06E7B3A4A0DEDE6ED4D71EE /* ExploreController.swift */; };
 		7419B239E8D5D5D9E85F4A44 /* ArtifactContentsSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E08BE65EA2616DB7059E4153 /* ArtifactContentsSearchTests.swift */; };
+		78D6EC89CF7E2986318E3681 /* ContinueListeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E76AA1D77FB87D8EB6F6DF /* ContinueListeningTests.swift */; };
 		7E77483624106B86399BD522 /* PDFReadingStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E18D86233FB0609AFE082A /* PDFReadingStateTests.swift */; };
 		816C6600DBDBBCBD1F2F9116 /* ArtworkPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6688140E01B2D367C2C7AF /* ArtworkPipeline.swift */; };
 		8342B387FAA23AD0D722C77A /* PDFReadingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9D4D28CB7D06FA401FAA6C /* PDFReadingState.swift */; };
@@ -36,6 +37,7 @@
 		88E995A2FFA090376E00BE1A /* ArtifactVideoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F6CA4F00827A4CBD134A9B /* ArtifactVideoController.swift */; };
 		8946332DBAD4F9DFFF2C2A05 /* FunstonRootController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FBBB642621A8FDC9EB59A6D /* FunstonRootController.swift */; };
 		8F36107E122B75C8E867DE43 /* ArtifactArtworkLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37212FCCB7B0625E5D94E558 /* ArtifactArtworkLifecycleTests.swift */; };
+		913F43521BCBA5FC260B20A6 /* ContinueListening.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C4A1A2218332A1F56B2F54 /* ContinueListening.swift */; };
 		956D261D653D67E834CF1106 /* PDFRenderingPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADA9E91F2303508878EBCAE7 /* PDFRenderingPerformanceTests.swift */; };
 		9C873E1E6A9266381F108BDD /* ArchivePlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = A38AE549ADD4916042D85BDA /* ArchivePlayerCore */; };
 		9CFDC45EF60E820EF46A524C /* PDFScreenRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CE64CF4FBD3ECC1CC387721 /* PDFScreenRenderingTests.swift */; };
@@ -111,6 +113,7 @@
 		83FA6742BCE70DB39C50A79E /* ArtifactOriginalVideoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactOriginalVideoController.swift; sourceTree = "<group>"; };
 		9059921AE97E122328AC8EC5 /* PlayerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViews.swift; sourceTree = "<group>"; };
 		90E76B9A4F6B4D55BA45EEFE /* ArchiveNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNormalizer.swift; sourceTree = "<group>"; };
+		97C4A1A2218332A1F56B2F54 /* ContinueListening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueListening.swift; sourceTree = "<group>"; };
 		99AAFDC5C7C54DF226D11A47 /* FunstonUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonUITests.swift; sourceTree = "<group>"; };
 		9D8F5AEEB8CCDBCE5EDFC46D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A31252B3F929B645C52A91F9 /* CodecCapabilityDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodecCapabilityDeviceTests.swift; sourceTree = "<group>"; };
@@ -123,6 +126,7 @@
 		B8E1D4A647EC1DB86A1FB685 /* OriginalTransportStreamRenderDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalTransportStreamRenderDeviceTests.swift; sourceTree = "<group>"; };
 		BCB1127C7E1A84E47D833B69 /* FunstonTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FunstonTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C06E7B3A4A0DEDE6ED4D71EE /* ExploreController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreController.swift; sourceTree = "<group>"; };
+		C0E76AA1D77FB87D8EB6F6DF /* ContinueListeningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueListeningTests.swift; sourceTree = "<group>"; };
 		C4FC31D2391A678F056CDEB5 /* ArtifactMediaController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactMediaController.swift; sourceTree = "<group>"; };
 		C6B2556F6A00E16BF44C90D2 /* ResumePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumePolicyTests.swift; sourceTree = "<group>"; };
 		CB73A6339210FC418D6AAF77 /* PDFPerformanceView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PDFPerformanceView.m; sourceTree = "<group>"; };
@@ -206,6 +210,7 @@
 			children = (
 				74936F3127256B6C79C16AE3 /* ArtworkResponseLimitTests.swift */,
 				A31252B3F929B645C52A91F9 /* CodecCapabilityDeviceTests.swift */,
+				C0E76AA1D77FB87D8EB6F6DF /* ContinueListeningTests.swift */,
 				7DBCF6D4893AA8269341A32F /* DownloadRelocationTests.swift */,
 				72CAD4E4C8526BEB670CFA90 /* DownloadResumeLiveTests.swift */,
 				B8E1D4A647EC1DB86A1FB685 /* OriginalTransportStreamRenderDeviceTests.swift */,
@@ -272,6 +277,7 @@
 				2D61FCB8BBFB3A07889BC645 /* AppPaths.swift */,
 				DA6688140E01B2D367C2C7AF /* ArtworkPipeline.swift */,
 				63B2F9D20233F0D328D27C37 /* CachingArchiveRepository.swift */,
+				97C4A1A2218332A1F56B2F54 /* ContinueListening.swift */,
 				ABEC399375132D18A85258F1 /* DownloadManager.swift */,
 				A6C0ABD85EEF2749ED6AE3E4 /* PlaybackController.swift */,
 				4B6AC7E7D67A26404F8526F1 /* SQLiteStore.swift */,
@@ -481,6 +487,7 @@
 				816C6600DBDBBCBD1F2F9116 /* ArtworkPipeline.swift in Sources */,
 				6867855F6EB1A0DD0B4169AF /* BrowseControllers.swift in Sources */,
 				12567D6189ACD7041167D8F7 /* CachingArchiveRepository.swift in Sources */,
+				913F43521BCBA5FC260B20A6 /* ContinueListening.swift in Sources */,
 				B71B2B79473396C8456E2659 /* DownloadManager.swift in Sources */,
 				719B8E29AC09F5608E5F532D /* ExploreController.swift in Sources */,
 				15A6DA24023C06BEF04F7119 /* FunstonAppearance.swift in Sources */,
@@ -505,6 +512,7 @@
 				7419B239E8D5D5D9E85F4A44 /* ArtifactContentsSearchTests.swift in Sources */,
 				1194CE52844AAFB3377DB4F0 /* ArtworkResponseLimitTests.swift in Sources */,
 				4E7886C99627066D41A780CD /* CodecCapabilityDeviceTests.swift in Sources */,
+				78D6EC89CF7E2986318E3681 /* ContinueListeningTests.swift in Sources */,
 				315F272717BD431394C0726A /* DownloadRelocationTests.swift in Sources */,
 				FEE2684258F2F3D53007D641 /* DownloadResumeLiveTests.swift in Sources */,
 				C9045F96F8D56D43BFC8DF56 /* FunstonUIPresentationTests.swift in Sources */,

@@ -1,9 +1,17 @@
 import UIKit
 import SwiftUI
+import Combine
+import os
 
 /// Collection provenance gives discovery its structure. Covers are content, not decoration.
 @MainActor
 final class ExploreController: UICollectionViewController {
+    /// The shelf above the collections. Its key can't collide with a collection
+    /// identifier because Internet Archive identifiers have no spaces.
+    private static let continueSection = "continue listening"
+    private static let continuePrefix = "continue:"
+    private static let logger = Logger(subsystem: "com.camden.Funston", category: "Explore")
+    private let environment: AppEnvironment
     private let repository: CachingArchiveRepository
     private let openCollection: (ArchiveCollection) -> Void
     private let openArtifact: (ArtifactSummary) -> Void
@@ -14,15 +22,20 @@ final class ExploreController: UICollectionViewController {
     private var tasks: [String: Task<Void, Never>] = [:]
     private var source: UICollectionViewDiffableDataSource<String, String>!
     private var artifacts: [String: ArtifactSummary] = [:]
+    private var continueItems: [ContinueListeningItem] = []
+    private var continueByKey: [String: ContinueListeningItem] = [:]
+    private var continueTask: Task<Void, Never>?
+    private var subscriptions = Set<AnyCancellable>()
 
     init(environment: AppEnvironment, openCollection: @escaping (ArchiveCollection) -> Void, openArtifact: @escaping (ArtifactSummary) -> Void) {
+        self.environment = environment
         repository = environment.repository
         self.openCollection = openCollection; self.openArtifact = openArtifact
         super.init(collectionViewLayout: Self.layout(accessibility: false))
         title = "Explore"
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    deinit { tasks.values.forEach { $0.cancel() } }
+    deinit { tasks.values.forEach { $0.cancel() }; continueTask?.cancel() }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -35,6 +48,10 @@ final class ExploreController: UICollectionViewController {
         let artifactCell = UICollectionView.CellRegistration<ExploreArtifactCell, String> { [weak self] cell, _, id in
             guard let self, let artifact = self.artifacts[id] else { return }
             cell.configure(artifact: artifact) { [weak self] in self?.open(artifact) }
+        }
+        let continueCell = UICollectionView.CellRegistration<ExploreArtifactCell, String> { [weak self] cell, _, id in
+            guard let self, let item = self.continueByKey[id] else { return }
+            cell.configure(continuing: item) { [weak self] in self?.resume(item) }
         }
         let statusCell = UICollectionView.CellRegistration<UICollectionViewCell, String> { [weak self] cell, _, id in
             guard let self else { return }
@@ -59,11 +76,12 @@ final class ExploreController: UICollectionViewController {
                 cell.accessibilityIdentifier = nil
         }
         let header = UICollectionView.SupplementaryRegistration<ExploreSectionHeader>(elementKind: UICollectionView.elementKindSectionHeader) { [weak self] header, _, index in
-            guard let self else { return }
-            let collection = self.collections[index.section]
-            header.configure(collection: collection, cached: self.stale.contains(collection.identifier)) { [weak self] in self?.openCollection(collection) }
+            self?.configure(header, section: index.section)
         }
         source = UICollectionViewDiffableDataSource<String, String>(collectionView: collectionView) { [weak self] collection, index, id in
+            if self?.continueByKey[id] != nil {
+                return collection.dequeueConfiguredReusableCell(using: continueCell, for: index, item: id)
+            }
             if self?.artifacts[id] != nil {
                 return collection.dequeueConfiguredReusableCell(using: artifactCell, for: index, item: id)
             }
@@ -73,6 +91,12 @@ final class ExploreController: UICollectionViewController {
             collection.dequeueConfiguredReusableSupplementary(using: header, for: index)
         }
         render()
+        subscribeToPlayback()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshContinueListening()
     }
 
     private static func layout(accessibility: Bool) -> UICollectionViewLayout {
@@ -91,7 +115,7 @@ final class ExploreController: UICollectionViewController {
 
     override func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
         (cell as? ExploreArtifactCell)?.loadArtwork()
-        load(collections[indexPath.section].identifier)
+        if let collection = collection(at: indexPath.section) { load(collection.identifier) }
     }
 
     override func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
@@ -130,14 +154,27 @@ final class ExploreController: UICollectionViewController {
 
     private func render() {
         guard source != nil else { return }
-        let anchor: (section: Int, relativeY: CGFloat)? = {
-            guard collectionView.window != nil, !collectionView.isDragging, !collectionView.isDecelerating,
+        // At the very top there is nothing to hold in place, and the shelf
+        // appearing above the collections should be seen.
+        let atTop = collectionView.contentOffset.y <= -collectionView.adjustedContentInset.top + 0.5
+        let anchor: (section: String, relativeY: CGFloat)? = {
+            guard collectionView.window != nil, !atTop, !collectionView.isDragging, !collectionView.isDecelerating,
                   let section = collectionView.indexPathsForVisibleItems.map(\.section).min(),
+                  let identifier = source.sectionIdentifier(for: section),
                   let attributes = collectionView.layoutAttributesForSupplementaryElement(ofKind: UICollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: section)) else { return nil }
-            return (section, attributes.frame.minY - collectionView.contentOffset.y)
+            return (identifier, attributes.frame.minY - collectionView.contentOffset.y)
         }()
         var snapshot = NSDiffableDataSourceSnapshot<String, String>()
         var nextArtifacts: [String: ArtifactSummary] = [:]
+        var nextContinue: [String: ContinueListeningItem] = [:]
+        if !continueItems.isEmpty {
+            snapshot.appendSections([Self.continueSection])
+            for item in continueItems {
+                let key = Self.continuePrefix + item.summary.identifier
+                nextContinue[key] = item
+                snapshot.appendItems([key])
+            }
+        }
         for collection in collections {
             snapshot.appendSections([collection.identifier])
             if let items = contents[collection.identifier], !items.isEmpty {
@@ -153,13 +190,17 @@ final class ExploreController: UICollectionViewController {
         }
         let previous = source.snapshot()
         let existing = Set(previous.itemIdentifiers)
-        snapshot.reconfigureItems(snapshot.itemIdentifiers.filter { existing.contains($0) && (artifacts[$0] != nextArtifacts[$0] || $0.hasPrefix("status:")) })
+        snapshot.reconfigureItems(snapshot.itemIdentifiers.filter {
+            existing.contains($0) && (artifacts[$0] != nextArtifacts[$0] || continueByKey[$0] != nextContinue[$0] || $0.hasPrefix("status:"))
+        })
         artifacts = nextArtifacts
+        continueByKey = nextContinue
         source.apply(snapshot, animatingDifferences: false) { [weak self] in
             guard let self else { return }
-            if let anchor, !self.collectionView.isDragging, !self.collectionView.isDecelerating {
+            if let anchor, !self.collectionView.isDragging, !self.collectionView.isDecelerating,
+               let section = self.source.snapshot().indexOfSection(anchor.section) {
                 self.collectionView.layoutIfNeeded()
-                if let attributes = self.collectionView.layoutAttributesForSupplementaryElement(ofKind: UICollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: anchor.section)) {
+                if let attributes = self.collectionView.layoutAttributesForSupplementaryElement(ofKind: UICollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: section)) {
                     let minimum = -self.collectionView.adjustedContentInset.top
                     let maximum = max(minimum, self.collectionView.contentSize.height - self.collectionView.bounds.height + self.collectionView.adjustedContentInset.bottom)
                     let y = min(maximum, max(minimum, attributes.frame.minY - anchor.relativeY))
@@ -168,16 +209,80 @@ final class ExploreController: UICollectionViewController {
             }
             for index in self.collectionView.indexPathsForVisibleSupplementaryElements(ofKind: UICollectionView.elementKindSectionHeader) {
                 guard let header = self.collectionView.supplementaryView(forElementKind: UICollectionView.elementKindSectionHeader, at: index) as? ExploreSectionHeader else { continue }
-                let collection = self.collections[index.section]
-                header.configure(collection: collection, cached: self.stale.contains(collection.identifier)) { [weak self] in self?.openCollection(collection) }
+                self.configure(header, section: index.section)
             }
+        }
+    }
+
+    private func collection(at section: Int) -> ArchiveCollection? {
+        guard let identifier = source.sectionIdentifier(for: section) else { return nil }
+        return collections.first { $0.identifier == identifier }
+    }
+
+    private func configure(_ header: ExploreSectionHeader, section: Int) {
+        if let collection = collection(at: section) {
+            header.configure(collection: collection, cached: stale.contains(collection.identifier)) { [weak self] in self?.openCollection(collection) }
+        } else {
+            header.configure(heading: "Continue listening")
+        }
+    }
+
+    private func subscribeToPlayback() {
+        let playback = environment.playback
+        // Pausing and switching recordings are when a saved position changes
+        // enough to matter. The pause is written asynchronously, so wait briefly.
+        let paused = playback.$phase.removeDuplicates().filter { $0 == .paused || $0 == .ended }.map { _ in () }
+        let switched = playback.$context.map { $0.map { $0.artifact.identifier + "/" + $0.file.name } }.removeDuplicates().map { _ in () }
+        paused.merge(with: switched)
+            .debounce(for: .seconds(1), scheduler: RunLoop.main)
+            .sink { [weak self] in
+                guard let self, self.viewIfLoaded?.window != nil else { return }
+                self.refreshContinueListening()
+            }
+            .store(in: &subscriptions)
+    }
+
+    private func refreshContinueListening() {
+        continueTask?.cancel()
+        let store = environment.store, repository = repository, downloads = environment.downloads
+        continueTask = Task { [weak self] in
+            let bookmarks: [PlaybackBookmark]
+            do { bookmarks = try await store.recentPlaybackPositions(limit: ContinueListening.bookmarkLimit) }
+            catch {
+                Self.logger.error("Saved positions unavailable: \(error.localizedDescription, privacy: .public)")
+                return
+            }
+            let items = await ContinueListening.items(
+                bookmarks: bookmarks,
+                detail: { try await repository.detail(identifier: $0) },
+                download: { await downloads.completedRecord(identifier: $0, fileName: $1) })
+            guard !Task.isCancelled, let self else { return }
+            self.continueTask = nil
+            guard items != self.continueItems else { return }
+            self.continueItems = items
+            self.render()
+        }
+    }
+
+    /// Picks the recording back up through the same paths as the item page and
+    /// Downloads; the player restores the saved position itself.
+    private func resume(_ item: ContinueListeningItem) {
+        let playback = environment.playback
+        if let context = playback.context, context.artifact.identifier == item.summary.identifier,
+           context.file.name == item.fileName {
+            playback.play()
+        } else if let download = item.download {
+            playback.playDownloaded(download)
+        } else {
+            playback.load(artifact: item.summary, tracks: item.tracks, trackIndex: item.trackIndex)
         }
     }
 
     override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
-        guard let key = source.itemIdentifier(for: indexPath), let artifact = artifacts[key] else { return }
-        open(artifact)
+        guard let key = source.itemIdentifier(for: indexPath) else { return }
+        if let item = continueByKey[key] { resume(item) }
+        else if let artifact = artifacts[key] { open(artifact) }
     }
 
     private func open(_ artifact: ArtifactSummary) {
@@ -195,6 +300,8 @@ private final class ExploreArtifactCell: UICollectionViewCell {
         static let placeholderSymbolSide: CGFloat = 36
         static let textSpacing: CGFloat = 10
         static let bottomPadding: CGFloat = 8
+        /// Keeps the time-left line with its bar rather than a full text gap away.
+        static let progressSpacing: CGFloat = 6
     }
 
     private let button = UIButton(type: .custom)
@@ -206,6 +313,10 @@ private final class ExploreArtifactCell: UICollectionViewCell {
     private var artworkAspect: NSLayoutConstraint?
     private let titleLabel = UILabel()
     private let metadataLabel = UILabel()
+    /// Continue listening only: how far in, as a bar and in words.
+    private let progressBar = UIProgressView(progressViewStyle: .default)
+    private let progressLabel = UILabel()
+    private let progressStack = UIStackView()
     private var identifier: String?
     private var action: UIAction?
     private var artworkTask: Task<Void, Never>?
@@ -236,12 +347,20 @@ private final class ExploreArtifactCell: UICollectionViewCell {
         titleLabel.textColor = .label
         metadataLabel.font = .preferredFont(forTextStyle: .subheadline)
         metadataLabel.textColor = .funstonSecondaryLabel
-        for label in [titleLabel, metadataLabel] {
+        progressLabel.font = .preferredFont(forTextStyle: .footnote)
+        progressLabel.textColor = .funstonSecondaryLabel
+        for label in [titleLabel, metadataLabel, progressLabel] {
             label.adjustsFontForContentSizeCategory = true
             label.isAccessibilityElement = false
             label.setContentCompressionResistancePriority(.required, for: .vertical)
         }
-        let stack = UIStackView(arrangedSubviews: [imageSurface, titleLabel, metadataLabel])
+        progressBar.trackTintColor = .tertiarySystemFill
+        progressBar.isAccessibilityElement = false
+        progressStack.axis = .vertical; progressStack.spacing = Metrics.progressSpacing
+        progressStack.addArrangedSubview(progressBar)
+        progressStack.addArrangedSubview(progressLabel)
+        progressStack.isHidden = true
+        let stack = UIStackView(arrangedSubviews: [imageSurface, titleLabel, metadataLabel, progressStack])
         stack.axis = .vertical; stack.spacing = Metrics.textSpacing
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.isUserInteractionEnabled = false
@@ -282,17 +401,37 @@ private final class ExploreArtifactCell: UICollectionViewCell {
     deinit { artworkTask?.cancel() }
 
     func configure(artifact: ArtifactSummary, open: @escaping () -> Void) {
+        let metadata = [artifact.creators.first, artifact.displayYear].compactMap { $0 }.joined(separator: " · ")
+        show(artifact, metadata: metadata, open: open)
+        progressStack.isHidden = true
+        button.accessibilityLabel = artifact.spokenSummary
+        button.accessibilityValue = nil
+        button.accessibilityIdentifier = "explore.artifact." + artifact.identifier
+    }
+
+    /// A Continue listening tile: the same cover and title, with the recording
+    /// (for items with several) or creator underneath, then time left.
+    func configure(continuing item: ContinueListeningItem, open: @escaping () -> Void) {
+        let artifact = item.summary
+        show(artifact, metadata: item.trackTitle ?? artifact.creators.first ?? "", open: open)
+        progressBar.progress = Float(item.fractionPlayed ?? 0)
+        progressBar.isHidden = item.fractionPlayed == nil
+        progressLabel.text = item.progressDescription
+        progressStack.isHidden = false
+        button.accessibilityLabel = ([artifact.title, item.trackTitle, artifact.creators.first].compactMap { $0 }).joined(separator: ", ")
+        button.accessibilityValue = item.progressDescription
+        button.accessibilityIdentifier = "explore.continue." + artifact.identifier
+    }
+
+    private func show(_ artifact: ArtifactSummary, metadata: String, open: @escaping () -> Void) {
         if identifier != artifact.identifier {
             cancelArtwork(); identifier = artifact.identifier
             showPlaceholder()
         }
         placeholder.image = UIImage(systemName: artifact.mediaType.artworkSymbol)
         titleLabel.text = artifact.title
-        let metadata = [artifact.creators.first, artifact.displayYear].compactMap { $0 }.joined(separator: " · ")
         metadataLabel.text = metadata
         metadataLabel.isHidden = metadata.isEmpty
-        button.accessibilityLabel = artifact.spokenSummary
-        button.accessibilityIdentifier = "explore.artifact." + artifact.identifier
         if let action { button.removeAction(action, for: .primaryActionTriggered) }
         let next = UIAction { _ in open() }; action = next
         button.addAction(next, for: .primaryActionTriggered)
@@ -304,6 +443,7 @@ private final class ExploreArtifactCell: UICollectionViewCell {
         let large = traitCollection.preferredContentSizeCategory.isAccessibilityCategory
         titleLabel.numberOfLines = large ? 0 : 3
         metadataLabel.numberOfLines = large ? 0 : 2
+        progressLabel.numberOfLines = large ? 0 : 1
         setNeedsLayout()
     }
 
@@ -345,6 +485,8 @@ private final class ExploreArtifactCell: UICollectionViewCell {
 @MainActor
 private final class ExploreSectionHeader: UICollectionReusableView {
     private let title = UIButton(type: .system)
+    /// Shelves that aren't a collection have a plain heading, not a Browse button.
+    private let heading = UILabel()
     private let subtitle = UILabel()
     private var action: UIAction?
 
@@ -355,19 +497,40 @@ private final class ExploreSectionHeader: UICollectionReusableView {
         subtitle.font = .preferredFont(forTextStyle: .subheadline)
         subtitle.adjustsFontForContentSizeCategory = true
         subtitle.textColor = .funstonSecondaryLabel
-        let stack = UIStackView(arrangedSubviews: [title, subtitle])
+        heading.numberOfLines = 0
+        heading.font = .preferredFont(forTextStyle: .title2)
+        heading.adjustsFontForContentSizeCategory = true
+        heading.textColor = .label
+        heading.accessibilityTraits = .header
+        heading.isHidden = true
+        let stack = UIStackView(arrangedSubviews: [title, heading, subtitle])
         stack.axis = .vertical; stack.spacing = 2
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
+        // Just below required, so the stack can collapse whichever of the
+        // button or the heading is hidden.
+        let minimumHeights = [title, heading].map { $0.heightAnchor.constraint(greaterThanOrEqualToConstant: 44) }
+        minimumHeights.forEach { $0.priority = .required - 1 }
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 12), stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16),
-            title.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
-        ])
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16)
+        ] + minimumHeights)
+    }
+
+    func configure(heading text: String) {
+        title.isHidden = true
+        subtitle.isHidden = true
+        heading.isHidden = false
+        heading.text = text
+        if let action { title.removeAction(action, for: .primaryActionTriggered) }
+        action = nil
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func configure(collection: ArchiveCollection, cached: Bool, open: @escaping () -> Void) {
+        title.isHidden = false
+        subtitle.isHidden = false
+        heading.isHidden = true
         var configuration = UIButton.Configuration.plain()
         configuration.title = collection.title
         configuration.image = UIImage(systemName: "chevron.right")

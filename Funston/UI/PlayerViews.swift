@@ -176,6 +176,26 @@ enum PlayerTimePresentation {
         // Integer Duration construction avoids floating-point conversion overflow.
         return Duration.seconds(Int64(value)).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
     }
+
+    /// "24 minutes left". Whole minutes are enough to decide whether to keep listening.
+    static func spokenRemaining(_ seconds: Double) -> String {
+        guard let value = MediaDuration.validated(seconds) else { return "Time unavailable" }
+        guard let minutes = roundedMinutes(value) else { return "Less than a minute left" }
+        return minutes + " left"
+    }
+
+    /// "12 minutes played", for a recording whose length isn't known.
+    static func spokenPlayed(_ seconds: Double) -> String {
+        guard let value = MediaDuration.validated(seconds) else { return "Time unavailable" }
+        guard let minutes = roundedMinutes(value) else { return "Less than a minute played" }
+        return minutes + " played"
+    }
+
+    private static func roundedMinutes(_ seconds: Double) -> String? {
+        let minutes = Int64((seconds / 60).rounded())
+        guard minutes > 0 else { return nil }
+        return Duration.seconds(minutes * 60).formatted(.units(allowed: [.hours, .minutes], width: .wide))
+    }
 }
 
 struct DownloadButton: View {

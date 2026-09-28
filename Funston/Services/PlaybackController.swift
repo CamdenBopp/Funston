@@ -181,10 +181,16 @@ final class PlaybackController: ObservableObject {
         install(artifact: artifact, tracks: tracks, trackIndex: trackIndex, file: file)
     }
 
+    nonisolated private static let downloadedAudioExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "aiff", "aif"]
+
+    nonisolated static func playsDownloadedAudio(fileName: String) -> Bool {
+        downloadedAudioExtensions.contains((fileName as NSString).pathExtension.lowercased())
+    }
+
     func playDownloaded(_ record: DownloadRecord, autoplay: Bool = true) {
         guard record.state == .completed,
               downloads.completedLocalURL(identifier: record.identifier, fileName: record.fileName)?.path == record.localPath,
-              ["mp3", "m4a", "aac", "wav", "aiff", "aif"].contains((record.fileName as NSString).pathExtension.lowercased()) else {
+              Self.playsDownloadedAudio(fileName: record.fileName) else {
             phase = .failed("This downloaded file is not available for audio playback.")
             return
         }
