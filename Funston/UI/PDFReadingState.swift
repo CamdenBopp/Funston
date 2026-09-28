@@ -84,6 +84,7 @@ enum PDFTextEngineID {
     static let embedded = "pdf.embedded-text"
     static let appleLiveText = "apple.live-text"
     static let appleVision = "apple.vision"
+    static let appleDocuments = "apple.documents"
 }
 
 struct PDFTextEngineDescriptor: Hashable, Sendable {
@@ -129,20 +130,74 @@ private struct PDFVisionTextEngine: PDFPageOCREngine {
         isAvailable: true
     )
 
+    /// Recognizes the page once to find where the text is, then recognizes each
+    /// column or section on its own, in reading order. Sorting a whole page's lines
+    /// top to bottom interleaves columns.
     func recognize(_ image: CGImage) async -> String {
+        let lines = await Self.lines(in: image)
+        let blocks = PDFTextLayout.blocks(lines)
+        guard blocks.count > 1 else { return Self.join(blocks.first ?? []) }
+        var parts: [String] = []
+        for block in blocks {
+            guard !Task.isCancelled else { return "" }
+            let region = PDFTextLayout.region(of: block)
+            let pixels = CGRect(x: region.minX * CGFloat(image.width), y: region.minY * CGFloat(image.height),
+                                width: region.width * CGFloat(image.width), height: region.height * CGFloat(image.height)).integral
+            // A crop that can't be made falls back to the lines already found for it.
+            if let crop = image.cropping(to: pixels) {
+                let cropped = await Self.lines(in: crop)
+                parts.append(Self.join(cropped.isEmpty ? block : cropped.sorted { $0.rect.minY < $1.rect.minY }))
+            } else {
+                parts.append(Self.join(block))
+            }
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+
+    private static func join(_ lines: [PDFTextBox]) -> String {
+        lines.map(\.text).map(PDFPageTextPolicy.normalize).filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    private static func lines(in image: CGImage) async -> [PDFTextBox] {
         var request = RecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.automaticallyDetectsLanguage = true
         request.usesLanguageCorrection = true
-        guard let observations = try? await request.perform(on: image, orientation: .up) else { return "" }
-        return observations.sorted { lhs, rhs in
-            let verticalDifference = abs(lhs.topLeft.y - rhs.topLeft.y)
-            if verticalDifference > 0.015 { return lhs.topLeft.y > rhs.topLeft.y }
-            return lhs.topLeft.x < rhs.topLeft.x
-        }.compactMap { $0.topCandidates(1).first?.string }
-            .map(PDFPageTextPolicy.normalize)
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
+        guard let observations = try? await request.perform(on: image, orientation: .up) else { return [] }
+        return observations.compactMap { observation in
+            guard let text = observation.topCandidates(1).first?.string else { return nil }
+            let box = observation.boundingBox.cgRect
+            return PDFTextBox(text: text, rect: CGRect(x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height))
+        }
+    }
+}
+
+/// Apple's document recognizer (iOS 26 and later) finds columns, paragraphs and
+/// lists itself. On 73 Magazine it matched the column-by-column Vision engine's
+/// reading order (99-100%) in a third of the time.
+private struct PDFDocumentTextEngine: PDFPageOCREngine {
+    var descriptor: PDFTextEngineDescriptor {
+        let available: Bool
+        if #available(iOS 26.0, *) { available = true } else { available = false }
+        return PDFTextEngineDescriptor(id: PDFTextEngineID.appleDocuments, title: "Apple Document Reader",
+                                       isAvailable: available, subtitle: "Keeps columns and paragraphs in reading order")
+    }
+
+    func recognize(_ image: CGImage) async -> String {
+        guard #available(iOS 26.0, *) else { return "" }
+        guard let observations = try? await RecognizeDocumentsRequest().perform(on: image, orientation: .up) else { return "" }
+        func topLeft(_ rect: NormalizedRect) -> CGRect {
+            let box = rect.cgRect
+            return CGRect(x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height)
+        }
+        let fragments = observations.flatMap { observation in
+            observation.document.paragraphs.compactMap { paragraph -> (text: String, firstLine: CGRect, lastLine: CGRect)? in
+                guard let first = paragraph.lines.first, let last = paragraph.lines.last else { return nil }
+                return (paragraph.transcript.replacingOccurrences(of: "\n", with: " "),
+                        topLeft(first.boundingBox), topLeft(last.boundingBox))
+            }
+        }
+        return await MainActor.run { PDFTextLayout.stitch(fragments, isWord: SpellingDictionary.isWord) }.joined(separator: "\n\n")
     }
 }
 
@@ -154,7 +209,10 @@ struct PDFPageTextEngineRegistry: Sendable {
     }
 
     static var builtIn: Self {
-        Self(engines: [PDFLiveTextEngine(), PDFVisionTextEngine()])
+        // Automatic tries these in order. Measured on 73 Magazine: the document
+        // reader and column-by-column Vision kept reading order at 99-100%, Live
+        // Text at 52-100% depending on the page.
+        Self(engines: [PDFDocumentTextEngine(), PDFVisionTextEngine(), PDFLiveTextEngine()])
     }
 
     var descriptors: [PDFTextEngineDescriptor] {
@@ -304,7 +362,8 @@ struct PDFPageTextRequest: Sendable {
 /// respected when present. Results live in the existing bounded app cache.
 actor PDFPageTextRecognizer {
     // 3: pages were recognized from a render at 1x in the middle of the canvas.
-    private static let cacheVersion = 3
+    // 4: Vision reads column by column; the document reader was added.
+    private static let cacheVersion = 4
     private static let cacheLifetime: TimeInterval = 60 * 60 * 24 * 365 * 10
     private let store: SQLiteStore
     let engineDescriptors: [PDFTextEngineDescriptor]

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		02243A4F474897214FB89AA6 /* PDFTextLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C6E40AE2450D08A025BE4F1 /* PDFTextLayoutTests.swift */; };
 		049A64218E6957346A542643 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D61FCB8BBFB3A07889BC645 /* AppPaths.swift */; };
 		0BAAFA8419A7B99BA926ED4F /* LNPopupController-Static in Frameworks */ = {isa = PBXBuildFile; productRef = 81B3780F8002DA10A3C4D5EE /* LNPopupController-Static */; };
 		0C50B41EAB14FF045250AFD0 /* SQLiteStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7B0F9C8906315750BF847F3 /* SQLiteStoreTests.swift */; };
@@ -26,6 +27,7 @@
 		43E547F853E37982C3DCF10C /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = 650ECFD527B2974A8E640EDF /* ReadiumShared */; };
 		4619E6C13BE93409CB710B3D /* PlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C0ABD85EEF2749ED6AE3E4 /* PlaybackController.swift */; };
 		4E7886C99627066D41A780CD /* CodecCapabilityDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31252B3F929B645C52A91F9 /* CodecCapabilityDeviceTests.swift */; };
+		50E3CD76FC9AE87D6FE060A1 /* 73-magazine-1976-08-page40-columns.txt in Resources */ = {isa = PBXBuildFile; fileRef = F1C13430A7D6178CD5474BB0 /* 73-magazine-1976-08-page40-columns.txt */; };
 		5DC85AFBFB8E350571548C15 /* ArchiveModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04FF787B22A0BC8999CBCF7C /* ArchiveModels.swift */; };
 		5DEF336EB0C4EFA629A3BD54 /* ArchiveDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44447702FAFA480C5DE6AF61 /* ArchiveDTO.swift */; };
 		670A25A66B3475B39199A7CC /* OriginalVideoRemoteControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB47764A2EAA6737E450F564 /* OriginalVideoRemoteControl.swift */; };
@@ -38,6 +40,7 @@
 		78D6EC89CF7E2986318E3681 /* ContinueListeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E76AA1D77FB87D8EB6F6DF /* ContinueListeningTests.swift */; };
 		793B43E0E3E05D1BD0963CFB /* OriginalVideoBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29ACD0865BCD826414E2B675 /* OriginalVideoBookmark.swift */; };
 		7E77483624106B86399BD522 /* PDFReadingStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E18D86233FB0609AFE082A /* PDFReadingStateTests.swift */; };
+		7F2FAC64E63B5AB1ABE6DD17 /* 73-magazine-1976-08-page40.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 3241C28DADE65644C72B86D8 /* 73-magazine-1976-08-page40.jpg */; };
 		816C6600DBDBBCBD1F2F9116 /* ArtworkPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6688140E01B2D367C2C7AF /* ArtworkPipeline.swift */; };
 		8342B387FAA23AD0D722C77A /* PDFReadingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9D4D28CB7D06FA401FAA6C /* PDFReadingState.swift */; };
 		84B2B5B00AC9AABAA1845F1F /* SQLiteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B6AC7E7D67A26404F8526F1 /* SQLiteStore.swift */; };
@@ -60,6 +63,7 @@
 		AF284FAD0DD53B09AA0CE882 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 73F779CCD8281CD0F095B326 /* ThirdPartyNotices.txt */; };
 		B71B2B79473396C8456E2659 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEC399375132D18A85258F1 /* DownloadManager.swift */; };
 		B91E26B2C53A79404FEDF866 /* PlayerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9059921AE97E122328AC8EC5 /* PlayerViews.swift */; };
+		BA4CC927C7FB33B423E9C490 /* PDFTextLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BDF9BBD41BBA62E85E8A7EE /* PDFTextLayout.swift */; };
 		BC237F74570D608F4BA1F516 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D8F5AEEB8CCDBCE5EDFC46D /* Assets.xcassets */; };
 		BDC4D9C4CA5EDBFCCB9A66F4 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = CECD6F02E0ED0D0671ECE9DE /* ReadiumNavigator */; };
 		BDCEDCFB9D7C58FD6BD965EE /* VideoPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15D73992E91F99768E44AC95 /* VideoPlaybackTests.swift */; };
@@ -106,10 +110,12 @@
 		233DB5EE909DC936BDB88C04 /* PlaybackLifecyclePolishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackLifecyclePolishTests.swift; sourceTree = "<group>"; };
 		29ACD0865BCD826414E2B675 /* OriginalVideoBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoBookmark.swift; sourceTree = "<group>"; };
 		2AE060CFC6E546D1AE4848E5 /* OriginalVideoRenderDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoRenderDeviceTests.swift; sourceTree = "<group>"; };
+		2BDF9BBD41BBA62E85E8A7EE /* PDFTextLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFTextLayout.swift; sourceTree = "<group>"; };
 		2D61FCB8BBFB3A07889BC645 /* AppPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPaths.swift; sourceTree = "<group>"; };
 		2D9D4D28CB7D06FA401FAA6C /* PDFReadingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReadingState.swift; sourceTree = "<group>"; };
 		2E19340146C38C0EA03063E4 /* FunstonListController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonListController.swift; sourceTree = "<group>"; };
 		2FBBB642621A8FDC9EB59A6D /* FunstonRootController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonRootController.swift; sourceTree = "<group>"; };
+		3241C28DADE65644C72B86D8 /* 73-magazine-1976-08-page40.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "73-magazine-1976-08-page40.jpg"; sourceTree = "<group>"; };
 		37212FCCB7B0625E5D94E558 /* ArtifactArtworkLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactArtworkLifecycleTests.swift; sourceTree = "<group>"; };
 		37DC7990DDA10D32849E641C /* ArtifactControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactControllers.swift; sourceTree = "<group>"; };
 		40147F874FD620BC7B6D9AAE /* BrowseControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseControllers.swift; sourceTree = "<group>"; };
@@ -120,6 +126,7 @@
 		4FD2EE1149DB04EDD621B35A /* FunstonTests-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "FunstonTests-Bridging-Header.h"; sourceTree = "<group>"; };
 		60547F1D814C05A757DCE7B9 /* FunstonAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonAppearance.swift; sourceTree = "<group>"; };
 		63B2F9D20233F0D328D27C37 /* CachingArchiveRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachingArchiveRepository.swift; sourceTree = "<group>"; };
+		6C6E40AE2450D08A025BE4F1 /* PDFTextLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFTextLayoutTests.swift; sourceTree = "<group>"; };
 		71A58F6CF1D568B8FA22F12F /* SleepTimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimerTests.swift; sourceTree = "<group>"; };
 		72CAD4E4C8526BEB670CFA90 /* DownloadResumeLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadResumeLiveTests.swift; sourceTree = "<group>"; };
 		73F779CCD8281CD0F095B326 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
@@ -163,6 +170,7 @@
 		E08BE65EA2616DB7059E4153 /* ArtifactContentsSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactContentsSearchTests.swift; sourceTree = "<group>"; };
 		E8FF06ECFBA48D28B9556414 /* PDFPerformanceView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PDFPerformanceView.h; sourceTree = "<group>"; };
 		EA709EA56A02C0C2ABF784EC /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		F1C13430A7D6178CD5474BB0 /* 73-magazine-1976-08-page40-columns.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "73-magazine-1976-08-page40-columns.txt"; sourceTree = "<group>"; };
 		F5E18D86233FB0609AFE082A /* PDFReadingStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReadingStateTests.swift; sourceTree = "<group>"; };
 		F5F6CA4F00827A4CBD134A9B /* ArtifactVideoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactVideoController.swift; sourceTree = "<group>"; };
 		FFDE9511B58DC58A87B16FCD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -227,6 +235,8 @@
 		409B9F98A7C63FE158113B32 /* Fixtures */ = {
 			isa = PBXGroup;
 			children = (
+				F1C13430A7D6178CD5474BB0 /* 73-magazine-1976-08-page40-columns.txt */,
+				3241C28DADE65644C72B86D8 /* 73-magazine-1976-08-page40.jpg */,
 				1DF8F80C66F6D0AF8BBD4445 /* original-video-fixture.mkv */,
 			);
 			path = Fixtures;
@@ -278,6 +288,7 @@
 				10FEF644850A1FE3D34C96F0 /* FunstonUIPresentationTests.swift */,
 				F5E18D86233FB0609AFE082A /* PDFReadingStateTests.swift */,
 				0CE64CF4FBD3ECC1CC387721 /* PDFScreenRenderingTests.swift */,
+				6C6E40AE2450D08A025BE4F1 /* PDFTextLayoutTests.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -299,6 +310,7 @@
 				8E7631BBAB981E4F1A0DD839 /* OriginalVideoControlsView.swift */,
 				9DDAC92BD36FE050CE0CEFD8 /* OriginalVideoPictureInPicture.swift */,
 				2D9D4D28CB7D06FA401FAA6C /* PDFReadingState.swift */,
+				2BDF9BBD41BBA62E85E8A7EE /* PDFTextLayout.swift */,
 				9059921AE97E122328AC8EC5 /* PlayerViews.swift */,
 			);
 			path = UI;
@@ -519,6 +531,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				50E3CD76FC9AE87D6FE060A1 /* 73-magazine-1976-08-page40-columns.txt in Resources */,
+				7F2FAC64E63B5AB1ABE6DD17 /* 73-magazine-1976-08-page40.jpg in Resources */,
 				869D13666E4C62A82250AE62 /* original-video-fixture.mkv in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -565,6 +579,7 @@
 				670A25A66B3475B39199A7CC /* OriginalVideoRemoteControl.swift in Sources */,
 				F133CEE06D6390C2F74AB9A6 /* OriginalVideoTrackMemory.swift in Sources */,
 				8342B387FAA23AD0D722C77A /* PDFReadingState.swift in Sources */,
+				BA4CC927C7FB33B423E9C490 /* PDFTextLayout.swift in Sources */,
 				4619E6C13BE93409CB710B3D /* PlaybackController.swift in Sources */,
 				B91E26B2C53A79404FEDF866 /* PlayerViews.swift in Sources */,
 				84B2B5B00AC9AABAA1845F1F /* SQLiteStore.swift in Sources */,
@@ -596,6 +611,7 @@
 				956D261D653D67E834CF1106 /* PDFRenderingPerformanceTests.swift in Sources */,
 				6F51B7CC80D382D750A3B5F9 /* PDFScreenRenderingExperiment.swift in Sources */,
 				9CFDC45EF60E820EF46A524C /* PDFScreenRenderingTests.swift in Sources */,
+				02243A4F474897214FB89AA6 /* PDFTextLayoutTests.swift in Sources */,
 				F5B8A7086BC9A4D26B859DC0 /* PlaybackLifecyclePolishTests.swift in Sources */,
 				AACBCEFEF392BBAF69EC21A0 /* ResumePolicyTests.swift in Sources */,
 				0C50B41EAB14FF045250AFD0 /* SQLiteStoreTests.swift in Sources */,
