@@ -81,6 +81,28 @@ final class ArtifactArtworkLifecycleTests: XCTestCase {
         XCTAssertEqual(loader.requests.count, 2)
     }
 
+    /// An item page opens with the thumbnail already seen in Explore, then its
+    /// metadata names a better image. The thumbnail must stay up while that loads;
+    /// it used to vanish into a placeholder for seconds.
+    func testSameItemBetterImageKeepsCoverUntilItArrives() async throws {
+        let loader = Loader()
+        let first = expectation(description: "Thumbnail")
+        loader.onRequest = { _ in first.fulfill() }
+        let mounted = try MountedArtwork(loader: loader)
+        defer { mounted.close(); loader.cancelPending() }
+        await fulfillment(of: [first], timeout: 3)
+        loader.complete(identifier: "first", image: coloredImage(.red))
+        try await assertStableCover(mounted, red: true)
+
+        let better = expectation(description: "Item's own image")
+        loader.onRequest = { _ in better.fulfill() }
+        mounted.state.url = URL(string: "https://archive.org/download/first/poster.png")
+        await fulfillment(of: [better], timeout: 3)
+        try await assertStableCover(mounted, red: true)
+        loader.complete(identifier: "poster.png", image: coloredImage(.blue))
+        try await assertStableCover(mounted, red: false)
+    }
+
     private func coloredImage(_ color: UIColor) -> SendableImage {
         SendableImage(UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32)).image { context in
             color.setFill()
@@ -137,13 +159,14 @@ final class ArtifactArtworkLifecycleTests: XCTestCase {
     private final class State: ObservableObject {
         @Published var identifier = "first"
         @Published var size: CGFloat = 180
+        @Published var url: URL?
     }
 
     private struct Harness: View {
         @ObservedObject var state: State
         let loader: Loader
         var body: some View {
-            ArtifactArtwork(identifier: state.identifier, size: state.size, imageLoader: loader.load)
+            ArtifactArtwork(identifier: state.identifier, size: state.size, url: state.url, imageLoader: loader.load)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.white)
                 .ignoresSafeArea()

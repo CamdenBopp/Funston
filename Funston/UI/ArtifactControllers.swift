@@ -352,7 +352,8 @@ struct ArtifactArtwork: View {
         // Keep a stable task owner and retain a loaded cover while the same
         // artifact requests a different display size or scale.
         ZStack {
-            if imageIdentity == identity, let image { Image(uiImage: image).resizable().scaledToFit() }
+            // Any cover of this item stays up while a better image for it loads.
+            if imageIdentity?.identifier == identifier, let image { Image(uiImage: image).resizable().scaledToFit() }
             else {
                 ZStack {
                     Rectangle().fill(Color(uiColor: .secondarySystemBackground))
@@ -364,7 +365,7 @@ struct ArtifactArtwork: View {
         .accessibilityHidden(true)
         .task(id: Request(identity: identity, size: size, scale: scale)) {
             let requestedIdentity = identity
-            if imageIdentity != requestedIdentity {
+            if imageIdentity?.identifier != requestedIdentity.identifier {
                 image = nil
                 imageIdentity = requestedIdentity
             }
