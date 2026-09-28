@@ -315,6 +315,12 @@ private final class ExploreArtifactCell: UICollectionViewCell {
     /// instead of at the bottom of an empty band.
     nonisolated static let maximumCoverHeight: CGFloat = 176
     private var coverHeightConstraint: NSLayoutConstraint?
+    /// Width / height of this tile's cover, once known.
+    private var coverAspect: CGFloat?
+    /// Cover shapes seen this session, so a reused or revisited tile gets its
+    /// height before it's measured instead of resizing mid-swipe.
+    private static var knownAspects: [String: CGFloat] = [:]
+    private static let knownAspectsLimit = 2_000
 
     private enum Metrics {
         static let artworkHeight: CGFloat = ExploreArtifactCell.maximumCoverHeight
@@ -450,6 +456,8 @@ private final class ExploreArtifactCell: UICollectionViewCell {
         if identifier != artifact.identifier {
             cancelArtwork(); identifier = artifact.identifier
             showPlaceholder()
+            coverAspect = Self.knownAspects[artifact.identifier]
+            updateCoverHeight(width: contentView.bounds.width)
         }
         placeholder.image = UIImage(systemName: artifact.mediaType.artworkSymbol)
         titleLabel.text = artifact.title
@@ -478,17 +486,33 @@ private final class ExploreArtifactCell: UICollectionViewCell {
             guard !Task.isCancelled, let self, self.identifier == identifier else { return }
             artworkTask = nil
             if let image = result?.value, image.size.width > 0, image.size.height > 0 {
-                setArtworkAspect(image.size.width / image.size.height)
+                let aspect = image.size.width / image.size.height
+                setArtworkAspect(aspect)
                 artwork.image = image; hasArtwork = true
                 placeholder.isHidden = true; placeholderSurface.isHidden = true
-                let width = contentView.bounds.width
-                if width > 0 {
-                    coverHeightConstraint?.constant = min(Metrics.artworkHeight, width * image.size.height / image.size.width)
+                if Self.knownAspects.count >= Self.knownAspectsLimit { Self.knownAspects.removeAll() }
+                Self.knownAspects[identifier] = aspect
+                if coverAspect != aspect {
+                    coverAspect = aspect
+                    updateCoverHeight(width: contentView.bounds.width)
                 }
             }
         }
     }
 
+
+    /// The layout hands over the tile's real width before measuring it.
+    override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
+        super.apply(layoutAttributes)
+        updateCoverHeight(width: layoutAttributes.size.width)
+    }
+
+    /// The cover's own height at this width, or the full height while its shape is unknown.
+    private func updateCoverHeight(width: CGFloat) {
+        guard width > 0 else { return }
+        let height = coverAspect.map { min(Metrics.artworkHeight, width / $0) } ?? Metrics.artworkHeight
+        if coverHeightConstraint?.constant != height { coverHeightConstraint?.constant = height }
+    }
 
     private func setArtworkAspect(_ aspect: CGFloat) {
         artworkAspect?.isActive = false
@@ -505,7 +529,6 @@ private final class ExploreArtifactCell: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         cancelArtwork(); identifier = nil; showPlaceholder()
-        coverHeightConstraint?.constant = Metrics.artworkHeight
         if let action { button.removeAction(action, for: .primaryActionTriggered) }
         action = nil
     }
