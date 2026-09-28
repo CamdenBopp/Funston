@@ -3,12 +3,12 @@ import AppKit
 import Foundation
 import ImageIO
 
-// Original Archive mark: a single doorway framing the two leaves of an open
+// Original Funston mark: a single doorway framing the two leaves of an open
 // book. This is intentionally distinct from Internet Archive's columned logo.
 // Run from the repository root: swift Scripts/GenerateAppIcon.swift
 let side = 1024
 let output = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-    .appendingPathComponent("Archive/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png")
+    .appendingPathComponent("Funston/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png")
 guard let bitmap = CGContext(data: nil, width: side, height: side,
     bitsPerComponent: 8, bytesPerRow: side * 4,
     space: CGColorSpace(name: CGColorSpace.sRGB)!,

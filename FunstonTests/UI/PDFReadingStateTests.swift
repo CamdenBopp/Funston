@@ -1,0 +1,133 @@
+import XCTest
+import PDFKit
+import UIKit
+@testable import Funston
+
+@MainActor
+final class PDFReadingStateTests: XCTestCase {
+    func testRapidNavigationFlushesOnlyTheFinalPage() throws {
+        let suite = "PDFReadingStateTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let progress = PDFReadingProgress(key: "page", defaults: defaults, delay: .seconds(60))
+        for page in 1...300 { progress.record(page: page) }
+        XCTAssertEqual(defaults.integer(forKey: "page"), 0)
+        progress.flush()
+        XCTAssertEqual(defaults.integer(forKey: "page"), 300)
+        progress.record(page: 12)
+        progress.flush()
+        XCTAssertEqual(defaults.integer(forKey: "page"), 12, "Leaving the reader must save immediately")
+    }
+
+    func testDebounceSavesTheLatestPageAfterNavigationSettles() async throws {
+        let suite = "PDFReadingStateTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let progress = PDFReadingProgress(key: "page", defaults: defaults, delay: .milliseconds(20))
+        progress.record(page: 10)
+        progress.record(page: 20)
+        try await Task.sleep(for: .milliseconds(80))
+        withExtendedLifetime(progress) {}
+        XCTAssertEqual(defaults.integer(forKey: "page"), 20)
+    }
+
+    func testChangingNativeLayoutKeepsTheCurrentPageAndText() async throws {
+        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 600, height: 800))
+        let data = renderer.pdfData { context in
+            for page in 1...12 {
+                context.beginPage()
+                ("Searchable page \(page)" as NSString).draw(at: CGPoint(x: 50, y: 50), withAttributes: [.font: UIFont.systemFont(ofSize: 20)])
+            }
+        }
+        let document = try XCTUnwrap(PDFDocument(data: data))
+        let view = PDFView(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
+        view.document = document
+        view.isFindInteractionEnabled = true
+        PDFReadingLayout.continuous.apply(to: view)
+        view.go(to: try XCTUnwrap(document.page(at: 5)))
+        PDFReadingLayout.pages.apply(to: view)
+        XCTAssertTrue(view.isUsingPageViewController)
+        XCTAssertEqual(document.index(for: try XCTUnwrap(view.currentPage)), 5)
+        PDFReadingLayout.continuous.apply(to: view)
+        XCTAssertFalse(view.isUsingPageViewController)
+        XCTAssertEqual(document.index(for: try XCTUnwrap(view.currentPage)), 5)
+        XCTAssertNotNil(view.findInteraction)
+        XCTAssertTrue(try XCTUnwrap(view.currentPage?.string).contains("Searchable page 6"))
+    }
+
+    func testAutomaticTextPolicyUsesLocalRecognitionForArchiveDerivatives() {
+        let textPDF = ArchiveFile(
+            name: "book_text.pdf",
+            format: "Text PDF",
+            source: "derivative",
+            original: "book.pdf"
+        )
+        let genericDerivative = ArchiveFile(
+            name: "scan.pdf",
+            format: "PDF",
+            source: "derivative",
+            original: "scan_jp2.zip"
+        )
+        let bornDigital = ArchiveFile(name: "report.pdf", format: "PDF", source: "original")
+
+        XCTAssertTrue(PDFPageTextPolicy.prefersLocalRecognition(for: textPDF))
+        XCTAssertTrue(PDFPageTextPolicy.prefersLocalRecognition(for: genericDerivative))
+        XCTAssertFalse(PDFPageTextPolicy.prefersLocalRecognition(for: bornDigital))
+    }
+
+    func testAutomaticTextPolicyKeepsUsefulBornDigitalTextAndRejectsNoise() {
+        XCTAssertTrue(PDFPageTextPolicy.hasUsableEmbeddedText("A complete sentence from a born-digital PDF."))
+        XCTAssertFalse(PDFPageTextPolicy.hasUsableEmbeddedText("  1 |  "))
+        XCTAssertTrue(PDFPageTextPolicy.hasMeaningfulRecognition("Title"))
+        XCTAssertFalse(PDFPageTextPolicy.hasMeaningfulRecognition("-- 1 --"))
+    }
+
+    func testTextEnginePreferenceDefaultsToAutomaticAndPersistsOneChoice() throws {
+        let suite = "PDFReadingStateTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preference = PDFTextEnginePreference(defaults: defaults)
+
+        XCTAssertEqual(preference.selectedID, PDFTextEngineID.automatic)
+        preference.select(PDFTextEngineID.appleLiveText)
+        XCTAssertEqual(PDFTextEnginePreference(defaults: defaults).selectedID, PDFTextEngineID.appleLiveText)
+    }
+
+    func testTextEngineRegistryAcceptsAnAdditionalEngineWithoutChangingTheReader() {
+        struct AdditionalEngine: PDFPageOCREngine {
+            let descriptor = PDFTextEngineDescriptor(id: "example.custom-ocr", title: "Example OCR", isAvailable: true)
+            func recognize(_ image: CGImage) async -> String { "Example" }
+        }
+
+        let registry = PDFPageTextEngineRegistry(engines: [AdditionalEngine()])
+        XCTAssertEqual(registry.descriptors, [
+            PDFTextEngineDescriptor(id: "example.custom-ocr", title: "Example OCR", isAvailable: true)
+        ])
+    }
+
+    func testExplicitEngineIsRememberedWithoutBecomingARepeatedPrompt() {
+        let available = [PDFTextEngineID.appleLiveText, PDFTextEngineID.appleVision]
+        XCTAssertEqual(
+            PDFPageTextPolicy.recognitionOrder(
+                selectedEngineID: PDFTextEngineID.appleVision,
+                availableEngineIDs: available
+            ),
+            [PDFTextEngineID.appleVision]
+        )
+        XCTAssertEqual(
+            PDFPageTextPolicy.recognitionOrder(
+                selectedEngineID: "extension.not-installed",
+                availableEngineIDs: available
+            ),
+            available,
+            "An unavailable saved extension should silently use Automatic until it returns"
+        )
+    }
+
+    func testRecognizedTextNormalizationPreservesParagraphsWithoutLayoutNoise() {
+        XCTAssertEqual(
+            PDFPageTextPolicy.normalize("First line  \r\n\r\n\r\nSecond\t line\n"),
+            "First line\n\nSecond\t line"
+        )
+    }
+}

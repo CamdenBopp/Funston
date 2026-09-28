@@ -2,8 +2,6 @@
 
 A native iPhone and iPad client for exploring Internet Archive artifacts. Browse live collections through artwork shelves, search across media types, inspect provenance and files, save artifacts, and download supported media for offline use.
 
-The repository is named Funston; the existing Xcode target and installed app are currently named Archive. Keeping the bundle identifier unchanged preserves existing on-device library and downloads.
-
 Audio publishes album artwork and transport metadata to the system Now Playing surface, including the Lock Screen. Artwork is loaded asynchronously through the bounded image cache and retained across tracks from the same artifact.
 
 UIKit owns navigation, adaptive tab/split layouts and reusable collections; SwiftUI composes artifact headers and the full audio player. A native interactive mini-player keeps listening available while browsing. Supported PDFs open in a PDFKit reader with page restoration and text search; scanned pages also have an on-device recognized-text view that defaults to Automatic and prefers Apple Live Text for Internet Archive derivatives. Readers are not prompted when opening a page, but Reading Options exposes an extensible engine list and remembers a choice until it is changed. Compatible films open in AVKit. EPUB remains future work.
@@ -20,7 +18,7 @@ Generate the Xcode project and build:
 
 ```sh
 xcodegen generate
-xcodebuild -project Archive.xcodeproj -scheme Archive -destination 'generic/platform=iOS Simulator' build
+xcodebuild -project Funston.xcodeproj -scheme Funston -destination 'generic/platform=iOS Simulator' build
 ```
 
 Requires Xcode 27 and XcodeGen; the app supports iOS 18 and later. Keep the workspace's `Package.resolved` to reproduce the transitive dependency version. Regenerate the original geometric app icon with `swift Scripts/GenerateAppIcon.swift`.
@@ -31,4 +29,4 @@ The product and engineering contract, including acceptance gates that require ph
 
 ## License
 
-Original project source is available under the [MIT License](LICENSE). Vendored dependencies retain their own copyright and license notices; see [ThirdPartyNotices.txt](Archive/Resources/ThirdPartyNotices.txt). Internet Archive media and artwork (including material visible in review screenshots) remain subject to their respective rights and are not relicensed by this repository.
+Original project source is available under the [MIT License](LICENSE). Vendored dependencies retain their own copyright and license notices; see [ThirdPartyNotices.txt](Funston/Resources/ThirdPartyNotices.txt). Internet Archive media and artwork (including material visible in review screenshots) remain subject to their respective rights and are not relicensed by this repository.

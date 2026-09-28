@@ -1,4 +1,4 @@
-name: Archive
+name: Funston
 options:
   bundleIdPrefix: com.camden
   deploymentTarget:
@@ -23,11 +23,11 @@ packages:
     url: https://github.com/CamdenBopp/ArchivePlayerCore.git
     from: 0.1.0
 targets:
-  Archive:
+  Funston:
     type: application
     platform: iOS
     sources:
-      - path: Archive
+      - path: Funston
     dependencies:
       - package: LNPopupController
         product: LNPopupController-Static
@@ -38,11 +38,11 @@ targets:
       - sdk: MediaPlayer.framework
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.camden.Archive
-        PRODUCT_NAME: Archive
+        PRODUCT_BUNDLE_IDENTIFIER: com.camden.Funston
+        PRODUCT_NAME: Funston
         GENERATE_INFOPLIST_FILE: true
-        INFOPLIST_FILE: Archive/Info.plist
-        INFOPLIST_KEY_CFBundleDisplayName: Archive
+        INFOPLIST_FILE: Funston/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Funston
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.reference
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
@@ -54,39 +54,39 @@ targets:
         CODE_SIGN_STYLE: Automatic
     scheme:
       testTargets:
-        - ArchiveTests
-        - ArchiveUITests
+        - FunstonTests
+        - FunstonUITests
       gatherCoverageData: true
-  ArchiveTests:
+  FunstonTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - path: ArchiveTests
+      - path: FunstonTests
     dependencies:
-      - target: Archive
+      - target: Funston
       - package: ArchivePlayerCore
         product: ArchivePlayerCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.camden.ArchiveTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.camden.FunstonTests
         GENERATE_INFOPLIST_FILE: true
-        SWIFT_OBJC_BRIDGING_HEADER: ArchiveTests/ArchiveTests-Bridging-Header.h
-  ArchiveUITests:
+        SWIFT_OBJC_BRIDGING_HEADER: FunstonTests/FunstonTests-Bridging-Header.h
+  FunstonUITests:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - path: ArchiveUITests
+      - path: FunstonUITests
     dependencies:
-      - target: Archive
+      - target: Funston
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.camden.ArchiveUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.camden.FunstonUITests
         GENERATE_INFOPLIST_FILE: true
 schemes:
-  ArchivePDFPerformance:
+  FunstonPDFPerformance:
     build:
       targets:
-        Archive: [test]
+        Funston: [test]
     test:
       config: Release
       gatherCoverageData: false
@@ -96,6 +96,6 @@ schemes:
       commandLineArguments:
         "--skip-playback-restoration": true
       targets:
-        - name: ArchiveTests
+        - name: FunstonTests
           selectedTests:
             - PDFRenderingPerformanceTests

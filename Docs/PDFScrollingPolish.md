@@ -10,7 +10,7 @@ User reported blank pages for seconds during fast PDF scrolling and identified t
 
 Keep native PDFKit and continuous scrolling. Native horizontal paging was tested and rejected as the default performance fix: in the first comparison it used 30.71 CPU seconds versus 11.58 for continuous scrolling, with sampled RSS 781 versus 550 MB. This was a sequential comparison, not a controlled cold-cache benchmark.
 
-The rejected cache experiment uses PDFKit's public `PDFDocumentDelegate.classForPage` and `PDFPage.draw(with:to:)` hooks. Background tile draws can share a 1536-pixel-wide page raster. Main-thread cache misses immediately use native drawing rather than waiting on another renderer. The original PDF still supplies text, selection, links, native Find, and accessibility. Zoom above the cached resolution, annotations, rotated pages, nonzero-origin boxes, and unusual aspect ratios retain native drawing. Transparent content remains transparent. No PDF bytes are modified. This code now lives **only in ArchiveTests**, not the application target, because the corrected measurements did not establish a reliable fix.
+The rejected cache experiment uses PDFKit's public `PDFDocumentDelegate.classForPage` and `PDFPage.draw(with:to:)` hooks. Background tile draws can share a 1536-pixel-wide page raster. Main-thread cache misses immediately use native drawing rather than waiting on another renderer. The original PDF still supplies text, selection, links, native Find, and accessibility. Zoom above the cached resolution, annotations, rotated pages, nonzero-origin boxes, and unusual aspect ratios retain native drawing. Transparent content remains transparent. No PDF bytes are modified. This code now lives **only in FunstonTests**, not the application target, because the corrected measurements did not establish a reliable fix.
 
 The LRU retains at most 48 MiB per document and clears on memory warnings. This limit is **not** a total-process memory ceiling: concurrent drawing contexts, PDFKit caches, decoded source images, and GPU backing stores are additional. No eager whole-book rendering, polling timer, disk derivative, or new third-party dependency is introduced.
 
@@ -47,7 +47,7 @@ Limitations: `go(to:)` is not a real finger fling. CPU is whole-process `getrusa
 
 ```sh
 xcodegen generate
-xcodebuild -project Archive.xcodeproj -scheme ArchivePDFPerformance \
+xcodebuild -project Funston.xcodeproj -scheme FunstonPDFPerformance \
   -configuration Release -destination 'platform=iOS,id=00008120-001854922238201E' \
   -derivedDataPath /tmp/ArchiveDemuxDerived -allowProvisioningUpdates \
   ENABLE_TESTABILITY=YES PDF_PERFORMANCE_MODE=continuousCached test
