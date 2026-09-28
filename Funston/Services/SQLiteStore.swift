@@ -134,6 +134,23 @@ actor SQLiteStore {
         )
     }
 
+    func bookLocator(identifier: String, fileName: String) throws -> String? {
+        try queryOne(
+            "SELECT locator FROM book_positions WHERE identifier=? AND file_name=?",
+            bindings: [.text(identifier), .text(fileName)]
+        ) { Self.text($0, column: 0) } ?? nil
+    }
+
+    func setBookLocator(_ locator: String, identifier: String, fileName: String, date: Date = .now) throws {
+        try execute(
+            """
+            INSERT INTO book_positions(identifier, file_name, locator, updated_at) VALUES(?, ?, ?, ?)
+            ON CONFLICT(identifier, file_name) DO UPDATE SET locator=excluded.locator, updated_at=excluded.updated_at
+            """,
+            bindings: [.text(identifier), .text(fileName), .text(locator), .double(date.timeIntervalSince1970)]
+        )
+    }
+
     func playbackPosition(identifier: String, fileName: String) throws -> Double? {
         try queryOne(
             "SELECT seconds FROM playback_positions WHERE identifier=? AND file_name=?",
@@ -438,6 +455,16 @@ actor SQLiteStore {
           kind TEXT PRIMARY KEY CHECK(kind IN ('audio', 'caption')),
           language TEXT,
           updated_at REAL NOT NULL
+        );
+        """,
+        // 4: where you are in each book, as Readium's locator JSON.
+        """
+        CREATE TABLE IF NOT EXISTS book_positions(
+          identifier TEXT NOT NULL,
+          file_name TEXT NOT NULL,
+          locator TEXT NOT NULL,
+          updated_at REAL NOT NULL,
+          PRIMARY KEY(identifier, file_name)
         );
         """
     ]

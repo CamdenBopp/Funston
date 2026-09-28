@@ -16,7 +16,29 @@ private final class PreparedPDF: @unchecked Sendable {
 @MainActor
 enum ArtifactMediaPresentation {
     static func preferredFile(in detail: ArtifactDetail) -> ArchiveFile? {
-        supportedFiles(in: detail).first
+        book(in: detail) ?? supportedFiles(in: detail).first
+    }
+
+    /// A born-digital EPUB that came with the item, such as Project Gutenberg's.
+    /// Internet Archive's own EPUBs of scanned books are generated from its OCR
+    /// (derived from `_abbyy.gz`); those books stay in the PDF reader, where
+    /// pages are recognized on this device instead.
+    static func bookFile(in files: [ArchiveFile]) -> ArchiveFile? {
+        files.filter { file in
+            !file.isPrivate && (file.name as NSString).pathExtension.lowercased() == "epub"
+                && file.source?.lowercased() != "derivative"
+        }.sorted { lhs, rhs in
+            // Gutenberg offers the book with and without illustrations.
+            let lhsImages = lhs.name.lowercased().contains("-images"), rhsImages = rhs.name.lowercased().contains("-images")
+            if lhsImages != rhsImages { return lhsImages }
+            if lhs.size != rhs.size { return (lhs.size ?? 0) > (rhs.size ?? 0) }
+            return lhs.name < rhs.name
+        }.first
+    }
+
+    private static func book(in detail: ArtifactDetail) -> ArchiveFile? {
+        guard detail.access == .available, detail.summary.mediaType == .texts else { return nil }
+        return bookFile(in: detail.files)
     }
 
     private static func supportedFiles(in detail: ArtifactDetail) -> [ArchiveFile] {
@@ -37,6 +59,7 @@ enum ArtifactMediaPresentation {
     }
 
     static func actionTitle(for detail: ArtifactDetail) -> String? {
+        if book(in: detail) != nil { return "Read Book" }
         guard preferredFile(in: detail) != nil else { return nil }
         return detail.summary.mediaType == .movies ? "Watch Film" : "Read PDF"
     }
@@ -66,6 +89,12 @@ enum ArtifactMediaPresentation {
     }
 
     static func open(detail: ArtifactDetail, from controller: UIViewController, environment: AppEnvironment) {
+        if let book = book(in: detail) {
+            controller.navigationController?.pushViewController(
+                EPUBReaderController(summary: detail.summary, file: book, downloads: environment.downloads, store: environment.store),
+                animated: true)
+            return
+        }
         let files = supportedFiles(in: detail)
         guard let file = files.first else { return }
         if files.count > 1 {

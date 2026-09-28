@@ -205,6 +205,56 @@ final class FunstonUITests: XCTestCase {
         capture(app, name: "07b Native PDF Find")
     }
 
+    /// A Project Gutenberg book opens in the EPUB reader, its text reaches
+    /// VoiceOver, and Contents jumps to a chapter.
+    @MainActor
+    func testReadingABornDigitalBook() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--skip-playback-restoration"]
+        app.launch()
+        app.tabBars.buttons["Search"].tap()
+        let field = app.searchFields["Search the Internet Archive"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("manandmaid20512gut\n")
+        let book = app.collectionViews.cells["artifact:manandmaid20512gut"]
+        XCTAssertTrue(book.waitForExistence(timeout: 30))
+        book.tap()
+        let read = app.buttons["artifact.read"]
+        XCTAssertTrue(read.waitForExistence(timeout: 30))
+        XCTAssertEqual(read.label, "Read Book")
+        read.tap()
+        let text = app.webViews.staticTexts.firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 60), app.debugDescription)
+        print("BOOK_TEXT", app.webViews.staticTexts.allElementsBoundByIndex.prefix(6).map(\.label))
+        capture(app, name: "10 Book")
+        let contents = app.buttons["Contents"]
+        XCTAssertTrue(contents.waitForExistence(timeout: 10))
+        contents.tap()
+        XCTAssertTrue(app.navigationBars["Contents"].waitForExistence(timeout: 5))
+        let chapters = app.collectionViews.cells
+        XCTAssertGreaterThan(chapters.count, 3)
+        print("BOOK_CONTENTS", chapters.allElementsBoundByIndex.prefix(8).map(\.label))
+        capture(app, name: "11 Book contents")
+        chapters.element(boundBy: min(4, chapters.count - 1)).tap()
+        XCTAssertTrue(text.waitForExistence(timeout: 10))
+        sleep(2)
+        capture(app, name: "12 Book chapter")
+        let visible = Set(app.webViews.staticTexts.allElementsBoundByIndex.filter(\.isHittable).map(\.label))
+        XCTAssertFalse(visible.isEmpty)
+        // Leave and come back: the book reopens where it was left.
+        sleep(2)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(read.waitForExistence(timeout: 10))
+        read.tap()
+        XCTAssertTrue(text.waitForExistence(timeout: 30))
+        sleep(2)
+        let reopened = Set(app.webViews.staticTexts.allElementsBoundByIndex.filter(\.isHittable).map(\.label))
+        print("BOOK_RESUME visible", visible.count, "reopened", reopened.count, "shared", visible.intersection(reopened).count)
+        XCTAssertFalse(visible.isDisjoint(with: reopened), "The book should reopen at the chapter it was left on")
+        XCTAssertFalse(reopened.contains("The Project Gutenberg EBook of Man and Maid, by Elinor Glyn"), "It reopened at the start")
+    }
+
     @MainActor
     func testVideoViewingJourneyAndNativeControls() throws {
         let app = XCUIApplication()

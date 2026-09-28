@@ -143,10 +143,21 @@ final class SQLiteStoreTests: XCTestCase {
         XCTAssertNil(otherFile)
         XCTAssertEqual(audioLanguage, .language("ja"))
         XCTAssertEqual(captionLanguage, .off)
-        XCTAssertEqual(SQLiteStore.schemaVersion, 3)
+        // Upgraded through every later step, not just the one that added track choices.
+        XCTAssertGreaterThanOrEqual(SQLiteStore.schemaVersion, 3)
         XCTAssertEqual(sqlite3_open(url.path, &handle), SQLITE_OK)
-        XCTAssertEqual(try SQLiteStore.userVersion(handle), 3)
+        XCTAssertEqual(try SQLiteStore.userVersion(handle), SQLiteStore.schemaVersion)
         sqlite3_close(handle)
+    }
+
+    func testBookPositionRoundTripsAndUpdates() async throws {
+        let (store, _) = try makeStore()
+        let empty = try await store.bookLocator(identifier: "book", fileName: "book.epub")
+        XCTAssertNil(empty)
+        try await store.setBookLocator(#"{"href":"ch1.xhtml","type":"application/xhtml+xml"}"#, identifier: "book", fileName: "book.epub")
+        try await store.setBookLocator(#"{"href":"ch2.xhtml","type":"application/xhtml+xml"}"#, identifier: "book", fileName: "book.epub")
+        let saved = try await store.bookLocator(identifier: "book", fileName: "book.epub")
+        XCTAssertEqual(saved, #"{"href":"ch2.xhtml","type":"application/xhtml+xml"}"#)
     }
 
     func testDownloadRecordRoundTrip() async throws {

@@ -18,9 +18,12 @@
 		19095D18B73DD28BA13C48BC /* OriginalVideoControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E7631BBAB981E4F1A0DD839 /* OriginalVideoControlsView.swift */; };
 		193FCD3292B04912E1A21DAB /* OriginalTransportStreamRenderDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E1D4A647EC1DB86A1FB685 /* OriginalTransportStreamRenderDeviceTests.swift */; };
 		1D77B9B0D800D997F0E21FFA /* VideoPlaybackSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0306A62D510F6CE4C26D675 /* VideoPlaybackSession.swift */; };
+		1DECC04ED3D36E252CEFBF31 /* BookRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3EB0964BC9DFC31C186AD23 /* BookRoutingTests.swift */; };
 		2E3C46D9768C200357CFBE57 /* PDFPerformanceView.m in Sources */ = {isa = PBXBuildFile; fileRef = CB73A6339210FC418D6AAF77 /* PDFPerformanceView.m */; };
 		315F272717BD431394C0726A /* DownloadRelocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DBCF6D4893AA8269341A32F /* DownloadRelocationTests.swift */; };
 		39E21BABC66B1FCCE7091C20 /* ArtifactControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DC7990DDA10D32849E641C /* ArtifactControllers.swift */; };
+		3FBFC49B21FDCFE928EC30F6 /* EPUBReaderController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79679C44A776B115330557D /* EPUBReaderController.swift */; };
+		43E547F853E37982C3DCF10C /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = 650ECFD527B2974A8E640EDF /* ReadiumShared */; };
 		4619E6C13BE93409CB710B3D /* PlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C0ABD85EEF2749ED6AE3E4 /* PlaybackController.swift */; };
 		4E7886C99627066D41A780CD /* CodecCapabilityDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31252B3F929B645C52A91F9 /* CodecCapabilityDeviceTests.swift */; };
 		5DC85AFBFB8E350571548C15 /* ArchiveModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04FF787B22A0BC8999CBCF7C /* ArchiveModels.swift */; };
@@ -49,6 +52,7 @@
 		9C873E1E6A9266381F108BDD /* ArchivePlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = A38AE549ADD4916042D85BDA /* ArchivePlayerCore */; };
 		9CFDC45EF60E820EF46A524C /* PDFScreenRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CE64CF4FBD3ECC1CC387721 /* PDFScreenRenderingTests.swift */; };
 		9EB40E9254AE28EEDE54C895 /* FunstonListController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E19340146C38C0EA03063E4 /* FunstonListController.swift */; };
+		A43CA9811F9BFD3A8A89BFA0 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 9313BE6194B7283F5B698C88 /* ReadiumStreamer */; };
 		A8D8AB026A6E45181B3B3D10 /* OriginalVideoPictureInPicture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDAC92BD36FE050CE0CEFD8 /* OriginalVideoPictureInPicture.swift */; };
 		AA20305C654DF7018EA831A0 /* ArchivePlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5AAF43B1597B01B8AA33FF4F /* ArchivePlayerCore */; };
 		AACBCEFEF392BBAF69EC21A0 /* ResumePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B2556F6A00E16BF44C90D2 /* ResumePolicyTests.swift */; };
@@ -57,6 +61,7 @@
 		B71B2B79473396C8456E2659 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEC399375132D18A85258F1 /* DownloadManager.swift */; };
 		B91E26B2C53A79404FEDF866 /* PlayerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9059921AE97E122328AC8EC5 /* PlayerViews.swift */; };
 		BC237F74570D608F4BA1F516 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D8F5AEEB8CCDBCE5EDFC46D /* Assets.xcassets */; };
+		BDC4D9C4CA5EDBFCCB9A66F4 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = CECD6F02E0ED0D0671ECE9DE /* ReadiumNavigator */; };
 		BDCEDCFB9D7C58FD6BD965EE /* VideoPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15D73992E91F99768E44AC95 /* VideoPlaybackTests.swift */; };
 		BDFC6221AE98FC278EB44662 /* ArchiveCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DBCB79CF586FE1530AF953 /* ArchiveCoreTests.swift */; };
 		BF83566D84F60B6BA2FA5CF1 /* ArchiveNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90E76B9A4F6B4D55BA45EEFE /* ArchiveNormalizer.swift */; };
@@ -134,6 +139,7 @@
 		9D8F5AEEB8CCDBCE5EDFC46D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9DDAC92BD36FE050CE0CEFD8 /* OriginalVideoPictureInPicture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoPictureInPicture.swift; sourceTree = "<group>"; };
 		A31252B3F929B645C52A91F9 /* CodecCapabilityDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodecCapabilityDeviceTests.swift; sourceTree = "<group>"; };
+		A3EB0964BC9DFC31C186AD23 /* BookRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRoutingTests.swift; sourceTree = "<group>"; };
 		A582B4688E196BF2BD0D69CC /* SleepTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimer.swift; sourceTree = "<group>"; };
 		A6C0ABD85EEF2749ED6AE3E4 /* PlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackController.swift; sourceTree = "<group>"; };
 		AB47764A2EAA6737E450F564 /* OriginalVideoRemoteControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoRemoteControl.swift; sourceTree = "<group>"; };
@@ -142,6 +148,7 @@
 		B0306A62D510F6CE4C26D675 /* VideoPlaybackSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlaybackSession.swift; sourceTree = "<group>"; };
 		B1DBCB79CF586FE1530AF953 /* ArchiveCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveCoreTests.swift; sourceTree = "<group>"; };
 		B39B9822B5D96BB89A1C2CE6 /* OriginalVideoPlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoPlaybackTests.swift; sourceTree = "<group>"; };
+		B79679C44A776B115330557D /* EPUBReaderController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBReaderController.swift; sourceTree = "<group>"; };
 		B7B0F9C8906315750BF847F3 /* SQLiteStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteStoreTests.swift; sourceTree = "<group>"; };
 		B8E1D4A647EC1DB86A1FB685 /* OriginalTransportStreamRenderDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalTransportStreamRenderDeviceTests.swift; sourceTree = "<group>"; };
 		BCB1127C7E1A84E47D833B69 /* FunstonTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FunstonTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -176,6 +183,9 @@
 			files = (
 				0BAAFA8419A7B99BA926ED4F /* LNPopupController-Static in Frameworks */,
 				AA20305C654DF7018EA831A0 /* ArchivePlayerCore in Frameworks */,
+				43E547F853E37982C3DCF10C /* ReadiumShared in Frameworks */,
+				A43CA9811F9BFD3A8A89BFA0 /* ReadiumStreamer in Frameworks */,
+				BDC4D9C4CA5EDBFCCB9A66F4 /* ReadiumNavigator in Frameworks */,
 				F30D5650C3CB4BE3C874A25F /* libsqlite3.tbd in Frameworks */,
 				FD1FD2B4D3283EB577966091 /* AVFoundation.framework in Frameworks */,
 				F5B97A27324D31423F0FA693 /* MediaPlayer.framework in Frameworks */,
@@ -264,6 +274,7 @@
 			children = (
 				37212FCCB7B0625E5D94E558 /* ArtifactArtworkLifecycleTests.swift */,
 				E08BE65EA2616DB7059E4153 /* ArtifactContentsSearchTests.swift */,
+				A3EB0964BC9DFC31C186AD23 /* BookRoutingTests.swift */,
 				10FEF644850A1FE3D34C96F0 /* FunstonUIPresentationTests.swift */,
 				F5E18D86233FB0609AFE082A /* PDFReadingStateTests.swift */,
 				0CE64CF4FBD3ECC1CC387721 /* PDFScreenRenderingTests.swift */,
@@ -279,6 +290,7 @@
 				83FA6742BCE70DB39C50A79E /* ArtifactOriginalVideoController.swift */,
 				F5F6CA4F00827A4CBD134A9B /* ArtifactVideoController.swift */,
 				40147F874FD620BC7B6D9AAE /* BrowseControllers.swift */,
+				B79679C44A776B115330557D /* EPUBReaderController.swift */,
 				C06E7B3A4A0DEDE6ED4D71EE /* ExploreController.swift */,
 				60547F1D814C05A757DCE7B9 /* FunstonAppearance.swift */,
 				2E19340146C38C0EA03063E4 /* FunstonListController.swift */,
@@ -398,6 +410,9 @@
 			packageProductDependencies = (
 				81B3780F8002DA10A3C4D5EE /* LNPopupController-Static */,
 				5AAF43B1597B01B8AA33FF4F /* ArchivePlayerCore */,
+				650ECFD527B2974A8E640EDF /* ReadiumShared */,
+				9313BE6194B7283F5B698C88 /* ReadiumStreamer */,
+				CECD6F02E0ED0D0671ECE9DE /* ReadiumNavigator */,
 			);
 			productName = Funston;
 			productReference = 4C4C0741D5A43831933E86B5 /* Funston.app */;
@@ -476,6 +491,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				3758C39506ED82342322E83A /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */,
+				255D0DE2B7D8732D038D6215 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
 				E3D62361AEEC228740EB8A86 /* XCLocalSwiftPackageReference "Vendor/LNPopupController" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -536,6 +552,7 @@
 				12567D6189ACD7041167D8F7 /* CachingArchiveRepository.swift in Sources */,
 				913F43521BCBA5FC260B20A6 /* ContinueListening.swift in Sources */,
 				B71B2B79473396C8456E2659 /* DownloadManager.swift in Sources */,
+				3FBFC49B21FDCFE928EC30F6 /* EPUBReaderController.swift in Sources */,
 				719B8E29AC09F5608E5F532D /* ExploreController.swift in Sources */,
 				15A6DA24023C06BEF04F7119 /* FunstonAppearance.swift in Sources */,
 				F9E9741D793F15D8C6FF6D4E /* FunstonApplication.swift in Sources */,
@@ -564,6 +581,7 @@
 				8F36107E122B75C8E867DE43 /* ArtifactArtworkLifecycleTests.swift in Sources */,
 				7419B239E8D5D5D9E85F4A44 /* ArtifactContentsSearchTests.swift in Sources */,
 				1194CE52844AAFB3377DB4F0 /* ArtworkResponseLimitTests.swift in Sources */,
+				1DECC04ED3D36E252CEFBF31 /* BookRoutingTests.swift in Sources */,
 				4E7886C99627066D41A780CD /* CodecCapabilityDeviceTests.swift in Sources */,
 				78D6EC89CF7E2986318E3681 /* ContinueListeningTests.swift in Sources */,
 				315F272717BD431394C0726A /* DownloadRelocationTests.swift in Sources */,
@@ -904,6 +922,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		255D0DE2B7D8732D038D6215 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/readium/swift-toolkit.git";
+			requirement = {
+				kind = exactVersion;
+				version = 3.11.0;
+			};
+		};
 		3758C39506ED82342322E83A /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/CamdenBopp/ArchivePlayerCore.git";
@@ -920,14 +946,29 @@
 			package = 3758C39506ED82342322E83A /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */;
 			productName = ArchivePlayerCore;
 		};
+		650ECFD527B2974A8E640EDF /* ReadiumShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 255D0DE2B7D8732D038D6215 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumShared;
+		};
 		81B3780F8002DA10A3C4D5EE /* LNPopupController-Static */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = "LNPopupController-Static";
+		};
+		9313BE6194B7283F5B698C88 /* ReadiumStreamer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 255D0DE2B7D8732D038D6215 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumStreamer;
 		};
 		A38AE549ADD4916042D85BDA /* ArchivePlayerCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 3758C39506ED82342322E83A /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */;
 			productName = ArchivePlayerCore;
+		};
+		CECD6F02E0ED0D0671ECE9DE /* ReadiumNavigator */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 255D0DE2B7D8732D038D6215 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumNavigator;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

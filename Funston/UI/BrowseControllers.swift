@@ -331,7 +331,9 @@ final class DownloadDetailController: FunstonListController, QLPreviewController
             if ["mp3", "m4a", "aac", "wav", "aiff", "aif"].contains((record.fileName as NSString).pathExtension.lowercased()) {
                 rows.append(FunstonRow(id: "playOffline", title: "Play Downloaded Recording", symbol: "play.fill"))
             }
-            rows.append(FunstonRow(id: "openLocal", title: (record.fileName as NSString).pathExtension.lowercased() == "pdf" ? "Read Downloaded PDF" : "Open Downloaded File"))
+            let fileExtension = (record.fileName as NSString).pathExtension.lowercased()
+            rows.append(FunstonRow(id: "openLocal", title: fileExtension == "pdf" ? "Read Downloaded PDF"
+                                   : fileExtension == "epub" ? "Read Downloaded Book" : "Open Downloaded File"))
             rows.append(FunstonRow(id: "remove", title: "Remove Download"))
         } }
         if let mutationError, let failedMutation {
@@ -392,6 +394,13 @@ final class DownloadDetailController: FunstonListController, QLPreviewController
     private enum DownloadMutation { case cancel, remove }
 
     private func openLocalFile() {
+        if (record.fileName as NSString).pathExtension.lowercased() == "epub" {
+            let summary = ArtifactSummary(identifier: record.identifier, title: record.title, mediaType: .texts)
+            navigationController?.pushViewController(EPUBReaderController(
+                summary: summary, file: ArchiveFile(name: record.fileName, size: record.expectedBytes),
+                downloads: environment.downloads, store: environment.store), animated: true)
+            return
+        }
         if (record.fileName as NSString).pathExtension.lowercased() == "pdf" {
             let summary = ArtifactSummary(identifier: record.identifier, title: record.title, mediaType: .texts)
             ArtifactMediaPresentation.open(detail: ArtifactDetail(summary: summary, files: [ArchiveFile(name: record.fileName, size: record.expectedBytes)]), from: self, environment: environment)
