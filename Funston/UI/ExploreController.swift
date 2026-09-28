@@ -189,9 +189,21 @@ final class ExploreController: UICollectionViewController {
 
 @MainActor
 private final class ExploreArtifactCell: UICollectionViewCell {
+    private enum Metrics {
+        static let artworkHeight: CGFloat = 176
+        static let artworkCornerRadius: CGFloat = 4
+        static let placeholderSymbolSide: CGFloat = 36
+        static let textSpacing: CGFloat = 10
+        static let bottomPadding: CGFloat = 8
+    }
+
     private let button = UIButton(type: .custom)
     private let artwork = UIImageView()
     private let placeholder = UIImageView()
+    private let placeholderSurface = UIView()
+    /// Artwork keeps its own shape, sitting on the shelf's bottom edge like a
+    /// book cover, so no card or letterbox frames it.
+    private var artworkAspect: NSLayoutConstraint?
     private let titleLabel = UILabel()
     private let metadataLabel = UILabel()
     private var identifier: String?
@@ -208,16 +220,17 @@ private final class ExploreArtifactCell: UICollectionViewCell {
         contentView.addSubview(button)
 
         let imageSurface = UIView()
-        imageSurface.backgroundColor = .secondarySystemBackground
-        imageSurface.layer.cornerRadius = 4
-        imageSurface.clipsToBounds = true
-        artwork.contentMode = .scaleAspectFit
+        placeholderSurface.backgroundColor = .secondarySystemBackground
+        placeholderSurface.layer.cornerRadius = Metrics.artworkCornerRadius
+        artwork.contentMode = .scaleAspectFill
+        artwork.layer.cornerRadius = Metrics.artworkCornerRadius
+        artwork.clipsToBounds = true
         placeholder.contentMode = .scaleAspectFit
         placeholder.tintColor = .tertiaryLabel
-        for image in [artwork, placeholder] {
-            image.translatesAutoresizingMaskIntoConstraints = false
-            image.isAccessibilityElement = false
-            imageSurface.addSubview(image)
+        for view in [placeholderSurface, artwork, placeholder] as [UIView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            view.isAccessibilityElement = false
+            imageSurface.addSubview(view)
         }
         titleLabel.font = .preferredFont(forTextStyle: .headline)
         titleLabel.textColor = .label
@@ -229,7 +242,7 @@ private final class ExploreArtifactCell: UICollectionViewCell {
             label.setContentCompressionResistancePriority(.required, for: .vertical)
         }
         let stack = UIStackView(arrangedSubviews: [imageSurface, titleLabel, metadataLabel])
-        stack.axis = .vertical; stack.spacing = 10
+        stack.axis = .vertical; stack.spacing = Metrics.textSpacing
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.isUserInteractionEnabled = false
         button.addSubview(stack)
@@ -241,17 +254,27 @@ private final class ExploreArtifactCell: UICollectionViewCell {
             stack.leadingAnchor.constraint(equalTo: button.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: button.trailingAnchor),
             stack.topAnchor.constraint(equalTo: button.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: button.bottomAnchor, constant: -8),
-            imageSurface.heightAnchor.constraint(equalToConstant: 176),
-            artwork.leadingAnchor.constraint(equalTo: imageSurface.leadingAnchor, constant: 8),
-            artwork.trailingAnchor.constraint(equalTo: imageSurface.trailingAnchor, constant: -8),
-            artwork.topAnchor.constraint(equalTo: imageSurface.topAnchor, constant: 8),
-            artwork.bottomAnchor.constraint(equalTo: imageSurface.bottomAnchor, constant: -8),
+            stack.bottomAnchor.constraint(equalTo: button.bottomAnchor, constant: -Metrics.bottomPadding),
+            imageSurface.heightAnchor.constraint(equalToConstant: Metrics.artworkHeight),
+            placeholderSurface.leadingAnchor.constraint(equalTo: imageSurface.leadingAnchor),
+            placeholderSurface.trailingAnchor.constraint(equalTo: imageSurface.trailingAnchor),
+            placeholderSurface.topAnchor.constraint(equalTo: imageSurface.topAnchor),
+            placeholderSurface.bottomAnchor.constraint(equalTo: imageSurface.bottomAnchor),
+            artwork.leadingAnchor.constraint(equalTo: imageSurface.leadingAnchor),
+            artwork.bottomAnchor.constraint(equalTo: imageSurface.bottomAnchor),
+            artwork.widthAnchor.constraint(lessThanOrEqualTo: imageSurface.widthAnchor),
+            artwork.heightAnchor.constraint(lessThanOrEqualTo: imageSurface.heightAnchor),
             placeholder.centerXAnchor.constraint(equalTo: imageSurface.centerXAnchor),
             placeholder.centerYAnchor.constraint(equalTo: imageSurface.centerYAnchor),
-            placeholder.widthAnchor.constraint(equalToConstant: 36),
-            placeholder.heightAnchor.constraint(equalToConstant: 36)
+            placeholder.widthAnchor.constraint(equalToConstant: Metrics.placeholderSymbolSide),
+            placeholder.heightAnchor.constraint(equalToConstant: Metrics.placeholderSymbolSide)
         ])
+        // Fill whichever dimension the cover's shape allows.
+        for fill in [artwork.widthAnchor.constraint(equalTo: imageSurface.widthAnchor),
+                     artwork.heightAnchor.constraint(equalTo: imageSurface.heightAnchor)] {
+            fill.priority = .defaultHigh; fill.isActive = true
+        }
+        setArtworkAspect(1)
         updateTextLayout()
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (cell: ExploreArtifactCell, _: UITraitCollection) in cell.updateTextLayout() }
     }
@@ -260,8 +283,8 @@ private final class ExploreArtifactCell: UICollectionViewCell {
 
     func configure(artifact: ArtifactSummary, open: @escaping () -> Void) {
         if identifier != artifact.identifier {
-            cancelArtwork(); identifier = artifact.identifier; hasArtwork = false
-            artwork.image = nil; placeholder.isHidden = false
+            cancelArtwork(); identifier = artifact.identifier
+            showPlaceholder()
         }
         placeholder.image = UIImage(systemName: artifact.mediaType.artworkSymbol)
         titleLabel.text = artifact.title
@@ -291,16 +314,29 @@ private final class ExploreArtifactCell: UICollectionViewCell {
             let result = try? await ArtworkPipeline.shared.image(url: ArchiveURLs.thumbnail(identifier: identifier), pointSize: CGSize(width: 192, height: 176), scale: scale)
             guard !Task.isCancelled, let self, self.identifier == identifier else { return }
             artworkTask = nil
-            if let image = result?.value {
-                artwork.image = image; hasArtwork = true; placeholder.isHidden = true
+            if let image = result?.value, image.size.width > 0, image.size.height > 0 {
+                setArtworkAspect(image.size.width / image.size.height)
+                artwork.image = image; hasArtwork = true
+                placeholder.isHidden = true; placeholderSurface.isHidden = true
             }
         }
+    }
+
+    private func setArtworkAspect(_ aspect: CGFloat) {
+        artworkAspect?.isActive = false
+        artworkAspect = artwork.widthAnchor.constraint(equalTo: artwork.heightAnchor, multiplier: aspect)
+        artworkAspect?.isActive = true
+    }
+
+    private func showPlaceholder() {
+        artwork.image = nil; hasArtwork = false
+        placeholder.isHidden = false; placeholderSurface.isHidden = false
     }
 
     func cancelArtwork() { artworkTask?.cancel(); artworkTask = nil }
     override func prepareForReuse() {
         super.prepareForReuse()
-        cancelArtwork(); identifier = nil; artwork.image = nil; hasArtwork = false
+        cancelArtwork(); identifier = nil; showPlaceholder()
         if let action { button.removeAction(action, for: .primaryActionTriggered) }
         action = nil
     }
