@@ -9,6 +9,16 @@ final class ExploreController: UICollectionViewController {
     /// The shelf above the collections. Its key can't collide with a collection
     /// identifier because Internet Archive identifiers have no spaces.
     private static let continueSection = "continue listening"
+    private enum Metrics {
+        static let sideInset: CGFloat = 20
+        static let tileSpacing: CGFloat = 16
+        /// Gap between the heading's last line and the covers.
+        static let shelfTop: CGFloat = 4
+        /// Gap under a shelf's titles before the next heading.
+        static let shelfBottom: CGFloat = 16
+        static let estimatedTileHeight: CGFloat = 280
+        static let estimatedHeaderHeight: CGFloat = 90
+    }
     private static let continuePrefix = "continue:"
     private static let logger = Logger(subsystem: "com.camden.Funston", category: "Explore")
     private let environment: AppEnvironment
@@ -41,6 +51,8 @@ final class ExploreController: UICollectionViewController {
         super.viewDidLoad()
         collectionView.backgroundColor = .systemBackground
         collectionView.contentInset.bottom = 24
+        // A cover's height is only known once its image loads; let the tile re-measure.
+        collectionView.selfSizingInvalidation = .enabledIncludingConstraints
         collectionView.setCollectionViewLayout(Self.layout(accessibility: traitCollection.preferredContentSizeCategory.isAccessibilityCategory), animated: false)
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (controller: ExploreController, _: UITraitCollection) in
             controller.collectionView.setCollectionViewLayout(Self.layout(accessibility: controller.traitCollection.preferredContentSizeCategory.isAccessibilityCategory), animated: false)
@@ -99,16 +111,20 @@ final class ExploreController: UICollectionViewController {
         refreshContinueListening()
     }
 
+    private static func tileWidth(container: CGFloat, accessibility: Bool) -> CGFloat {
+        accessibility ? container - 2 * Metrics.sideInset : min(192, max(156, container * 0.43))
+    }
+
     private static func layout(accessibility: Bool) -> UICollectionViewLayout {
         UICollectionViewCompositionalLayout { _, environment in
-            let width = accessibility ? environment.container.effectiveContentSize.width - 40 : min(192, max(156, environment.container.effectiveContentSize.width * 0.43))
-            let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(280)))
-            let group = NSCollectionLayoutGroup.horizontal(layoutSize: .init(widthDimension: .absolute(width), heightDimension: .estimated(280)), subitems: [item])
+            let width = tileWidth(container: environment.container.effectiveContentSize.width, accessibility: accessibility)
+            let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(Metrics.estimatedTileHeight)))
+            let group = NSCollectionLayoutGroup.horizontal(layoutSize: .init(widthDimension: .absolute(width), heightDimension: .estimated(Metrics.estimatedTileHeight)), subitems: [item])
             let section = NSCollectionLayoutSection(group: group)
             section.orthogonalScrollingBehavior = accessibility ? .none : .continuousGroupLeadingBoundary
-            section.interGroupSpacing = 16
-            section.contentInsets = .init(top: 4, leading: 20, bottom: 24, trailing: 20)
-            section.boundarySupplementaryItems = [NSCollectionLayoutBoundarySupplementaryItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(106)), elementKind: UICollectionView.elementKindSectionHeader, alignment: .top)]
+            section.interGroupSpacing = Metrics.tileSpacing
+            section.contentInsets = .init(top: Metrics.shelfTop, leading: Metrics.sideInset, bottom: Metrics.shelfBottom, trailing: Metrics.sideInset)
+            section.boundarySupplementaryItems = [NSCollectionLayoutBoundarySupplementaryItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(Metrics.estimatedHeaderHeight)), elementKind: UICollectionView.elementKindSectionHeader, alignment: .top)]
             return section
         }
     }
@@ -294,8 +310,14 @@ final class ExploreController: UICollectionViewController {
 
 @MainActor
 private final class ExploreArtifactCell: UICollectionViewCell {
+    /// The tallest a cover gets. Each cover takes only the height its shape needs
+    /// at the tile's width, so a wide film still sits right under the heading
+    /// instead of at the bottom of an empty band.
+    nonisolated static let maximumCoverHeight: CGFloat = 176
+    private var coverHeightConstraint: NSLayoutConstraint?
+
     private enum Metrics {
-        static let artworkHeight: CGFloat = 176
+        static let artworkHeight: CGFloat = ExploreArtifactCell.maximumCoverHeight
         static let artworkCornerRadius: CGFloat = 4
         static let placeholderSymbolSide: CGFloat = 36
         static let textSpacing: CGFloat = 10
@@ -374,7 +396,6 @@ private final class ExploreArtifactCell: UICollectionViewCell {
             stack.trailingAnchor.constraint(equalTo: button.trailingAnchor),
             stack.topAnchor.constraint(equalTo: button.topAnchor),
             stack.bottomAnchor.constraint(equalTo: button.bottomAnchor, constant: -Metrics.bottomPadding),
-            imageSurface.heightAnchor.constraint(equalToConstant: Metrics.artworkHeight),
             placeholderSurface.leadingAnchor.constraint(equalTo: imageSurface.leadingAnchor),
             placeholderSurface.trailingAnchor.constraint(equalTo: imageSurface.trailingAnchor),
             placeholderSurface.topAnchor.constraint(equalTo: imageSurface.topAnchor),
@@ -393,6 +414,8 @@ private final class ExploreArtifactCell: UICollectionViewCell {
                      artwork.heightAnchor.constraint(equalTo: imageSurface.heightAnchor)] {
             fill.priority = .defaultHigh; fill.isActive = true
         }
+        coverHeightConstraint = imageSurface.heightAnchor.constraint(equalToConstant: Metrics.artworkHeight)
+        coverHeightConstraint?.isActive = true
         setArtworkAspect(1)
         updateTextLayout()
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (cell: ExploreArtifactCell, _: UITraitCollection) in cell.updateTextLayout() }
@@ -458,9 +481,14 @@ private final class ExploreArtifactCell: UICollectionViewCell {
                 setArtworkAspect(image.size.width / image.size.height)
                 artwork.image = image; hasArtwork = true
                 placeholder.isHidden = true; placeholderSurface.isHidden = true
+                let width = contentView.bounds.width
+                if width > 0 {
+                    coverHeightConstraint?.constant = min(Metrics.artworkHeight, width * image.size.height / image.size.width)
+                }
             }
         }
     }
+
 
     private func setArtworkAspect(_ aspect: CGFloat) {
         artworkAspect?.isActive = false
@@ -477,6 +505,7 @@ private final class ExploreArtifactCell: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         cancelArtwork(); identifier = nil; showPlaceholder()
+        coverHeightConstraint?.constant = Metrics.artworkHeight
         if let action { button.removeAction(action, for: .primaryActionTriggered) }
         action = nil
     }
@@ -484,6 +513,10 @@ private final class ExploreArtifactCell: UICollectionViewCell {
 
 @MainActor
 private final class ExploreSectionHeader: UICollectionReusableView {
+    /// Above the heading, between the previous shelf's titles and this one.
+    private static let topSpacing: CGFloat = 8
+    /// Below "Most downloaded", before the covers.
+    private static let bottomSpacing: CGFloat = 8
     private let title = UIButton(type: .system)
     /// Shelves that aren't a collection have a plain heading, not a Browse button.
     private let heading = UILabel()
@@ -512,8 +545,8 @@ private final class ExploreSectionHeader: UICollectionReusableView {
         let minimumHeights = [title, heading].map { $0.heightAnchor.constraint(greaterThanOrEqualToConstant: 44) }
         minimumHeights.forEach { $0.priority = .required - 1 }
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 12), stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16)
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: Self.topSpacing), stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.bottomSpacing)
         ] + minimumHeights)
     }
 
