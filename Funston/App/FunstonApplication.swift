@@ -25,10 +25,11 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var saved: [ArtifactSummary] = []
     @Published private(set) var libraryError: String?
 
-    private init(store: SQLiteStore, mediaDirectory: URL) {
+    /// Tests pass an ephemeral session so they never touch the app's background transfers.
+    init(store: SQLiteStore, mediaDirectory: URL, downloadSession: URLSessionConfiguration? = nil) {
         self.store = store
         repository = CachingArchiveRepository(store: store)
-        downloads = DownloadManager(store: store, mediaDirectory: mediaDirectory)
+        downloads = DownloadManager(store: store, mediaDirectory: mediaDirectory, sessionConfiguration: downloadSession)
         playback = PlaybackController(store: store, downloads: downloads)
         library = LibraryPersistence(store: store)
     }

@@ -50,12 +50,15 @@ Add remaining time, adjusted for playback speed, to the position slider's spoken
 ### 2.5 Start the next recording without a gap (M)
 Prepare the next `AVPlayerItem` about 30 s before the current one ends, or move to `AVQueuePlayer`. Measure the gap on the device first; if it's already short, skip this.
 
-### 2.6 "Still listening?" (M, low)
+### 2.6 "Still listening?" (dropped)
+The sleep timer covers falling asleep to a long collection. A second prompt would be a weaker version of the same thing.
+
+Original note:
 Dusk pauses after a streak of autoplayed episodes. That's useful for falling asleep to a 487-episode collection. It has to be a real prompt with no countdown, because every app we read uses auto-dismissing overlays that VoiceOver users can miss entirely.
 
 ## 3. Video and reading
 
-### 3.1 Bring the MKV player up to the AVKit player (S each)
+### 3.1 Bring the MKV player up to the AVKit player (S each, done; Picture in Picture needs a check on the iPhone because the simulator doesn't support it)
 The AVKit path already saves your position and gets Now Playing, Picture in Picture and remote commands from the system. The MKV player (`ArtifactOriginalVideoController.swift`) has none of these. In order:
 - Save and restore the position, using the rules from 2.2.
 - Publish Now Playing info and handle remote commands.

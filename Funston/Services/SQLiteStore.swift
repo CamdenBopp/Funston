@@ -181,6 +181,56 @@ actor SQLiteStore {
         } ?? nil
     }
 
+    func setTrackChoice(_ choice: TrackChoice, kind: RememberedTrackKind, identifier: String, fileName: String) throws {
+        let track: Binding
+        switch choice {
+        case .off: track = .null
+        case .track(let id): track = .int64(Int64(id))
+        }
+        try execute(
+            """
+            INSERT INTO track_choices(identifier, file_name, kind, track_id, updated_at)
+            VALUES(?, ?, ?, ?, ?)
+            ON CONFLICT(identifier, file_name, kind) DO UPDATE SET
+              track_id=excluded.track_id, updated_at=excluded.updated_at
+            """,
+            bindings: [.text(identifier), .text(fileName), .text(kind.rawValue), track, .double(Date.now.timeIntervalSince1970)]
+        )
+    }
+
+    func trackChoice(_ kind: RememberedTrackKind, identifier: String, fileName: String) throws -> TrackChoice? {
+        try queryOne(
+            "SELECT track_id FROM track_choices WHERE identifier=? AND file_name=? AND kind=?",
+            bindings: [.text(identifier), .text(fileName), .text(kind.rawValue)]
+        ) { statement -> TrackChoice in
+            guard sqlite3_column_type(statement, 0) != SQLITE_NULL else { return .off }
+            let raw = sqlite3_column_int64(statement, 0)
+            guard let id = UInt32(exactly: raw) else { throw StoreError.step("Remembered track \(raw) is not a valid track number.") }
+            return .track(id)
+        }
+    }
+
+    func setPreferredLanguage(_ preference: LanguagePreference, kind: RememberedTrackKind) throws {
+        let language: Binding
+        switch preference {
+        case .off: language = .null
+        case .language(let tag): language = .text(tag)
+        }
+        try execute(
+            """
+            INSERT INTO preferred_languages(kind, language, updated_at) VALUES(?, ?, ?)
+            ON CONFLICT(kind) DO UPDATE SET language=excluded.language, updated_at=excluded.updated_at
+            """,
+            bindings: [.text(kind.rawValue), language, .double(Date.now.timeIntervalSince1970)]
+        )
+    }
+
+    func preferredLanguage(_ kind: RememberedTrackKind) throws -> LanguagePreference? {
+        try queryOne("SELECT language FROM preferred_languages WHERE kind=?", bindings: [.text(kind.rawValue)]) {
+            Self.text($0, column: 0).map(LanguagePreference.language) ?? .off
+        }
+    }
+
     func upsertDownload(_ record: DownloadRecord) throws {
         try execute(
             """
@@ -371,7 +421,25 @@ actor SQLiteStore {
         CREATE INDEX IF NOT EXISTS cache_access_index ON cache_entries(accessed_at);
         """,
         // 2: bytes URLSession hands back when a transfer fails, so Retry can continue it.
-        "ALTER TABLE downloads ADD COLUMN resume_data BLOB;"
+        "ALTER TABLE downloads ADD COLUMN resume_data BLOB;",
+        // 3: the MKV player's audio and caption choice per file (NULL track_id
+        // means turned off), and the language you prefer across items (NULL
+        // language means captions off).
+        """
+        CREATE TABLE IF NOT EXISTS track_choices(
+          identifier TEXT NOT NULL,
+          file_name TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK(kind IN ('audio', 'caption')),
+          track_id INTEGER,
+          updated_at REAL NOT NULL,
+          PRIMARY KEY(identifier, file_name, kind)
+        );
+        CREATE TABLE IF NOT EXISTS preferred_languages(
+          kind TEXT PRIMARY KEY CHECK(kind IN ('audio', 'caption')),
+          language TEXT,
+          updated_at REAL NOT NULL
+        );
+        """
     ]
 
     static var schemaVersion: Int { migrations.count }

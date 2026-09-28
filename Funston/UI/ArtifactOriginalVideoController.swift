@@ -1,5 +1,6 @@
 import UIKit
 import AVFoundation
+import AVKit
 import ArchivePlayerCore
 
 /// Keeps timed text beside the demux clock without treating subtitles as audio/video samples.
@@ -40,7 +41,12 @@ final class ArtifactOriginalVideoController: UIViewController {
     private let file: ArchiveFile
     private let environment: AppEnvironment
     private let downloadedOnly: Bool
+    private let bookmark: OriginalVideoBookmark
+    private let trackMemory: OriginalVideoTrackMemory
+    private static let seekTimescale: CMTimeScale = 1_000
     private var engine: SampleBufferPlaybackEngine?
+    private var remote: OriginalVideoRemoteControl?
+    private var pictureInPicture: OriginalVideoPictureInPicture?
     private var captionDemuxer: OriginalCaptionDemuxer?
     private var lease: URL?
     private var audioOwnership: UInt64?
@@ -70,14 +76,29 @@ final class ArtifactOriginalVideoController: UIViewController {
 
     init(summary: ArtifactSummary, file: ArchiveFile, environment: AppEnvironment, downloadedOnly: Bool) {
         self.summary = summary; self.file = file; self.environment = environment; self.downloadedOnly = downloadedOnly
+        bookmark = OriginalVideoBookmark(store: environment.store, identifier: summary.identifier, fileName: file.name)
+        trackMemory = OriginalVideoTrackMemory(store: environment.store, identifier: summary.identifier, fileName: file.name)
         super.init(nibName: nil, bundle: nil)
         title = summary.title
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    /// Read-only view of the engine for tests.
+    var playbackEngine: SampleBufferPlaybackEngine? { engine }
+    /// Lock Screen and headphone controls; nil until the view loads.
+    var remoteControl: OriginalVideoRemoteControl? { remote }
+    var selectedCaptionTrackID: UInt32? { selectedCaption }
+    /// Nil until the film is ready, and always nil where Picture in Picture isn't supported.
+    var pictureInPictureSupport: OriginalVideoPictureInPicture? { pictureInPicture }
+    var videoSurface: UIView { canvas }
+    var controlsShown: Bool { controlsContainer.alpha == 1 && !controls.accessibilityElementsHidden }
+    var trackMenus: (audio: UIMenu?, captions: UIMenu?, speed: UIMenu?) { (audioButton.menu, captionsButton.menu, speedButton.menu) }
+    /// True until the film has handed audio back to the audio player.
+    var holdsPlayback: Bool { audioOwnership != nil }
 
     isolated deinit {
         preparation?.cancel(); operation?.cancel(); ticker?.cancel()
         notifications.forEach(NotificationCenter.default.removeObserver)
+        remote?.deactivate()
         let engine = engine, lease = lease, token = audioOwnership, environment = environment
         Task { @MainActor in
             await engine?.stop()
@@ -90,11 +111,22 @@ final class ArtifactOriginalVideoController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         view.accessibilityIdentifier = "original.video.viewer"
+        remote = OriginalVideoRemoteControl { [weak self] command in self?.handleRemote(command) ?? false }
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.close() })
         canvas.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(canvas)
         canvas.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(canvasTapped)))
+        // The controls fade while the film plays. From the film itself, VoiceOver
+        // can bring them back and land on Play without hunting for them.
+        canvas.isAccessibilityElement = true
+        canvas.accessibilityLabel = "Video"
+        canvas.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Show playback controls") { [weak self] _ in
+            guard let self else { return false }
+            self.showControls()
+            UIAccessibility.post(notification: .layoutChanged, argument: self.playButton)
+            return true
+        }]
         controls.axis = .vertical; controls.spacing = 8
         controls.isLayoutMarginsRelativeArrangement = true
         controls.directionalLayoutMargins = .init(top: 12, leading: 16, bottom: 12, trailing: 16)
@@ -166,7 +198,11 @@ final class ArtifactOriginalVideoController: UIViewController {
         ])
         setEnabled(false)
         observe(UIAccessibility.voiceOverStatusDidChangeNotification) { [weak self] in self?.showControls() }
-        observe(UIApplication.didEnterBackgroundNotification) { [weak self] in self?.pauseForInterruption() }
+        observe(UIApplication.didEnterBackgroundNotification) { [weak self] in
+            // Picture in Picture keeps the film playing outside the app.
+            if self?.pictureInPicture?.isActive != true { self?.pauseForInterruption() }
+            self?.savePosition()
+        }
         observe(AVAudioSession.interruptionNotification) { [weak self] in self?.pauseForInterruption() }
         observe(AVAudioSession.routeChangeNotification) { [weak self] in self?.pauseForInterruption() }
         start()
@@ -231,12 +267,34 @@ final class ArtifactOriginalVideoController: UIViewController {
                 guard !closing else { throw CancellationError() }
                 guard playback.selectedVideoTrackID != nil else { throw DemuxError.unsupported("The video format in this file cannot be played. Choose another version of the film.") }
                 if let layer = playback.displayLayer { layer.videoGravity = .resizeAspect; canvas.layer.addSublayer(layer); layer.frame = canvas.bounds }
+                // Tracks first: a track change before the first packet does not seek,
+                // so the restore seek below stays the last word on position.
+                let playable = Set(playback.tracks.map(\.id)).subtracting(playback.unsupportedTracks.map(\.id))
+                let remembered = await trackMemory.startingChoices(
+                    tracks: playback.tracks, playableAudio: { playable.contains($0.id) },
+                    playableCaption: { CaptionPipeline.supportedCodecs.contains($0.codec) })
+                try Task.checkCancellation()
+                switch remembered.audio {
+                case .track(let id) where id != playback.selectedAudioTrackID:
+                    try await playback.selectTracks(audio: id, video: playback.selectedVideoTrackID)
+                case .off where playback.selectedAudioTrackID != nil && playback.selectedVideoTrackID != nil:
+                    try await playback.selectTracks(audio: nil, video: playback.selectedVideoTrackID)
+                default: break
+                }
+                if case .track(let id) = remembered.caption { selectedCaption = id }
+                try await bookmark.restore(duration: self.file.duration) { seconds in
+                    try await playback.seek(to: CMTime(seconds: seconds, preferredTimescale: Self.seekTimescale))
+                }
+                try Task.checkCancellation()
+                guard !closing else { throw CancellationError() }
                 contentUnavailableConfiguration = nil
                 view.backgroundColor = .black; canvas.isHidden = false; controlsContainer.isHidden = false
                 rebuildMenus(); setEnabled(true)
+                remote?.activate()
+                if let layer = playback.displayLayer { installPictureInPicture(layer: layer) }
                 if interruptionPauseRequested { status.text = "Paused" }
                 else { try playback.play(rate: rate) }
-                startTicker(); showControls()
+                startTicker(); showControls(); publishNowPlaying()
             } catch {
                 await releasePlayback()
                 if !closing && !(error is CancellationError) { showFailure(error) }
@@ -253,13 +311,64 @@ final class ArtifactOriginalVideoController: UIViewController {
             status.text = engine?.selectedAudioTrackID == nil ? "Playing without sound. No audio track in this file can be played." : "Playing"
         case .paused:
             playButton.setImage(UIImage(systemName: "play.fill"), for: .normal); playButton.accessibilityLabel = "Play"
-            status.text = "Paused"; showControls()
+            status.text = "Paused"; showControls(); savePosition()
         case .ended:
             playButton.setImage(UIImage(systemName: "arrow.counterclockwise"), for: .normal)
             playButton.accessibilityLabel = "Replay"
-            status.text = "Finished"; showControls()
+            status.text = "Finished"; showControls(); savePosition()
         default: break
         }
+        publishNowPlaying()
+        pictureInPicture?.invalidate()
+    }
+
+    /// What Picture in Picture's buttons do. Built separately so tests reach it on
+    /// simulators that don't support Picture in Picture.
+    var pictureInPictureTransport: OriginalVideoPictureInPicture.Transport {
+        .init(
+            isPaused: { [weak self] in
+                guard let engine = self?.engine else { return true }
+                return !(engine.state == .playing || engine.state == .finishedEnqueuing)
+            },
+            setPlaying: { [weak self] playing in _ = self?.handleRemote(playing ? .play : .pause) },
+            skip: { [weak self] interval, completion in
+                guard let self else { completion(); return }
+                self.seek(to: max(0, (self.engine?.currentTime.seconds ?? 0) + interval), completion: completion)
+            },
+            duration: { [weak self] in self?.file.duration },
+            stoppedInBackground: { [weak self] in self?.pauseForInterruption() })
+    }
+
+    private func installPictureInPicture(layer: AVSampleBufferDisplayLayer) {
+        pictureInPicture = OriginalVideoPictureInPicture(layer: layer, transport: pictureInPictureTransport)
+        guard pictureInPicture != nil else { return }
+        let button = UIBarButtonItem(image: AVPictureInPictureController.pictureInPictureButtonStartImage,
+                                     primaryAction: UIAction { [weak self] _ in
+            guard let pictureInPicture = self?.pictureInPicture else { return }
+            if pictureInPicture.isActive { pictureInPicture.stop() } else { pictureInPicture.start() }
+        })
+        button.accessibilityLabel = "Picture in Picture"
+        navigationItem.leftBarButtonItem = button
+    }
+
+    private func publishNowPlaying() {
+        guard let engine else { return }
+        let playing = engine.state == .playing || engine.state == .finishedEnqueuing
+        remote?.publish(title: summary.title, elapsed: engine.currentTime.seconds, duration: file.duration,
+                        rate: playing ? rate : 0)
+    }
+
+    private func handleRemote(_ command: OriginalVideoRemoteControl.Command) -> Bool {
+        guard !closing, let engine else { return false }
+        let playing = engine.state == .playing || engine.state == .finishedEnqueuing
+        switch command {
+        case .play: if !playing { togglePlayback() }
+        case .pause: if playing { togglePlayback() }
+        case .toggle: togglePlayback()
+        case .seek(let seconds): seek(to: seconds)
+        case .skip(let interval): seek(by: interval)
+        }
+        return true
     }
 
     private func togglePlayback() {
@@ -282,13 +391,19 @@ final class ArtifactOriginalVideoController: UIViewController {
     }
 
     private func seek(by interval: Double) { seek(to: max(0, (engine?.currentTime.seconds ?? 0) + interval)) }
-    private func seek(to seconds: Double) {
-        guard seconds.isFinite, seconds >= 0 else { return }
-        perform { engine in try await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: 1_000)) }
+    /// `completion` runs once the seek lands, fails, or can't start.
+    private func seek(to seconds: Double, completion: (@MainActor () -> Void)? = nil) {
+        guard seconds.isFinite, seconds >= 0 else { completion?(); return }
+        let started = perform { engine in
+            defer { completion?() }
+            try await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: Self.seekTimescale))
+        }
+        if !started { completion?() }
     }
 
-    private func perform(_ work: @escaping @MainActor (SampleBufferPlaybackEngine) async throws -> Void) {
-        guard !busy, !closing, let engine else { return }
+    @discardableResult
+    private func perform(_ work: @escaping @MainActor (SampleBufferPlaybackEngine) async throws -> Void) -> Bool {
+        guard !busy, !closing, let engine else { return false }
         busy = true; setEnabled(false); status.text = "Updating playback"; showControls()
         operation = Task { [weak self] in
             var operationFailed = false
@@ -312,6 +427,7 @@ final class ArtifactOriginalVideoController: UIViewController {
             self.setEnabled(true); self.rebuildMenus(); self.stateChanged(engine.state)
             if operationFailed { self.status.text = "Could not update playback. Try again." }
         }
+        return true
     }
 
     private func trackTitle(_ track: MediaTrack) -> String {
@@ -324,42 +440,60 @@ final class ArtifactOriginalVideoController: UIViewController {
         return ([track.name, language, "Track \(track.id)"] + roles.map(Optional.some)).compactMap { $0 }.joined(separator: " · ")
     }
 
+    /// The audio menu's action. Remembered for this file only once the switch succeeds.
+    func chooseAudio(_ trackID: UInt32?) {
+        guard let engine, engine.selectedAudioTrackID != trackID else { return }
+        let language = trackID.flatMap { id in engine.tracks.first { $0.id == id }?.language }
+        perform { [weak self] engine in
+            guard let self else { return }
+            if let trackID, engine.state == .playing {
+                let source: any ByteSource
+                if let lease = self.lease { source = try LocalByteSource(url: lease) }
+                else {
+                    source = HTTPRangeByteSource(
+                        url: ArchiveURLs.download(identifier: self.summary.identifier, fileName: self.file.name))
+                }
+                try await engine.selectAudio(trackID: trackID, using: MatroskaDemuxer(source: source))
+            } else {
+                try await engine.selectTracks(audio: trackID, video: engine.selectedVideoTrackID)
+            }
+            self.trackMemory.remember(.audio, choice: trackID.map(TrackChoice.track) ?? .off, language: language)
+        }
+    }
+
+    /// The captions menu's action.
+    func chooseCaption(_ trackID: UInt32?) {
+        guard let engine else { return }
+        selectedCaption = trackID
+        if trackID == nil { captionLabel.text = nil }
+        let language = trackID.flatMap { id in engine.tracks.first { $0.id == id }?.language }
+        trackMemory.remember(.caption, choice: trackID.map(TrackChoice.track) ?? .off, language: language)
+        rebuildMenus(); showControls()
+    }
+
     private func rebuildMenus() {
         guard let engine else { return }
         let unsupported = Set(engine.unsupportedTracks.map(\.id))
         let audio = engine.tracks.filter { $0.kind == .audio }
         var audioActions = [UIAction(title: "Audio Off", state: engine.selectedAudioTrackID == nil ? .on : .off) { [weak self] _ in
-            self?.perform { engine in try await engine.selectTracks(audio: nil, video: engine.selectedVideoTrackID) }
+            self?.chooseAudio(nil)
         }]
         audioActions += audio.map { track in
             UIAction(title: trackTitle(track) + (unsupported.contains(track.id) ? " · Unavailable" : ""),
                      attributes: unsupported.contains(track.id) ? .disabled : [], state: engine.selectedAudioTrackID == track.id ? .on : .off) { [weak self] _ in
-                guard let self, engine.selectedAudioTrackID != track.id else { return }
-                self.perform { engine in
-                    if engine.state == .playing {
-                        let source: any ByteSource
-                        if let lease = self.lease { source = try LocalByteSource(url: lease) }
-                        else {
-                            source = HTTPRangeByteSource(
-                                url: ArchiveURLs.download(identifier: self.summary.identifier, fileName: self.file.name))
-                        }
-                        try await engine.selectAudio(trackID: track.id, using: MatroskaDemuxer(source: source))
-                    } else {
-                        try await engine.selectTracks(audio: track.id, video: engine.selectedVideoTrackID)
-                    }
-                }
+                self?.chooseAudio(track.id)
             }
         }
         audioButton.menu = UIMenu(title: "Audio track", children: audioActions)
         audioButton.accessibilityValue = engine.selectedAudioTrackID.flatMap { id in audio.first { $0.id == id }.map(trackTitle) } ?? "Off"
         var captionActions = [UIAction(title: "Off", state: selectedCaption == nil ? .on : .off) { [weak self] _ in
-            self?.selectedCaption = nil; self?.captionLabel.text = nil; self?.rebuildMenus(); self?.showControls()
+            self?.chooseCaption(nil)
         }]
         captionActions += engine.tracks.filter { $0.kind == .subtitle }.map { track in
             let supported = CaptionPipeline.supportedCodecs.contains(track.codec)
             return UIAction(title: trackTitle(track) + (supported ? "" : " · Unavailable"), attributes: supported ? [] : .disabled,
                             state: selectedCaption == track.id ? .on : .off) { [weak self] _ in
-                self?.selectedCaption = track.id; self?.rebuildMenus(); self?.showControls()
+                self?.chooseCaption(track.id)
             }
         }
         captionsButton.menu = UIMenu(title: "Captions", children: captionActions)
@@ -389,6 +523,7 @@ final class ArtifactOriginalVideoController: UIViewController {
                 do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
                 guard let self, !self.closing, let engine = self.engine else { return }
                 let time = engine.currentTime
+                self.bookmark.saveIfDue(seconds: time.seconds, ended: engine.state == .ended)
                 if time.seconds.isFinite {
                     self.timeLabel.text = PlayerTimePresentation.clock(max(0, time.seconds))
                     self.slider.accessibilityValue = self.timeLabel.text
@@ -411,6 +546,10 @@ final class ArtifactOriginalVideoController: UIViewController {
     }
 
     @objc private func canvasTapped() { showControls() }
+    private func savePosition() {
+        guard let engine else { return }
+        bookmark.save(seconds: engine.currentTime.seconds, ended: engine.state == .ended)
+    }
     private func showControls() { lastInteraction = Date(); controlsContainer.alpha = 1; controls.accessibilityElementsHidden = false }
     private func pauseForInterruption() {
         if engine != nil { interruptionPauseRequested = true }
@@ -418,6 +557,7 @@ final class ArtifactOriginalVideoController: UIViewController {
     }
 
     private func showFailure(_ error: Error) {
+        savePosition()
         ticker?.cancel(); ticker = nil
         setEnabled(false); showControls()
         view.backgroundColor = .systemBackground
@@ -438,7 +578,12 @@ final class ArtifactOriginalVideoController: UIViewController {
     }
 
     private func releasePlayback() async {
+        // Before the audio player gets its token back, so its Now Playing stands.
+        remote?.deactivate()
         ticker?.cancel(); ticker = nil
+        bookmark.suspend()
+        pictureInPicture?.stop(); pictureInPicture = nil
+        navigationItem.leftBarButtonItem = nil
         let old = engine; engine = nil
         old?.onStateChange = nil
         await old?.stop(); old?.displayLayer?.removeFromSuperlayer()
@@ -448,7 +593,8 @@ final class ArtifactOriginalVideoController: UIViewController {
     }
     private func close() { finish(); navigationController?.dismiss(animated: true) }
     private func finish() {
-        guard !closing else { return }; closing = true
+        guard !closing else { return }
+        savePosition(); closing = true
         ticker?.cancel(); preparation?.cancel(); operation?.cancel()
         let prepare = preparation, update = operation
         Task { [self] in await prepare?.value; await update?.value; await releasePlayback() }
