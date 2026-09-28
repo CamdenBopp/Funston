@@ -77,7 +77,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		003640CE87D7D19F81837B9B /* ArchivePlayerCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ArchivePlayerCore; path = ArchivePlayerCore; sourceTree = SOURCE_ROOT; };
 		043BE4AD828A8ABBC3A386A6 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		103CE391383F5D565780C3E9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1946853707F8C1C26943C96E /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
@@ -273,7 +272,6 @@
 		978FCE93DB12F0FC018A7EA5 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				003640CE87D7D19F81837B9B /* ArchivePlayerCore */,
 				A11558A4F74CA0129D4F93F6 /* LNPopupController */,
 			);
 			name = Packages;
@@ -426,7 +424,7 @@
 			mainGroup = 25CF119C35E2E693DE60586D;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				452FD58833C2F1A78C500B24 /* XCLocalSwiftPackageReference "ArchivePlayerCore" */,
+				38958381B0A9AB17A0E84360 /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */,
 				3A9B3E523AFB0F847195C2FB /* XCLocalSwiftPackageReference "Vendor/LNPopupController" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -831,19 +829,28 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Vendor/LNPopupController;
 		};
-		452FD58833C2F1A78C500B24 /* XCLocalSwiftPackageReference "ArchivePlayerCore" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ArchivePlayerCore;
-		};
 /* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		38958381B0A9AB17A0E84360 /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/CamdenBopp/ArchivePlayerCore.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		0FBBA983C27DE2C7898375EF /* ArchivePlayerCore */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 38958381B0A9AB17A0E84360 /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */;
 			productName = ArchivePlayerCore;
 		};
 		57F95B05DB59371B0B41D735 /* ArchivePlayerCore */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 38958381B0A9AB17A0E84360 /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */;
 			productName = ArchivePlayerCore;
 		};
 		742D49DB08C0D41ED81D861D /* LNPopupController-Static */ = {

@@ -1,6 +1,15 @@
 {
-  "originHash" : "f5fe7ed8c64f8d9b44d754ea8d334b60f03306f49c7bea7674cd094487794a5e",
+  "originHash" : "6ea565289353954dc6542e1bdfb15f0fafff76d981f3eab229d10e14d8034abe",
   "pins" : [
+    {
+      "identity" : "archiveplayercore",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/CamdenBopp/ArchivePlayerCore.git",
+      "state" : {
+        "revision" : "b63bc50d626c7c479cd967febed20b9db371a354",
+        "version" : "0.1.0"
+      }
+    },
     {
       "identity" : "lnsystemmarqueelabel",
       "kind" : "remoteSourceControl",

@@ -20,7 +20,8 @@ packages:
   LNPopupController:
     path: Vendor/LNPopupController
   ArchivePlayerCore:
-    path: ArchivePlayerCore
+    url: https://github.com/CamdenBopp/ArchivePlayerCore.git
+    from: 0.1.0
 targets:
   Archive:
     type: application
