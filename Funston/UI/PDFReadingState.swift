@@ -141,8 +141,9 @@ private struct PDFVisionTextEngine: PDFPageOCREngine {
         var columns: [(lines: [PDFTextBox], aspectRatio: CGFloat, region: CGRect)] = []
         for run in PDFTextLayout.runs(PDFTextLayout.blocks(lines)) {
             guard !Task.isCancelled else { return "" }
-            // One line has nothing a second pass would put in order.
-            guard run.count > 1 else { columns.append((run, pageAspect, PDFTextLayout.region(of: run))); continue }
+            // One line has nothing a second pass would put in order, and a table
+            // row is already whole.
+            guard run.count > 1, !run[0].isTableRow else { columns.append((run, pageAspect, PDFTextLayout.region(of: run))); continue }
             let region = PDFTextLayout.region(of: run)
             let pixels = CGRect(x: region.minX * CGFloat(image.width), y: region.minY * CGFloat(image.height),
                                 width: region.width * CGFloat(image.width), height: region.height * CGFloat(image.height)).integral
@@ -154,10 +155,14 @@ private struct PDFVisionTextEngine: PDFPageOCREngine {
             }
         }
         let normalized = columns.map { column in
-            (column.lines.map { PDFTextBox(text: PDFPageTextPolicy.normalize($0.text), rect: $0.rect) }, column.aspectRatio, column.region)
+            (column.lines.map { PDFTextBox(text: PDFPageTextPolicy.normalize($0.text), rect: $0.rect, isTableRow: $0.isTableRow) }, column.aspectRatio, column.region)
         }
         return await MainActor.run {
-            let columns = normalized.map { (PDFTextLayout.paragraphs($0.0, aspectRatio: $0.1, isWord: SpellingDictionary.isWord), $0.2) }
+            let columns = normalized.map { lines, aspectRatio, region in
+                let paragraphs = lines.first?.isTableRow == true
+                    ? lines.map(\.text) : PDFTextLayout.paragraphs(lines, aspectRatio: aspectRatio, isWord: SpellingDictionary.isWord)
+                return (paragraphs, region)
+            }
             return PDFTextLayout.threading(columns, isWord: SpellingDictionary.isWord).joined(separator: "\n\n")
         }
     }
@@ -372,7 +377,8 @@ actor PDFPageTextRecognizer {
     // 5: Vision finds columns under headlines and beside boxes; Automatic tries it first.
     // 6: Vision joins lines into paragraphs.
     // 7: a sidebar waits until the sentence beside it ends.
-    private static let cacheVersion = 7
+    // 8: tables read row by row.
+    private static let cacheVersion = 8
     private static let cacheLifetime: TimeInterval = 60 * 60 * 24 * 365 * 10
     private let store: SQLiteStore
     let engineDescriptors: [PDFTextEngineDescriptor]

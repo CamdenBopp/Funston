@@ -6,6 +6,8 @@ import UIKit
 struct PDFTextBox: Sendable, Equatable {
     var text: String
     var rect: CGRect
+    /// A whole table row, its cells joined: read as it is, never re-recognized.
+    var isTableRow = false
 }
 
 /// Puts recognized text back into reading order on multi-column pages, without
@@ -42,7 +44,7 @@ enum PDFTextLayout {
                 blockOf[index] = blocks.count - 1
             }
         }
-        return readingOrder(absorbingNested(blocks))
+        return tables(readingOrder(absorbingNested(blocks)))
     }
 
     /// Consecutive blocks stacked in one column, to recognize as one crop: fewer
@@ -58,7 +60,8 @@ enum PDFTextLayout {
                 let stacked = b.minY >= a.maxY - stackTolerance
                     && sharedWidth(a, b) >= minimumColumnOverlap * min(a.width, b.width)
                 let clear = !regions.indices.contains { $0 != index && !run.members.contains($0) && regions[$0].intersects(union) }
-                if stacked, clear {
+                let table = block[0].isTableRow || run.lines[0].isTableRow
+                if stacked, clear, !table {
                     runs[runs.count - 1] = (run.lines + block, run.members.union([index]), union)
                     continue
                 }
@@ -66,6 +69,60 @@ enum PDFTextLayout {
             runs.append((block, [index], regions[index]))
         }
         return runs.map(\.lines)
+    }
+
+    /// Blocks side by side whose lines are short cells, not prose, are a table:
+    /// it reads row by row, "Grand Prize; Carl F. Bogart WA7JWW/WA7OTR Reno NV;
+    /// FT-901DM, MLA-2500, System 33, rotator", instead of all the prizes, then
+    /// all the names, then all the gear. The leftmost column's lines start the
+    /// rows; every other cell joins the row it is level with.
+    static func tables(_ blocks: [[PDFTextBox]]) -> [[PDFTextBox]] {
+        var result: [[PDFTextBox]] = []
+        var index = 0
+        while index < blocks.count {
+            var group = [blocks[index]]
+            var end = index + 1
+            while end < blocks.count, level(blocks[end], with: group) {
+                group.append(blocks[end])
+                end += 1
+            }
+            if let rows = rows(of: group) {
+                result.append(rows)
+                index = end
+            } else {
+                result.append(blocks[index])
+                index += 1
+            }
+        }
+        return result
+    }
+
+    private static func level(_ block: [PDFTextBox], with group: [[PDFTextBox]]) -> Bool {
+        let rect = region(of: block, padding: 0)
+        let span = group.map { region(of: $0, padding: 0) }.reduce(CGRect.null) { $0.union($1) }
+        return min(rect.maxY, span.maxY) - max(rect.minY, span.minY) >= minimumRowOverlap * rect.height
+    }
+
+    private static func rows(of group: [[PDFTextBox]]) -> [PDFTextBox]? {
+        let lines = group.flatMap { $0 }
+        let words = lines.reduce(0) { $0 + $1.text.split(separator: " ").count }
+        guard group.count > 1, Double(words) <= maximumCellWords * Double(lines.count) else { return nil }
+        let columns = group.sorted { region(of: $0, padding: 0).minX < region(of: $1, padding: 0).minX }
+        let anchors = columns[0].sorted { $0.rect.minY < $1.rect.minY }
+        guard anchors.count >= minimumTableRows else { return nil }
+        var cells = [[[String]]](repeating: [[String]](repeating: [], count: columns.count), count: anchors.count)
+        var rects = anchors.map(\.rect)
+        for (column, blockLines) in columns.enumerated() {
+            for line in blockLines.sorted(by: { $0.rect.minY < $1.rect.minY }) {
+                let row = anchors.lastIndex { $0.rect.minY <= line.rect.midY } ?? 0
+                cells[row][column].append(line.text)
+                rects[row] = rects[row].union(line.rect)
+            }
+        }
+        return zip(cells, rects).map { row, rect in
+            let text = row.filter { !$0.isEmpty }.map { $0.joined(separator: " ") }.joined(separator: "; ")
+            return PDFTextBox(text: text, rect: rect, isTableRow: true)
+        }
     }
 
     /// The region a block covers, grown slightly so crops don't clip ascenders.
@@ -178,6 +235,10 @@ enum PDFTextLayout {
         return order.map { blocks[$0] }
     }
 
+    /// Prose averages 6 to 7 words a line in a magazine column; cells, 2 or 3.
+    private static let maximumCellWords = 4.0
+    private static let minimumTableRows = 2
+    private static let minimumRowOverlap: CGFloat = 0.5
     /// A line may continue one this far below, in line heights: one missed line.
     private static let maximumLineDrop: CGFloat = 2
     private static let maximumLineOverlap: CGFloat = 0.5

@@ -49,6 +49,12 @@ final class PDFTextLayoutTests: XCTestCase {
                       "The bullet item isn't one paragraph")
     }
 
+    func testVisionEngineReadsATableRowByRow() async throws {
+        let paragraphs = try await recognize(decemberPage6, with: PDFTextEngineID.appleVision).components(separatedBy: "\n\n")
+        XCTAssertTrue(paragraphs.contains("1st Prize; David A. Behar Seattle WA; TS-700A, Hustler Beam, Bird Wattmeter"),
+                      "The prize table isn't read by rows: \(paragraphs.filter { $0.contains("Prize") })")
+    }
+
     func testDocumentReaderReadsMagazineColumnsInOrder() async throws {
         guard #available(iOS 26.0, *) else { throw XCTSkip("The document reader needs iOS 26") }
         let text = try await recognize(augustPage40, with: PDFTextEngineID.appleDocuments)
@@ -65,10 +71,11 @@ final class PDFTextLayoutTests: XCTestCase {
             PDFTextBox(text: text, rect: CGRect(x: x, y: y, width: w, height: 0.02))
         }
         let lines = [box("Headline across the page", 0.05, 0.05, 0.9),
-                     box("left one", 0.05, 0.12), box("right one", 0.55, 0.12),
-                     box("left two", 0.05, 0.15), box("right two", 0.55, 0.15)]
+                     box("the left column opens with this line", 0.05, 0.12), box("the right column opens with this line", 0.55, 0.12),
+                     box("and the left column carries on here", 0.05, 0.15), box("and the right column carries on here", 0.55, 0.15)]
         let order = PDFTextLayout.blocks(lines).flatMap { $0.map(\.text) }
-        XCTAssertEqual(order, ["Headline across the page", "left one", "left two", "right one", "right two"])
+        XCTAssertEqual(order, ["Headline across the page", "the left column opens with this line", "and the left column carries on here",
+                               "the right column opens with this line", "and the right column carries on here"])
     }
 
     func testStitchingJoinsPiecesOfOneLineButNotSentences() {
@@ -155,6 +162,20 @@ final class PDFTextLayoutTests: XCTestCase {
         let words: Set = ["transmissions", "the", "war"]
         XCTAssertEqual(PDFTextLayout.joiningLine("high-speed transmis", "sions for", isWord: words.contains), "high-speed transmissions for")
         XCTAssertEqual(PDFTextLayout.joiningLine("in the", "war to", isWord: words.contains), "in the war to")
+    }
+
+    func testShortCellsSideBySideReadAsRowsButProseColumnsDoNot() {
+        func box(_ text: String, _ x: CGFloat, _ y: CGFloat) -> PDFTextBox {
+            PDFTextBox(text: text, rect: CGRect(x: x, y: y, width: 0.2, height: 0.02))
+        }
+        let table = [box("Grand Prize", 0.1, 0.10), box("1st Prize", 0.1, 0.16),
+                     box("Carl F. Bogart", 0.35, 0.10), box("Reno NV", 0.35, 0.13), box("David A. Behar", 0.35, 0.16)]
+        XCTAssertEqual(PDFTextLayout.blocks(table).flatMap { $0.map(\.text) },
+                       ["Grand Prize; Carl F. Bogart Reno NV", "1st Prize; David A. Behar"])
+        let prose = [box("In order to keep in closer", 0.1, 0.10), box("touch with those being regu-", 0.1, 0.13),
+                     box("ment cooperation for emergen-", 0.35, 0.10), box("cy communications, possible", 0.35, 0.13)]
+        XCTAssertEqual(PDFTextLayout.blocks(prose).flatMap { $0.map(\.text) },
+                       ["In order to keep in closer", "touch with those being regu-", "ment cooperation for emergen-", "cy communications, possible"])
     }
 
     func testSystemDictionaryClosesUpARealWordOnly() {
