@@ -264,11 +264,22 @@ struct DownloadRowProjection {
     }
 
     private static func row(_ record: DownloadRecord) -> ArchiveRow {
-        var state = record.state == .completed ? "Available offline" : record.state.rawValue.capitalized
+        var state = record.state == .completed ? "File available offline" : record.state.rawValue.capitalized
         if record.state == .downloading, let total = record.totalBytes, total > 0 {
             state += ", " + Double(record.receivedBytes).divided(by: Double(total)).formatted(.percent.precision(.fractionLength(0)))
         }
-        return ArchiveRow(id: record.key, title: record.title, subtitle: [record.fileName, state, record.errorMessage].compactMap { $0 }.joined(separator: "\n"))
+        return ArchiveRow(
+            id: record.key,
+            title: DownloadPresentation.fileName(record.fileName),
+            subtitle: ["From \(record.title)", state, record.errorMessage].compactMap { $0 }.joined(separator: "\n")
+        )
+    }
+}
+
+enum DownloadPresentation {
+    static func fileName(_ path: String) -> String {
+        let name = (path as NSString).lastPathComponent
+        return name.removingPercentEncoding ?? name
     }
 }
 
@@ -305,8 +316,8 @@ final class DownloadDetailController: ArchiveListController, QLPreviewController
         subscription = nil
     }
     private func render() {
-        var rows = [ArchiveRow(id: "identity", title: record.title, subtitle: record.fileName, navigates: false),
-                    ArchiveRow(id: "state", title: record.state == .completed ? "Available offline" : record.state.rawValue.capitalized, subtitle: record.errorMessage, navigates: false),
+        var rows = [ArchiveRow(id: "identity", title: DownloadPresentation.fileName(record.fileName), subtitle: "From \(record.title)", navigates: false),
+                    ArchiveRow(id: "state", title: record.state == .completed ? "File available offline" : record.state.rawValue.capitalized, subtitle: record.errorMessage, navigates: false),
                     ArchiveRow(id: "artifact", title: "Open Artifact")]
         if let mutation {
             rows.append(ArchiveRow(id: "mutation", title: mutation == .remove ? "Removing download…" : "Cancelling download…", navigates: false))

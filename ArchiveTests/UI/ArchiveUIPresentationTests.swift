@@ -162,6 +162,28 @@ final class ArchiveUIPresentationTests: XCTestCase {
         XCTAssertTrue(projection.update(records).replacesContents)
     }
 
+    func testSingleDownloadedFileIsPresentedAsAFileNotAWholeArtifact() throws {
+        let record = DownloadRecord(
+            key: "catalog/file",
+            identifier: "whole-earth-catalog",
+            fileName: "scans/Whole%20Earth%20Catalog_text.pdf",
+            title: "Whole Earth Catalog",
+            expectedBytes: 100,
+            localPath: "/unused/catalog.pdf",
+            state: .completed,
+            receivedBytes: 100,
+            totalBytes: 100,
+            errorMessage: nil,
+            updatedAt: .now
+        )
+
+        var projection = DownloadRowProjection()
+        let row = try XCTUnwrap(projection.update([record]).rows.first)
+        XCTAssertEqual(row.title, "Whole Earth Catalog_text.pdf")
+        XCTAssertEqual(row.subtitle, "From Whole Earth Catalog\nFile available offline")
+        XCTAssertNotEqual(row.title, record.title, "The artifact title must not imply that every file in it is downloaded")
+    }
+
     @MainActor
     func testArtifactSaveLabelUsesPublishedValueBeforeStoredPropertyChanges() {
         let source = SavedArtifactsFixture()
