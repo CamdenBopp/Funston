@@ -686,6 +686,22 @@ final class ServiceReviewTests: XCTestCase {
         XCTAssertEqual(playback.context?.trackIndex, 1)
     }
 
+    func testSleepTimerEndOfRecordingStopsInsteadOfAdvancing() async throws {
+        let (store, directory, media) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (playback, avPlayer) = try await navigationFixture(store: store, media: media)
+        defer { playback.pause() }
+        playback.play()
+        try await waitForTransport { playback.phase == .playing && avPlayer.rate > 0 }
+        playback.sleepTimer.stopAtEndOfRecording()
+        NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: avPlayer.currentItem)
+        XCTAssertEqual(playback.context?.trackIndex, 0, "The next recording must not start")
+        XCTAssertEqual(playback.phase, .ended)
+        XCTAssertFalse(playback.wantsToPlay)
+        XCTAssertEqual(playback.sleepTimer.setting, .off)
+        XCTAssertFalse(playback.stopsAfterCurrentRecording)
+    }
+
     func testTrackBoundariesRestartAndAutomaticAdvancePreservePlayback() async throws {
         let (store, directory, media) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -63,10 +63,12 @@ struct FullPlayer: View {
                             HStack {
                                 DownloadButton(downloads: downloads, artifact: context.artifact, file: context.file)
                                 Spacer()
+                                SleepTimerMenu(timer: playback.sleepTimer)
                                 RoutePicker().frame(width: 44, height: 44).accessibilityLabel("Audio output")
                             }
                             VStack(alignment: .leading, spacing: 12) {
                                 DownloadButton(downloads: downloads, artifact: context.artifact, file: context.file)
+                                SleepTimerMenu(timer: playback.sleepTimer)
                                 RoutePicker().frame(width: 44, height: 44).accessibilityLabel("Audio output")
                             }
                         }
@@ -229,4 +231,55 @@ private struct DownloadButtonIdentity: Hashable {
 struct RoutePicker: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView { AVRoutePickerView() }
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+}
+
+/// Sleep timer choices in a native menu. The remaining time updates once a
+/// minute, and only while a countdown is running.
+struct SleepTimerMenu: View {
+    @ObservedObject var timer: SleepTimer
+    private static let refreshInterval: TimeInterval = 60
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: Self.refreshInterval)) { context in
+            Menu {
+                ForEach(SleepTimer.choices, id: \.self) { duration in
+                    Button(SleepTimer.spoken(duration).capitalizedFirstLetter) { timer.start(after: duration) }
+                }
+                Button("End of This Recording") { timer.stopAtEndOfRecording() }
+                if timer.setting != .off {
+                    Button("Turn Off Sleep Timer", role: .destructive) { timer.turnOff() }
+                }
+            } label: {
+                Label(visibleTitle(at: context.date), systemImage: timer.setting == .off ? "moon.zzz" : "moon.zzz.fill")
+                    .font(.subheadline).frame(minHeight: 44)
+            }
+            .accessibilityLabel("Sleep timer")
+            .accessibilityValue(spokenValue(at: context.date))
+            .accessibilityIdentifier("player.sleepTimer")
+        }
+    }
+
+    private func visibleTitle(at date: Date) -> String {
+        switch timer.setting {
+        case .off: "Sleep"
+        case .until: "\(timer.minutesRemaining(at: date) ?? 0) min"
+        case .endOfRecording: "End of recording"
+        }
+    }
+
+    private func spokenValue(at date: Date) -> String {
+        switch timer.setting {
+        case .off:
+            return "Off"
+        case .until:
+            let minutes = timer.minutesRemaining(at: date) ?? 0
+            return minutes == 1 ? "1 minute left" : "\(minutes) minutes left"
+        case .endOfRecording:
+            return "Stops at the end of this recording"
+        }
+    }
+}
+
+private extension String {
+    var capitalizedFirstLetter: String { prefix(1).uppercased() + dropFirst() }
 }

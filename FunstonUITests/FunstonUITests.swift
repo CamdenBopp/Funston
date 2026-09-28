@@ -79,6 +79,17 @@ final class FunstonUITests: XCTestCase {
         popup.tap()
         XCTAssertTrue(app.buttons["player.toggle"].waitForExistence(timeout: 8))
         capture(app, name: "04 Player")
+        let sleep = app.buttons["player.sleepTimer"]
+        XCTAssertTrue(sleep.waitForExistence(timeout: 3))
+        XCTAssertEqual(sleep.label, "Sleep timer")
+        XCTAssertEqual(sleep.value as? String, "Off")
+        sleep.tap()
+        app.buttons["15 minutes"].tap()
+        XCTAssertEqual(sleep.value as? String, "15 minutes left")
+        capture(app, name: "04b Sleep timer")
+        sleep.tap()
+        app.buttons["Turn Off Sleep Timer"].tap()
+        XCTAssertEqual(sleep.value as? String, "Off")
         let toggle = app.buttons["player.toggle"]
         XCTAssertTrue(waitForValue("Playing", of: toggle))
         app.buttons["Next recording"].tap()

@@ -41,7 +41,7 @@ Read `playback_positions` newest first, skip finished recordings, and show a she
 ### 2.2 Resume and finished rules (S)
 `PlaybackController.restoredPosition` only starts over when you're within one second of the end. Better rules: don't resume under 5 s, and treat 95% or the last 10 s as finished. Write them as a pure function with tests. The Dumpert app's version is MIT and adaptable. Also confirm that the first periodic save after a resume seek can't write a position near zero; Dumpert and Labstream both had to guard against that.
 
-### 2.3 Sleep timer (M)
+### 2.3 Sleep timer (M, done)
 None of the eleven apps has one. Offer 15, 30, 45 and 60 minutes, plus "end of this recording". Fade the audio out, announce when it's set and when it fires, and put it in the player's menu and as a VoiceOver action on the player.
 
 ### 2.4 Say when it ends (S)

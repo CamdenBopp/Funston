@@ -26,6 +26,7 @@
 		5DEF336EB0C4EFA629A3BD54 /* ArchiveDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44447702FAFA480C5DE6AF61 /* ArchiveDTO.swift */; };
 		682F8800A8040B5032932C6C /* ArtifactOriginalVideoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83FA6742BCE70DB39C50A79E /* ArtifactOriginalVideoController.swift */; };
 		6867855F6EB1A0DD0B4169AF /* BrowseControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40147F874FD620BC7B6D9AAE /* BrowseControllers.swift */; };
+		6BBC4CE8910BCDB9DCF0037D /* SleepTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71A58F6CF1D568B8FA22F12F /* SleepTimerTests.swift */; };
 		6F51B7CC80D382D750A3B5F9 /* PDFScreenRenderingExperiment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */; };
 		719B8E29AC09F5608E5F532D /* ExploreController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C06E7B3A4A0DEDE6ED4D71EE /* ExploreController.swift */; };
 		7419B239E8D5D5D9E85F4A44 /* ArtifactContentsSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E08BE65EA2616DB7059E4153 /* ArtifactContentsSearchTests.swift */; };
@@ -49,6 +50,7 @@
 		BDCEDCFB9D7C58FD6BD965EE /* VideoPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15D73992E91F99768E44AC95 /* VideoPlaybackTests.swift */; };
 		BDFC6221AE98FC278EB44662 /* ArchiveCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DBCB79CF586FE1530AF953 /* ArchiveCoreTests.swift */; };
 		BF83566D84F60B6BA2FA5CF1 /* ArchiveNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90E76B9A4F6B4D55BA45EEFE /* ArchiveNormalizer.swift */; };
+		C1A11644BA50E948249FDBC7 /* SleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A582B4688E196BF2BD0D69CC /* SleepTimer.swift */; };
 		C9045F96F8D56D43BFC8DF56 /* FunstonUIPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10FEF644850A1FE3D34C96F0 /* FunstonUIPresentationTests.swift */; };
 		CF8F7256F8008AF7345B3CA4 /* ArtifactMediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FC31D2391A678F056CDEB5 /* ArtifactMediaController.swift */; };
 		DD6E6429D23A191C8DF02C3A /* FunstonPlayerPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F42D64BFE13F26B5291D02C /* FunstonPlayerPresentation.swift */; };
@@ -100,6 +102,7 @@
 		4FD2EE1149DB04EDD621B35A /* FunstonTests-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "FunstonTests-Bridging-Header.h"; sourceTree = "<group>"; };
 		60547F1D814C05A757DCE7B9 /* FunstonAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonAppearance.swift; sourceTree = "<group>"; };
 		63B2F9D20233F0D328D27C37 /* CachingArchiveRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachingArchiveRepository.swift; sourceTree = "<group>"; };
+		71A58F6CF1D568B8FA22F12F /* SleepTimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimerTests.swift; sourceTree = "<group>"; };
 		72CAD4E4C8526BEB670CFA90 /* DownloadResumeLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadResumeLiveTests.swift; sourceTree = "<group>"; };
 		73F779CCD8281CD0F095B326 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
 		74936F3127256B6C79C16AE3 /* ArtworkResponseLimitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkResponseLimitTests.swift; sourceTree = "<group>"; };
@@ -113,6 +116,7 @@
 		99AAFDC5C7C54DF226D11A47 /* FunstonUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonUITests.swift; sourceTree = "<group>"; };
 		9D8F5AEEB8CCDBCE5EDFC46D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A31252B3F929B645C52A91F9 /* CodecCapabilityDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodecCapabilityDeviceTests.swift; sourceTree = "<group>"; };
+		A582B4688E196BF2BD0D69CC /* SleepTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimer.swift; sourceTree = "<group>"; };
 		A6C0ABD85EEF2749ED6AE3E4 /* PlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackController.swift; sourceTree = "<group>"; };
 		ABEC399375132D18A85258F1 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		ADA9E91F2303508878EBCAE7 /* PDFRenderingPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFRenderingPerformanceTests.swift; sourceTree = "<group>"; };
@@ -213,6 +217,7 @@
 				ADA9E91F2303508878EBCAE7 /* PDFRenderingPerformanceTests.swift */,
 				81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */,
 				233DB5EE909DC936BDB88C04 /* PlaybackLifecyclePolishTests.swift */,
+				71A58F6CF1D568B8FA22F12F /* SleepTimerTests.swift */,
 				B7B0F9C8906315750BF847F3 /* SQLiteStoreTests.swift */,
 				15D73992E91F99768E44AC95 /* VideoPlaybackTests.swift */,
 			);
@@ -271,6 +276,7 @@
 				63B2F9D20233F0D328D27C37 /* CachingArchiveRepository.swift */,
 				ABEC399375132D18A85258F1 /* DownloadManager.swift */,
 				A6C0ABD85EEF2749ED6AE3E4 /* PlaybackController.swift */,
+				A582B4688E196BF2BD0D69CC /* SleepTimer.swift */,
 				4B6AC7E7D67A26404F8526F1 /* SQLiteStore.swift */,
 				B0306A62D510F6CE4C26D675 /* VideoPlaybackSession.swift */,
 			);
@@ -489,6 +495,7 @@
 				4619E6C13BE93409CB710B3D /* PlaybackController.swift in Sources */,
 				B91E26B2C53A79404FEDF866 /* PlayerViews.swift in Sources */,
 				84B2B5B00AC9AABAA1845F1F /* SQLiteStore.swift in Sources */,
+				C1A11644BA50E948249FDBC7 /* SleepTimer.swift in Sources */,
 				1D77B9B0D800D997F0E21FFA /* VideoPlaybackSession.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -514,6 +521,7 @@
 				9CFDC45EF60E820EF46A524C /* PDFScreenRenderingTests.swift in Sources */,
 				F5B8A7086BC9A4D26B859DC0 /* PlaybackLifecyclePolishTests.swift in Sources */,
 				0C50B41EAB14FF045250AFD0 /* SQLiteStoreTests.swift in Sources */,
+				6BBC4CE8910BCDB9DCF0037D /* SleepTimerTests.swift in Sources */,
 				BDCEDCFB9D7C58FD6BD965EE /* VideoPlaybackTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

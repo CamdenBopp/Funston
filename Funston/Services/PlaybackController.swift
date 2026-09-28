@@ -63,7 +63,14 @@ private final class AudioSessionWorker: Sendable {
 }
 
 @MainActor
-final class PlaybackController: ObservableObject {
+final class PlaybackController: ObservableObject, SleepTimerTarget {
+    let sleepTimer = SleepTimer()
+    /// Set by the sleep timer: the current recording finishes, then playback stops
+    /// instead of advancing to the next one.
+    var stopsAfterCurrentRecording = false
+    var stoppedAfterCurrentRecording: (() -> Void)?
+    private static let sleepFadeDuration: Duration = .seconds(5)
+    private static let sleepFadeSteps = 20
     @Published private(set) var context: PlaybackContext?
     @Published private(set) var phase: PlaybackPhase = .idle
     @Published private(set) var elapsed: Double = 0
@@ -120,6 +127,7 @@ final class PlaybackController: ObservableObject {
         }
         configureRemoteCommands()
         configureAudioNotifications()
+        sleepTimer.attach(to: self)
         timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.updateTransportPhase() }
         }
@@ -278,6 +286,21 @@ final class PlaybackController: ObservableObject {
     private func canStart(generation expectedGeneration: UInt64, intent expectedIntent: UInt64, item: AVPlayerItem) -> Bool {
         generation == expectedGeneration && intentRevision == expectedIntent && wantsToPlay &&
         !interrupted && !restoringPosition && player.currentItem === item && item.status == .readyToPlay
+    }
+
+    /// Lowers the volume over a few seconds, pauses, then restores the volume so
+    /// the next Play is at full level.
+    func fadeOutAndPause() async {
+        guard videoOwnership == nil, wantsToPlay else { return }
+        let startVolume = player.volume
+        let step = Self.sleepFadeDuration / Self.sleepFadeSteps
+        for index in 1...Self.sleepFadeSteps {
+            guard wantsToPlay else { break }
+            player.volume = startVolume * Float(Self.sleepFadeSteps - index) / Float(Self.sleepFadeSteps)
+            do { try await Task.sleep(for: step) } catch { break }
+        }
+        pause()
+        player.volume = startVolume
     }
 
     func pause() {
@@ -555,9 +578,11 @@ final class PlaybackController: ObservableObject {
         guard videoOwnership == nil else { return }
         phase = .ended
         persist(seconds: 0)
-        if let context, context.trackIndex + 1 < context.tracks.count {
+        if !stopsAfterCurrentRecording, let context, context.trackIndex + 1 < context.tracks.count {
             nextTrack()
         } else {
+            let requestedStop = stopsAfterCurrentRecording
+            defer { if requestedStop { stoppedAfterCurrentRecording?() } }
             player.pause()
             wantsToPlay = false
             intentRevision &+= 1
