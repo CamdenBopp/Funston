@@ -152,6 +152,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     @Published private(set) var wantsToPlay = false
     private var restoringPosition = false
     private var readyGeneration: UInt64?
+    private var exactResumeGeneration: UInt64?
     private var attemptedFiles = Set<String>()
     private var localLease: URL?
     private var sessionNotifications: [NSObjectProtocol] = []
@@ -453,6 +454,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         guard context == nil else { return }
         load(artifact: stopped.artifact, tracks: stopped.tracks, trackIndex: stopped.trackIndex,
              autoplay: false, preferredFileName: stopped.file.name)
+        exactResumeGeneration = generation
     }
 
     private func deactivateAudioSession() {
@@ -611,7 +613,8 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
                     )) ?? 0
                     guard self.generation == expectedGeneration, self.player.currentItem === item else { return }
                     let itemDuration = item.duration.seconds
-                    let position = Self.restoredPosition(resumeOverride ?? saved, duration: itemDuration)
+                    let position = self.exactResumeGeneration == expectedGeneration ? max(0, saved)
+                        : Self.restoredPosition(resumeOverride ?? saved, duration: itemDuration)
                     if position > 0, self.positionRevision == revision {
                         _ = await self.player.seek(
                             to: CMTime(seconds: position, preferredTimescale: 600),

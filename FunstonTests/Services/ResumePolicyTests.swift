@@ -53,7 +53,7 @@ final class ResumePolicyTests: XCTestCase {
             artworkLoader: { _ in throw URLError(.cancelled) })
         playback.playDownloaded(record, autoplay: false)
         try await until { playback.phase == .paused }
-        let sought = await player.seek(to: CMTime(seconds: 12, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        let sought = await player.seek(to: CMTime(seconds: 3, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         XCTAssertTrue(sought)
         playback.sleepTimer.stopAtEndOfRecording()
 
@@ -68,7 +68,7 @@ final class ResumePolicyTests: XCTestCase {
         XCTAssertFalse(MPRemoteCommandCenter.shared().playCommand.isEnabled)
         playback.undoStopListening(stopped)
         try await until { playback.phase == .paused }
-        XCTAssertEqual(player.currentTime().seconds, 12, accuracy: 0.05)
+        XCTAssertEqual(player.currentTime().seconds, 3, accuracy: 0.05)
         XCTAssertFalse(playback.wantsToPlay)
         XCTAssertNotNil(MPNowPlayingInfoCenter.default().nowPlayingInfo)
         XCTAssertTrue(MPRemoteCommandCenter.shared().playCommand.isEnabled)
