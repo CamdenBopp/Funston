@@ -57,10 +57,10 @@ actor ArtworkPipeline {
         if let session { self.session = session }
         else {
             let configuration = URLSessionConfiguration.default
-            configuration.requestCachePolicy = .returnCacheDataElseLoad
+            configuration.requestCachePolicy = .useProtocolCachePolicy
             configuration.urlCache = URLCache(memoryCapacity: 16 * 1_024 * 1_024, diskCapacity: 150 * 1_024 * 1_024)
             configuration.httpMaximumConnectionsPerHost = 4
-            configuration.httpAdditionalHeaders = ["User-Agent": "Funston-iOS/0.2"]
+            configuration.httpAdditionalHeaders = ["User-Agent": ArchiveNetworkPolicy.userAgent]
             self.session = URLSession(configuration: configuration)
         }
         cache.totalCostLimit = 48 * 1_024 * 1_024
@@ -95,7 +95,14 @@ actor ArtworkPipeline {
                 let data: Data
                 do {
                     try Task.checkCancellation()
-                    data = try await ArtworkResponseLoader(maximumBytes: maximumResponseBytes).load(url, session: session)
+                    data = try await ArchiveRetryPolicy.perform {
+                        try await ArchiveNetworkPolicy.requestLimiter.acquire()
+                        do {
+                            let data = try await ArtworkResponseLoader(maximumBytes: maximumResponseBytes).load(url, session: session)
+                            await ArchiveNetworkPolicy.requestLimiter.release()
+                            return data
+                        } catch { await ArchiveNetworkPolicy.requestLimiter.release(); throw error }
+                    }
                     // Keep the fetch permit until decode has capacity. This bounds
                     // compressed responses waiting in memory as well as network work.
                     try await decodeLimiter.acquire()
@@ -166,7 +173,7 @@ final class ArtworkResponseLoader: NSObject, URLSessionDataDelegate, @unchecked 
                     lock.unlock(); continuation.resume(with: outcome); return
                 }
                 self.continuation = continuation
-                let task = session.dataTask(with: url)
+                let task = session.dataTask(with: ArchiveNetworkPolicy.request(url))
                 task.delegate = self
                 self.task = task
                 lock.unlock()
@@ -189,11 +196,13 @@ final class ArtworkResponseLoader: NSObject, URLSessionDataDelegate, @unchecked 
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
                     completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void) {
-        let error: URLError?
+        let error: (any Error)?
         if let http = response as? HTTPURLResponse, http.statusCode == 200 {
             if response.expectedContentLength > Int64(maximumBytes) { error = URLError(.dataLengthExceedsMaximum) }
             else if response.mimeType?.lowercased().hasPrefix("image/") != true { error = URLError(.cannotDecodeContentData) }
             else { error = nil }
+        } else if let http = response as? HTTPURLResponse {
+            error = ArchiveError.http(status: http.statusCode, retryAfter: http.value(forHTTPHeaderField: "Retry-After"))
         } else { error = URLError(.badServerResponse) }
         if let error {
             finish(.failure(error), cancel: true)

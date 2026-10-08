@@ -317,7 +317,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         if let endObserver { NotificationCenter.default.removeObserver(endObserver); self.endObserver = nil }
         player.pause()
         applyPlaybackSpeed()
-        let item = AVPlayerItem(url: url)
+        let item = AVPlayerItem(asset: ArchiveNetworkPolicy.asset(url))
         item.audioTimePitchAlgorithm = .timeDomain
         player.replaceCurrentItem(with: item)
         // AVPlayer releases its old item before a removed file's lease is released.

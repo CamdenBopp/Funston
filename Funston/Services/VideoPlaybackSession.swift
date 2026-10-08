@@ -96,7 +96,7 @@ final class VideoPlaybackSession: ObservableObject {
                     return
                 }
                 let url = lease ?? ArchiveURLs.download(identifier: summary.identifier, fileName: file.name)
-                let item = AVPlayerItem(url: url)
+                let item = AVPlayerItem(asset: ArchiveNetworkPolicy.asset(url))
                 let title = AVMutableMetadataItem()
                 title.identifier = .commonIdentifierTitle; title.value = ArchiveMediaTitle.readable(file.name) as NSString
                 title.extendedLanguageTag = "und"

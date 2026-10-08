@@ -11,12 +11,12 @@ struct RepositoryUpdate<Value: Sendable>: Sendable {
 
 actor CachingArchiveRepository: ArchiveRepository {
     private let store: SQLiteStore
-    private let transport: any ArchiveTransport
+    private let client: ArchiveHTTPClient
     private let normalizer: ArchiveNormalizer
     private let encoder = JSONEncoder()
 
     init(store: SQLiteStore, transport: any ArchiveTransport = URLSessionArchiveTransport(), normalizer: ArchiveNormalizer = ArchiveNormalizer()) {
-        self.store = store; self.transport = transport; self.normalizer = normalizer
+        self.store = store; client = ArchiveHTTPClient(transport: transport); self.normalizer = normalizer
     }
 
     nonisolated func searchUpdates(_ request: SearchRequest) -> AsyncThrowingStream<RepositoryUpdate<SearchPage>, Error> {
@@ -61,10 +61,13 @@ actor CachingArchiveRepository: ArchiveRepository {
                 if cached.isFresh { continuation.finish(); return }
             }
             try Task.checkCancellation()
-            let data = try await fetch(ArchiveURLs.search(request))
+            let response = try await fetch(ArchiveURLs.search(request))
+            let data = response.data
             let page = try await normalizer.search(data: data, request: request)
             try Task.checkCancellation()
-            try? await store.storeCache(key: key, kind: "search", response: data, snapshot: try? encoder.encode(page), maxAge: 900)
+            if let lifetime = response.cacheLifetime(defaultLifetime: request.collection == nil ? 900 : 3600) {
+                try? await store.storeCache(key: key, kind: "search", response: data, snapshot: try? encoder.encode(page), maxAge: lifetime)
+            }
             continuation.yield(RepositoryUpdate(value: page, freshness: .fresh, isRefreshing: false, refreshError: nil))
             continuation.finish()
         } catch {
@@ -84,10 +87,13 @@ actor CachingArchiveRepository: ArchiveRepository {
                 if cached.isFresh { continuation.finish(); return }
             }
             try Task.checkCancellation()
-            let data = try await fetch(ArchiveURLs.metadata(identifier: identifier))
+            let response = try await fetch(ArchiveURLs.metadata(identifier: identifier))
+            let data = response.data
             let detail = try await normalizer.detail(data: data, identifier: identifier)
             try Task.checkCancellation()
-            try? await store.storeCache(key: key, kind: "metadata", response: data, snapshot: try? encoder.encode(detail), maxAge: 86_400)
+            if let lifetime = response.cacheLifetime(defaultLifetime: 86_400) {
+                try? await store.storeCache(key: key, kind: "metadata", response: data, snapshot: try? encoder.encode(detail), maxAge: lifetime)
+            }
             continuation.yield(RepositoryUpdate(value: detail, freshness: .fresh, isRefreshing: false, refreshError: nil))
             continuation.finish()
         } catch {
@@ -105,15 +111,10 @@ actor CachingArchiveRepository: ArchiveRepository {
         } else { continuation.finish(throwing: error) }
     }
 
-    private func fetch(_ url: URL) async throws -> Data {
-        var request = URLRequest(url: url, cachePolicy: .reloadRevalidatingCacheData, timeoutInterval: 30)
+    private func fetch(_ url: URL) async throws -> ArchiveHTTPResponse {
+        var request = ArchiveNetworkPolicy.request(url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let response = try await transport.send(request)
-        try Task.checkCancellation()
-        guard (200..<300).contains(response.statusCode) else {
-            throw ArchiveError.http(status: response.statusCode, retryAfter: response.headers.first { $0.key.lowercased() == "retry-after" }?.value)
-        }
-        return response.data
+        return try await client.send(request)
     }
 
     private func decodeSearch(_ entry: StoredCacheEntry, request: SearchRequest) async throws -> SearchPage {

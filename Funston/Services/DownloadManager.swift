@@ -47,6 +47,15 @@ private final class DownloadSessionDelegate: NSObject, URLSessionDownloadDelegat
     let mediaDirectory: URL
     private var eventTail: Task<Void, Never>?
     private var lastProgress: [Int: ContinuousClock.Instant] = [:]
+    private let permitLock = NSLock()
+    private var requestPermits = Set<Int>()
+    func holdRequestPermit(_ taskID: Int) {
+        permitLock.lock(); requestPermits.insert(taskID); permitLock.unlock()
+    }
+    private func releaseRequestPermit(_ taskID: Int) {
+        permitLock.lock(); let held = requestPermits.remove(taskID) != nil; permitLock.unlock()
+        if held { Task { await ArchiveNetworkPolicy.requestLimiter.release() } }
+    }
     init(mediaDirectory: URL) { self.mediaDirectory = mediaDirectory }
 
     private func append(_ operation: @escaping @MainActor @Sendable (DownloadManager) async -> Void) {
@@ -65,6 +74,12 @@ private final class DownloadSessionDelegate: NSObject, URLSessionDownloadDelegat
     }
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let identity = DownloadTaskIdentity(taskDescription: downloadTask.taskDescription) else { return }
+        if let response = downloadTask.response as? HTTPURLResponse,
+           response.statusCode == 429 || response.statusCode == 503 {
+            let error = ArchiveError.http(status: response.statusCode, retryAfter: response.value(forHTTPHeaderField: "Retry-After"))
+            append { await $0.transientFailure(identity: identity, error: error, resumeData: nil) }
+            return
+        }
         let result: Result<URL, TransferFailure>
         do {
             guard let response = downloadTask.response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
@@ -83,14 +98,18 @@ private final class DownloadSessionDelegate: NSObject, URLSessionDownloadDelegat
         append { await $0.finished(identity: identity, result: result) }
     }
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        let taskID = task.taskIdentifier
+        releaseRequestPermit(taskID)
         guard let identity = DownloadTaskIdentity(taskDescription: task.taskDescription) else { return }
-        lastProgress[task.taskIdentifier] = nil
+        lastProgress[taskID] = nil
         guard let error else { return }
         let diagnostic = error as NSError
         Self.logger.error("Download failed: \(diagnostic.domain, privacy: .public) code \(diagnostic.code)")
         let message = DownloadFailurePresentation.message(for: error)
         let resumeData = DownloadManager.resumeData(from: error)
-        append { await $0.failed(identity: identity, message: message, resumeData: resumeData) }
+        if (error as? URLError)?.code == .timedOut {
+            append { await $0.transientFailure(identity: identity, error: URLError(.timedOut), resumeData: resumeData) }
+        } else { append { await $0.failed(identity: identity, message: message, resumeData: resumeData) } }
     }
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         append { await $0.finishedBackgroundEvents() }
@@ -125,6 +144,7 @@ final class DownloadManager: NSObject, ObservableObject {
     private let mediaDirectory: URL
     private let delegate: DownloadSessionDelegate
     private let session: URLSession
+    private var networkAttempts: [String: Int] = [:]
     private let accessRepository: any ArchiveRepository
     private var operationTail: Task<Void, Never>?
     private var backgroundCompletionHandler: (() -> Void)?
@@ -153,7 +173,7 @@ final class DownloadManager: NSObject, ObservableObject {
         configuration.isDiscretionary = false
         configuration.waitsForConnectivity = true
         configuration.httpMaximumConnectionsPerHost = 2
-        configuration.httpAdditionalHeaders = ["User-Agent": "Funston-iOS/0.2"]
+        configuration.httpAdditionalHeaders = ["User-Agent": ArchiveNetworkPolicy.userAgent]
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 1
         queue.name = "Funston download delegate"
@@ -181,9 +201,10 @@ final class DownloadManager: NSObject, ObservableObject {
     func start(identifier: String, artifactTitle: String, file: ArchiveFile) async {
         await serialize { [self] in await startSerialized(identifier: identifier, artifactTitle: artifactTitle, file: file) }
     }
-    private func startSerialized(identifier: String, artifactTitle: String, file: ArchiveFile) async {
+    private func startSerialized(identifier: String, artifactTitle: String, file: ArchiveFile, attempt: Int = 1) async {
         let key = Self.key(identifier: identifier, fileName: file.name)
         if records.contains(where: { $0.key == key && ([.queued, .downloading].contains($0.state) || ($0.state == .completed && FileManager.default.fileExists(atPath: $0.localPath))) }) { return }
+        networkAttempts[key] = attempt
         let identity = DownloadTaskIdentity(key: key, identifier: identifier, fileName: file.name, expectedBytes: file.size)
         var record = DownloadRecord(key: key, identifier: identifier, fileName: file.name, title: artifactTitle,
                                     expectedBytes: file.size, localPath: identity.destination(in: mediaDirectory).path,
@@ -199,12 +220,14 @@ final class DownloadManager: NSObject, ObservableObject {
             try await store.upsertDownload(record)
             upsertInMemory(record)
             let created = resumeData.map { session.downloadTask(withResumeData: $0) }
-                ?? session.downloadTask(with: ArchiveURLs.download(identifier: identifier, fileName: file.name))
+                ?? session.downloadTask(with: ArchiveNetworkPolicy.request(ArchiveURLs.download(identifier: identifier, fileName: file.name)))
             task = created
             created.taskDescription = identity.taskDescription
             record.state = .downloading
             try await store.upsertDownload(record)
             upsertInMemory(record)
+            try await ArchiveNetworkPolicy.requestLimiter.acquire()
+            delegate.holdRequestPermit(created.taskIdentifier)
             created.resume()
         } catch {
             task?.cancel()
@@ -323,6 +346,22 @@ final class DownloadManager: NSObject, ObservableObject {
             upsertInMemory(record)
         }
     }
+    fileprivate func transientFailure(identity: DownloadTaskIdentity, error: any Error, resumeData: Data?) async {
+        let attempt = networkAttempts[identity.key] ?? 1
+        await failed(identity: identity, message: archiveMessage(error), resumeData: resumeData)
+        guard attempt < ArchiveRetryPolicy.maximumAttempts,
+              let delay = ArchiveRetryPolicy.delay(after: error, attempt: attempt) else { return }
+        Task { [weak self] in
+            try? await ArchiveRetryPolicy.sleep(delay)
+            guard let self else { return }
+            await serialize { [self] in
+                guard let record = records.first(where: { identity.matches($0, directory: mediaDirectory) }), record.state == .failed else { return }
+                await startSerialized(identifier: record.identifier, artifactTitle: record.title,
+                                      file: ArchiveFile(name: record.fileName, size: record.expectedBytes), attempt: attempt + 1)
+            }
+        }
+    }
+
     fileprivate func finishedBackgroundEvents() async {
         await serialize { [self] in
             if let completion = backgroundCompletionHandler { backgroundCompletionHandler = nil; completion() }

@@ -56,7 +56,7 @@ protocol ArchiveTransport: Sendable {
 
 struct URLSessionArchiveTransport: ArchiveTransport {
     let session: URLSession
-    init(session: URLSession = .shared) { self.session = session }
+    init(session: URLSession = ArchiveNetworkPolicy.session) { self.session = session }
     func send(_ request: URLRequest) async throws -> ArchiveHTTPResponse {
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw ArchiveError.invalidResponse }
@@ -73,10 +73,11 @@ protocol ArchiveRepository: Sendable {
 }
 
 actor NetworkArchiveRepository: ArchiveRepository {
-    private let transport: any ArchiveTransport
+    private let client: ArchiveHTTPClient
     private let normalizer: ArchiveNormalizer
-    init(transport: any ArchiveTransport = URLSessionArchiveTransport(), normalizer: ArchiveNormalizer = ArchiveNormalizer()) {
-        self.transport = transport; self.normalizer = normalizer
+    init(transport: any ArchiveTransport = URLSessionArchiveTransport(), normalizer: ArchiveNormalizer = ArchiveNormalizer(),
+         retrySleep: @escaping @Sendable (Double) async throws -> Void = ArchiveRetryPolicy.sleep) {
+        client = ArchiveHTTPClient(transport: transport, retrySleep: retrySleep); self.normalizer = normalizer
     }
 
     func search(_ request: SearchRequest) async throws -> SearchPage {
@@ -95,13 +96,10 @@ actor NetworkArchiveRepository: ArchiveRepository {
 
     private func fetch(_ url: URL) async throws -> Data {
         try Task.checkCancellation()
-        var request = URLRequest(url: url, timeoutInterval: 30)
+        var request = ArchiveNetworkPolicy.request(url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let response = try await transport.send(request)
+        let response = try await client.send(request)
         try Task.checkCancellation()
-        guard (200...299).contains(response.statusCode) else {
-            throw ArchiveError.http(status: response.statusCode, retryAfter: response.headers.first { $0.key.lowercased() == "retry-after" }?.value)
-        }
         return response.data
     }
 }

@@ -240,7 +240,7 @@ final class ArtifactOriginalVideoController: UIViewController {
                 if downloadedOnly && lease == nil { throw DemuxError.unsupported("This download is no longer available. Download the film again.") }
                 let source: any ByteSource
                 if let lease { source = try LocalByteSource(url: lease) }
-                else { source = HTTPRangeByteSource(url: ArchiveURLs.download(identifier: summary.identifier, fileName: file.name)) }
+                else { source = HTTPRangeByteSource(url: ArchiveURLs.download(identifier: summary.identifier, fileName: file.name), session: ArchiveNetworkPolicy.session) }
                 let adapter = OriginalCaptionDemuxer(source: source)
                 captionDemuxer = adapter
                 let playback = SampleBufferPlaybackEngine(demuxer: adapter)
@@ -452,7 +452,7 @@ final class ArtifactOriginalVideoController: UIViewController {
                 if let lease = self.lease { source = try LocalByteSource(url: lease) }
                 else {
                     source = HTTPRangeByteSource(
-                        url: ArchiveURLs.download(identifier: self.summary.identifier, fileName: self.file.name))
+                        url: ArchiveURLs.download(identifier: self.summary.identifier, fileName: self.file.name), session: ArchiveNetworkPolicy.session)
                 }
                 try await engine.selectAudio(trackID: trackID, using: MatroskaDemuxer(source: source))
             } else {

@@ -192,7 +192,7 @@ final class ArchiveCoreTests: XCTestCase {
     }
 
     func testRepositoryPreservesRateLimitRetryAfter() async throws {
-        let repository = NetworkArchiveRepository(transport: StubTransport(response: ArchiveHTTPResponse(data: Data(), statusCode: 429, headers: ["Retry-After": "30"])))
+        let repository = NetworkArchiveRepository(transport: StubTransport(response: ArchiveHTTPResponse(data: Data(), statusCode: 429, headers: ["Retry-After": "30"])), retrySleep: { _ in })
         do {
             _ = try await repository.search(SearchRequest(text: "radio"))
             XCTFail("Expected HTTP error")
