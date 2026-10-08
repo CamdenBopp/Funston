@@ -3,7 +3,7 @@ import UIKit
 
 /// A recognized line or paragraph fragment and where it sits on the page,
 /// normalized to 0...1 with the origin at the top left.
-struct PDFTextBox: Sendable, Equatable {
+struct PDFTextBox: Codable, Sendable, Equatable {
     var text: String
     var rect: CGRect
     /// A whole table row, its cells joined: read as it is, never re-recognized.
@@ -301,18 +301,25 @@ enum PDFTextLayout {
     /// "reached our present amateur population". `region` is where each column
     /// sits on the page.
     static func threading(_ columns: [(paragraphs: [String], region: CGRect)], isWord: (String) -> Bool) -> [String] {
-        var remaining = columns.filter { !$0.paragraphs.isEmpty }
+        threaded(columns, isWord: isWord).paragraphs
+    }
+
+    static func threaded(_ columns: [(paragraphs: [String], region: CGRect)], isWord: (String) -> Bool) -> (paragraphs: [String], columnIndices: [Int]) {
+        var remaining = columns.enumerated().filter { !$0.element.paragraphs.isEmpty }
+        var columnIndices: [Int] = []
         var paragraphs: [String] = []
         var lastRegion: CGRect?
         while !remaining.isEmpty {
             var index = 0
-            if let previous = paragraphs.last, let lastRegion, !continues(previous, with: remaining[0].paragraphs[0]) {
+            if let previous = paragraphs.last, let lastRegion, !continues(previous, with: remaining[0].element.paragraphs[0]) {
                 index = remaining.indices.dropFirst().prefix(sidebarLookahead).first { candidate in
-                    remaining[candidate].region.minY < lastRegion.midY
-                        && continues(previous, with: remaining[candidate].paragraphs[0])
+                    remaining[candidate].element.region.minY < lastRegion.midY
+                        && continues(previous, with: remaining[candidate].element.paragraphs[0])
                 } ?? 0
             }
-            let next = remaining.remove(at: index)
+            let column = remaining.remove(at: index)
+            columnIndices.append(column.offset)
+            let next = column.element
             if let previous = paragraphs.last, continues(previous, with: next.paragraphs[0]) {
                 paragraphs[paragraphs.count - 1] = joiningLine(previous, next.paragraphs[0], isWord: isWord)
                 paragraphs += next.paragraphs.dropFirst()
@@ -321,7 +328,7 @@ enum PDFTextLayout {
             }
             lastRegion = next.region
         }
-        return paragraphs
+        return (paragraphs, columnIndices)
     }
 
     /// Whether `next` carries on a paragraph that stopped mid-sentence ("local

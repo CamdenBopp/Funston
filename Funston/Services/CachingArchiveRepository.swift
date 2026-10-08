@@ -14,7 +14,6 @@ actor CachingArchiveRepository: ArchiveRepository {
     private let transport: any ArchiveTransport
     private let normalizer: ArchiveNormalizer
     private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
 
     init(store: SQLiteStore, transport: any ArchiveTransport = URLSessionArchiveTransport(), normalizer: ArchiveNormalizer = ArchiveNormalizer()) {
         self.store = store; self.transport = transport; self.normalizer = normalizer
@@ -45,11 +44,16 @@ actor CachingArchiveRepository: ArchiveRepository {
         throw ArchiveError.invalidResponse
     }
 
+    // Earlier search responses did not request the lending restriction field.
+    nonisolated static func searchCacheKey(_ request: SearchRequest) -> String {
+        "search:v2:\(request.cacheKey)"
+    }
+
     private func produceSearch(_ request: SearchRequest, continuation: AsyncThrowingStream<RepositoryUpdate<SearchPage>, Error>.Continuation) async {
         var cachedValue: SearchPage?
         do {
             try Task.checkCancellation()
-            let key = "search:\(request.cacheKey)"
+            let key = Self.searchCacheKey(request)
             let cached = try? await store.cacheEntry(key: key)
             if let cached, let value = try? await decodeSearch(cached, request: request) {
                 cachedValue = value
@@ -113,11 +117,9 @@ actor CachingArchiveRepository: ArchiveRepository {
     }
 
     private func decodeSearch(_ entry: StoredCacheEntry, request: SearchRequest) async throws -> SearchPage {
-        if let snapshot = entry.snapshot, let page = try? decoder.decode(SearchPage.self, from: snapshot) { return page }
         return try await normalizer.search(data: entry.response, request: request)
     }
     private func decodeDetail(_ entry: StoredCacheEntry, identifier: String) async throws -> ArtifactDetail {
-        if let snapshot = entry.snapshot, let detail = try? decoder.decode(ArtifactDetail.self, from: snapshot) { return detail.resolvingArtwork() }
         return try await normalizer.detail(data: entry.response, identifier: identifier)
     }
 }

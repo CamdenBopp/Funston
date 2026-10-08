@@ -5,6 +5,28 @@ import UIKit
 
 @MainActor
 final class PDFReadingStateTests: XCTestCase {
+    func testRecognitionPreferenceIsRememberedPerBook() throws {
+        let suite = "BookEngineTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        PDFTextEnginePreference(defaults: defaults, bookKey: "a").select(PDFTextEngineID.appleVision)
+        XCTAssertEqual(PDFTextEnginePreference(defaults: defaults, bookKey: "a").selectedID, PDFTextEngineID.appleVision)
+        XCTAssertEqual(PDFTextEnginePreference(defaults: defaults, bookKey: "b").selectedID, PDFTextEngineID.automatic)
+    }
+
+    func testPageIndicatorIsOneAdjustableElement() {
+        let label = AdjustablePageLabel()
+        label.isAccessibilityElement = true
+        label.accessibilityTraits = .adjustable
+        var page = 2
+        label.adjustPage = { page += $0 }
+        label.accessibilityIncrement()
+        XCTAssertEqual(page, 3)
+        label.accessibilityDecrement()
+        XCTAssertEqual(page, 2)
+        XCTAssertTrue(label.accessibilityTraits.contains(.adjustable))
+    }
+
     func testRapidNavigationFlushesOnlyTheFinalPage() throws {
         let suite = "PDFReadingStateTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -123,7 +145,7 @@ final class PDFReadingStateTests: XCTestCase {
     func testTextEngineRegistryAcceptsAnAdditionalEngineWithoutChangingTheReader() {
         struct AdditionalEngine: PDFPageOCREngine {
             let descriptor = PDFTextEngineDescriptor(id: "example.custom-ocr", title: "Example OCR", isAvailable: true)
-            func recognize(_ image: CGImage) async -> String { "Example" }
+            func recognize(_ image: CGImage) async -> PDFRecognizedPage { PDFRecognizedPage(text: "Example") }
         }
 
         let registry = PDFPageTextEngineRegistry(engines: [AdditionalEngine()])
@@ -132,10 +154,8 @@ final class PDFReadingStateTests: XCTestCase {
         ])
     }
 
-    /// The December 1981 scan of 73 Magazine: column-by-column Vision kept 99% of
-    /// lines in order, the document reader 75% with lines missing.
-    func testAutomaticTriesColumnByColumnVisionFirst() {
-        XCTAssertEqual(PDFPageTextEngineRegistry.builtIn.descriptors.first?.id, PDFTextEngineID.appleVision)
+    func testAutomaticPrefersAppleDocumentReader() {
+        XCTAssertEqual(PDFPageTextEngineRegistry.builtIn.descriptors.first?.id, PDFTextEngineID.appleDocuments)
     }
 
     func testExplicitEngineIsRememberedWithoutBecomingARepeatedPrompt() {
@@ -152,8 +172,8 @@ final class PDFReadingStateTests: XCTestCase {
                 selectedEngineID: "extension.not-installed",
                 availableEngineIDs: available
             ),
-            available,
-            "An unavailable saved extension should silently use Automatic until it returns"
+            [PDFTextEngineID.appleVision],
+            "An unavailable extension uses Automatic, whose engines provide geometry"
         )
     }
 

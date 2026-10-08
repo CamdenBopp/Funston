@@ -5,6 +5,7 @@ import Combine
 @MainActor
 final class ArtifactController: FunstonListController {
     private let environment: AppEnvironment
+    private lazy var recordingProgress = RecordingProgressState(playback: environment.playback, identifier: summary.identifier)
     private let repository: CachingArchiveRepository
     private var summary: ArtifactSummary
     private var detail: ArtifactDetail?
@@ -145,7 +146,7 @@ final class ArtifactController: FunstonListController {
                                  save: { [weak self] in self?.toggleSaved() })
             }.margins(.all, 16)
         } else if row.id.hasPrefix("preview:"), let index = Int(row.id.dropFirst(8)), let detail {
-            configureRecordingCell(cell, detail: detail, index: index, environment: environment) { [weak self] in
+            configureRecordingCell(cell, detail: detail, index: index, environment: environment, progress: recordingProgress) { [weak self] in
                 guard let self else { return }
                 navigationController?.pushViewController(TrackController(environment: environment, detail: detail, index: index), animated: true)
             }
@@ -300,7 +301,7 @@ struct ArtifactOverview: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
             VStack(alignment: .leading, spacing: 7) {
-                Text(summary.mediaType.title.uppercased()).font(.caption.weight(.semibold)).tracking(1.2).foregroundStyle(Color.funstonSecondaryText)
+                Text(summary.mediaType == .texts ? "Book" : summary.mediaType.title.uppercased()).font(.caption.weight(.semibold)).tracking(1.2).foregroundStyle(Color.funstonSecondaryText)
                 Text(summary.title).font(.title.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 let identity = (summary.creators.prefix(2) + [summary.displayDate].compactMap { $0 }).joined(separator: " · ")
                 if !identity.isEmpty { Text(identity).font(.subheadline).foregroundStyle(Color.funstonSecondaryText) }
@@ -327,6 +328,7 @@ struct ArtifactOverview: View {
 struct ArtifactArtwork: View {
     let identifier: String
     var size: CGFloat = 180
+    var flexible = false
     var mediaType: MediaType = .unknown
     var url: URL? = nil
     var imageLoader: @MainActor (URL, CGSize, CGFloat) async throws -> SendableImage = { url, size, scale in
@@ -361,7 +363,8 @@ struct ArtifactArtwork: View {
                 }
             }
         }
-        .frame(width: size, height: size)
+        .aspectRatio(1, contentMode: .fit)
+        .frame(width: flexible ? nil : size, height: flexible ? nil : size)
         .accessibilityHidden(true)
         .task(id: Request(identity: identity, size: size, scale: scale)) {
             let requestedIdentity = identity
@@ -450,14 +453,22 @@ class SearchableArtifactContentsController: FunstonListController, UISearchResul
     }
 
     func dismissSearchKeyboard() { search.searchBar.resignFirstResponder() }
+    func clearSearch() {
+        search.searchBar.text = ""
+        updateSearchResults(for: search)
+        search.isActive = false
+    }
 }
 
 @MainActor
 final class TracksController: SearchableArtifactContentsController {
     private let environment: AppEnvironment
     private let detail: ArtifactDetail
+    private let recordingProgress: RecordingProgressState
+    private var playbackSubscription: AnyCancellable?
     init(environment: AppEnvironment, detail: ArtifactDetail) {
         self.environment = environment; self.detail = detail
+        recordingProgress = RecordingProgressState(playback: environment.playback, identifier: detail.summary.identifier)
         let rows = detail.tracks.enumerated().map { index, track in
             FunstonRow(id: String(index), title: track.title, subtitle: track.duration.map(PlayerTimePresentation.clock), navigates: false)
         }
@@ -466,9 +477,45 @@ final class TracksController: SearchableArtifactContentsController {
                    placeholder: "Find a recording", emptyTitle: "No matching recordings")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let current = UIBarButtonItem(title: "Current", image: UIImage(systemName: "scope"), primaryAction: UIAction { [weak self] _ in
+            guard let self, let context = environment.playback.context,
+                  context.artifact.identifier == detail.summary.identifier,
+                  let index = detail.tracks.firstIndex(where: { $0.candidates.contains { $0.name == context.file.name } }) else { return }
+            clearSearch()
+            collectionView.layoutIfNeeded()
+            scrollToRow(id: String(index))
+        })
+        current.accessibilityLabel = "Jump to now playing"
+        current.accessibilityIdentifier = "recordings.current"
+        navigationItem.rightBarButtonItem = current
+        playbackSubscription = environment.playback.$context.sink { [weak self] context in
+            guard let self else { return }
+            Task { @MainActor [weak self] in self?.updateJumpButton() }
+        }
+    }
+    override func scrollViewDidScroll(_ scrollView: UIScrollView) { updateJumpButton() }
+    private func updateJumpButton() {
+        guard let context = environment.playback.context, context.artifact.identifier == detail.summary.identifier,
+              let index = detail.tracks.firstIndex(where: { $0.candidates.contains { $0.name == context.file.name } }) else {
+            navigationItem.rightBarButtonItem?.isEnabled = false; return
+        }
+        navigationItem.rightBarButtonItem?.isEnabled = !isRowVisible(id: String(index))
+    }
+    override func swipeActions(for row: FunstonRow) -> UISwipeActionsConfiguration? {
+        guard let index = Int(row.id), detail.tracks.indices.contains(index) else { return nil }
+        let track = detail.tracks[index]
+        let played = RecordingListeningState.state(progress: recordingProgress.value(for: track), duration: track.duration) == .played
+        let action = UIContextualAction(style: .normal, title: played ? "Mark as Unplayed" : "Mark as Played") { [weak self] _, _, completion in
+            self?.recordingProgress.setPlayed(track, played: !played)
+            completion(true)
+        }
+        return UISwipeActionsConfiguration(actions: [action])
+    }
     override func configure(_ cell: UICollectionViewListCell, row: FunstonRow) {
         guard let index = Int(row.id), detail.tracks.indices.contains(index) else { return }
-        configureRecordingCell(cell, detail: detail, index: index, environment: environment, willPlay: { [weak self] in self?.dismissSearchKeyboard() }) { [weak self] in
+        configureRecordingCell(cell, detail: detail, index: index, environment: environment, progress: recordingProgress, willPlay: { [weak self] in self?.dismissSearchKeyboard() }) { [weak self] in
             guard let self else { return }
             dismissSearchKeyboard()
             navigationController?.pushViewController(TrackController(environment: environment, detail: detail, index: index), animated: true)
@@ -482,10 +529,10 @@ private func collectionDisplayName(_ identifier: String) -> String {
 }
 
 @MainActor
-private func configureRecordingCell(_ cell: UICollectionViewListCell, detail: ArtifactDetail, index: Int, environment: AppEnvironment, willPlay: @escaping () -> Void = {}, information: @escaping () -> Void) {
+private func configureRecordingCell(_ cell: UICollectionViewListCell, detail: ArtifactDetail, index: Int, environment: AppEnvironment, progress: RecordingProgressState, willPlay: @escaping () -> Void = {}, information: @escaping () -> Void) {
     cell.isAccessibilityElement = false; cell.accessories = []
     cell.contentConfiguration = UIHostingConfiguration {
-        RecordingRow(track: detail.tracks[index], artifactID: detail.summary.identifier, playback: environment.playback, number: index + 1, available: detail.access == .available,
+        RecordingRow(track: detail.tracks[index], artifactID: detail.summary.identifier, playback: environment.playback, progress: progress, number: index + 1, count: detail.tracks.count, available: detail.access == .available,
                      play: {
                          willPlay()
                          if environment.playback.context?.artifact.identifier == detail.summary.identifier,
@@ -496,45 +543,58 @@ private func configureRecordingCell(_ cell: UICollectionViewListCell, detail: Ar
                      download: {
                          if let file = detail.tracks[index].preferredFile { Task { await environment.downloads.start(identifier: detail.summary.identifier, artifactTitle: detail.summary.title, file: file) } }
                      }, information: information)
-    }.margins(.horizontal, 20).margins(.vertical, 10)
+    }.margins(.horizontal, 20).margins(.vertical, 6)
 }
 
 private struct RecordingRow: View {
     let track: PlayableTrack
     let artifactID: String
-    let playback: PlaybackController
+    @ObservedObject var playback: PlaybackController
+    @ObservedObject var progress: RecordingProgressState
     let number: Int
+    let count: Int
     let available: Bool
     let play: () -> Void
     let download: () -> Void
     let information: () -> Void
-    @State private var current = false
+    @ScaledMetric(relativeTo: .caption) private var numberWidth = 32
+    private var current: Bool {
+        playback.context?.artifact.identifier == artifactID && track.candidates.contains { $0.name == playback.context?.file.name }
+    }
     var body: some View {
-        HStack(spacing: 12) {
+        let saved = progress.value(for: track)
+        let played = RecordingListeningState.state(progress: saved, duration: track.duration) == .played
+        HStack(spacing: 10) {
             Button(action: play) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Group {
-                        if current { Image(systemName: "speaker.wave.2.fill").font(.caption) }
+                        if current { Image(systemName: "speaker.wave.2.fill").font(.caption).foregroundStyle(Color.accentColor) }
                         else { Text(number.formatted()).font(.caption.monospacedDigit()).foregroundStyle(Color.funstonSecondaryText) }
-                    }.frame(minWidth: 22).accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(track.title).font(.body).foregroundStyle(.primary).multilineTextAlignment(.leading)
-                        if let duration = track.duration { Text(PlayerTimePresentation.clock(duration)).font(.caption.monospacedDigit()).foregroundStyle(Color.funstonSecondaryText) }
+                    }.frame(width: numberWidth, alignment: .trailing).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(track.title).font(.body).foregroundStyle(played ? Color.funstonSecondaryText : current ? Color.accentColor : .primary).multilineTextAlignment(.leading)
+                        HStack(spacing: 8) {
+                            if case .unplayed = RecordingListeningState.state(progress: saved, duration: track.duration), let duration = track.duration { Text(PlayerTimePresentation.clock(duration)).monospacedDigit() }
+                            if let state = RecordingListeningState.state(progress: saved, duration: track.duration).text(duration: track.duration) { Text(state) }
+                        }.font(.caption).foregroundStyle(Color.funstonSecondaryText)
                     }
                     Spacer(minLength: 0)
+                    if played { Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.funstonSecondaryText) }
                 }.frame(minHeight: 44).contentShape(Rectangle())
             }.buttonStyle(.plain).disabled(!available)
-                .accessibilityLabel(track.title)
-                .accessibilityValue(([current ? "Current recording" : nil, available ? nil : "Unavailable", track.duration.map(PlayerTimePresentation.spoken)].compactMap { $0 }).joined(separator: ". "))
+                .accessibilityLabel(RecordingListeningState.label(track: track, number: number, count: count, current: current, progress: saved))
+                .accessibilityValue(available ? "" : "Unavailable.")
+                .accessibilityHint(current ? "Resumes this recording." : "Plays this recording.")
                 .accessibilityIdentifier("recording.play.\(number - 1)")
                 .accessibilityAction(named: "Recording information", information)
+                .accessibilityAction(named: played ? "Mark as Unplayed" : "Mark as Played") { progress.setPlayed(track, played: !played) }
             Menu {
+                Button(played ? "Mark as Unplayed" : "Mark as Played", systemImage: played ? "circle" : "checkmark.circle") { progress.setPlayed(track, played: !played) }
                 if available { Button("Download recording", systemImage: "arrow.down.circle", action: download) }
                 Button("Recording information", systemImage: "info.circle", action: information)
-            } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+            } label: { Image(systemName: "ellipsis").foregroundStyle(Color.funstonSecondaryText).frame(width: 44, height: 44) }
                 .accessibilityLabel("More actions for \(track.title)")
         }
-        .onReceive(playback.$context.map { $0?.artifact.identifier == artifactID && $0?.track.id == track.id }.removeDuplicates()) { current = $0 }
     }
 }
 

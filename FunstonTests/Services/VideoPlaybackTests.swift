@@ -79,6 +79,7 @@ final class VideoPlaybackTests: XCTestCase {
         video.start()
         try await until { video.state == .ready && video.player.rate > 0 }
         XCTAssertEqual((video.player.currentItem?.asset as? AVURLAsset)?.url, url)
+        XCTAssertEqual(video.player.currentItem?.externalMetadata.first { $0.identifier == .commonIdentifierTitle }?.stringValue, "movie")
         XCTAssertGreaterThanOrEqual(video.player.currentTime().seconds, 8)
         XCTAssertLessThan(video.player.currentTime().seconds, 10)
         try await downloads.remove(record, deferPhysicalRemoval: false)

@@ -37,6 +37,9 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate {
         self.container = container
         container.popupPresentationDelegate = self
         container.popupInteractionStyle = .automatic
+        container.popupContentView.popupCloseButtonStyle = .chevron
+        container.popupContentView.popupCloseButton.tintColor = .secondaryLabel
+        container.popupContentView.popupCloseButton.accessibilityLabel = "Close player"
         let appearance = LNPopupBarAppearance()
         appearance.marqueeScrollEnabled = false
         appearance.subtitleTextAttributes = AttributeContainer().foregroundColor(UIColor.funstonSecondaryLabel)

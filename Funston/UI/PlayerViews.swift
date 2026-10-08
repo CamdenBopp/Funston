@@ -8,6 +8,7 @@ struct FullPlayer: View {
     @StateObject private var presentation: PlayerPresentationState
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showingQueue = false
+    @State private var showingSpeed = false
 
     init(playback: PlaybackController, downloads: DownloadManager) {
         self.playback = playback
@@ -17,19 +18,29 @@ struct FullPlayer: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
+            playerLayout {
                 if let context = presentation.context {
-                    VStack(alignment: .leading, spacing: 22) {
-                        ArtifactArtwork(identifier: context.artifact.identifier,
-                                        size: max(140, min(geometry.size.width - 64, geometry.size.height * (typeSize.isAccessibilitySize ? 0.24 : 0.38), 360)),
-                                        mediaType: context.artifact.mediaType, url: context.artifact.artworkURL)
-                            .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        VStack(alignment: .leading, spacing: 7) {
-                            Text(context.track.title).font(.title2.weight(.semibold)).accessibilityAddTraits(.isHeader)
-                            Text(context.artifact.title).font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
-                            if presentation.phase != .playing && presentation.phase != .paused {
-                                Text(presentation.phase.spokenValue).font(.caption).foregroundStyle(Color.funstonSecondaryText).accessibilityIdentifier("player.state")
+                    VStack(alignment: .leading, spacing: typeSize.isAccessibilitySize ? 22 : 12) {
+                        GeometryReader { artworkBounds in
+                            ArtifactArtwork(identifier: context.artifact.identifier,
+                                            size: 360, flexible: true,
+                                            mediaType: context.artifact.mediaType, url: context.artifact.artworkURL)
+                                .frame(width: artworkBounds.size.width, height: artworkBounds.size.height)
+                        }
+                            .frame(maxWidth: .infinity, minHeight: typeSize.isAccessibilitySize ? 140 : 0, maxHeight: typeSize.isAccessibilitySize ? 220 : .infinity)
+                            .layoutPriority(-1)
+                            .overlay(alignment: .bottom) {
+                                if presentation.phase != .playing && presentation.phase != .paused {
+                                    Text(presentation.phase.spokenValue)
+                                        .font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
+                                        .background(.regularMaterial, in: Capsule())
+                                        .accessibilityIdentifier("player.state")
+                                }
                             }
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(context.track.title).font(.title2.weight(.semibold)).lineLimit(typeSize.isAccessibilitySize ? nil : 2).accessibilityAddTraits(.isHeader)
+                                .accessibilityIdentifier("player.trackTitle")
+                            Text(context.artifact.title).font(.subheadline).lineLimit(typeSize.isAccessibilitySize ? nil : 1).foregroundStyle(Color.funstonSecondaryText)
                         }
                         if case .failed(let message) = presentation.phase {
                             Text(message).font(.callout)
@@ -41,74 +52,87 @@ struct FullPlayer: View {
                             Spacer()
                             Button { playback.togglePlayback() } label: {
                                 Image(systemName: presentation.showsPauseControl ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 38, weight: .semibold)).frame(width: 80, height: 76)
+                                    .font(.system(size: 36, weight: .semibold)).frame(width: 88, height: 88)
                             }.accessibilityLabel(presentation.showsPauseControl ? "Pause" : "Play")
                                 .accessibilityValue(presentation.phase.spokenValue)
                                 .accessibilityIdentifier("player.toggle")
                             Spacer()
                             transport("Forward 15 seconds", symbol: "goforward.15") { playback.skip(by: 15) }
-                        }.foregroundStyle(.primary).padding(.horizontal, 18)
+                        }.buttonStyle(PlayerControlStyle()).foregroundStyle(.primary).padding(.horizontal, 8)
                         if context.tracks.count > 1 {
                             HStack {
-                                Button { playback.previousTrack() } label: { Image(systemName: "backward.end.fill").frame(width: 44, height: 44) }.accessibilityLabel("Previous recording")
+                                Button { playback.previousTrack() } label: { Image(systemName: "backward.end.fill").frame(width: 48, height: 48) }.accessibilityLabel("Previous recording")
                                 Spacer()
                                 Button { showingQueue = true } label: {
-                                    Label("\(context.trackIndex + 1) of \(context.tracks.count)", systemImage: "list.bullet").font(.subheadline).frame(minHeight: 44)
+                                    Label("\(context.trackIndex + 1) of \(context.tracks.count)", systemImage: "list.bullet").font(.subheadline).padding(.horizontal, 14).frame(minHeight: 48)
                                 }.accessibilityLabel("Recordings, \(context.trackIndex + 1) of \(context.tracks.count)")
                                 Spacer()
-                                Button { playback.nextTrack() } label: { Image(systemName: "forward.end.fill").frame(width: 44, height: 44) }.accessibilityLabel("Next recording").disabled(context.trackIndex + 1 >= context.tracks.count)
-                            }.font(.callout)
+                                Button { playback.nextTrack() } label: { Image(systemName: "forward.end.fill").frame(width: 48, height: 48) }.accessibilityLabel("Next recording").disabled(context.trackIndex + 1 >= context.tracks.count)
+                            }.font(.callout).buttonStyle(PlayerControlStyle())
                         }
-                        ViewThatFits(in: .horizontal) {
-                            HStack {
-                                DownloadButton(downloads: downloads, artifact: context.artifact, file: context.file)
-                                Spacer()
-                                SleepTimerMenu(timer: playback.sleepTimer)
-                                RoutePicker().frame(width: 44, height: 44).accessibilityLabel("Audio output")
-                            }
-                            VStack(alignment: .leading, spacing: 12) {
-                                DownloadButton(downloads: downloads, artifact: context.artifact, file: context.file)
-                                SleepTimerMenu(timer: playback.sleepTimer)
-                                RoutePicker().frame(width: 44, height: 44).accessibilityLabel("Audio output")
-                            }
-                        }
-                    }.padding(.horizontal, 28).padding(.top, 30).padding(.bottom, 24).frame(maxWidth: 520)
+                        HStack(alignment: .top, spacing: 12) {
+                            DownloadButton(downloads: downloads, artifact: context.artifact,
+                                           file: context.file, compact: true)
+                                .frame(maxWidth: .infinity)
+                            Button { showingSpeed = true } label: {
+                                VStack(spacing: 6) {
+                                    Text("\(presentation.playbackRate.formatted())×").font(.headline).frame(height: 48)
+                                    Text("Speed").font(.caption).foregroundStyle(Color.funstonSecondaryText)
+                                }.frame(maxWidth: .infinity)
+                            }.buttonStyle(.plain).accessibilityLabel("Playback speed")
+                                .accessibilityValue("\(presentation.playbackRate.formatted()) times")
+                                .accessibilityIdentifier("player.speed")
+                            SleepTimerMenu(timer: playback.sleepTimer, compact: true)
+                                .frame(maxWidth: .infinity)
+                            VStack(spacing: 6) {
+                                RoutePicker().frame(width: 48, height: 48)
+                                    .accessibilityLabel("Audio output")
+                                    .accessibilityIdentifier("player.audioOutput")
+                                Text("AirPlay").font(.caption).foregroundStyle(Color.funstonSecondaryText)
+                                    .accessibilityHidden(true)
+                            }.frame(maxWidth: .infinity)
+                        }.padding(.top, 8)
+
+                    }.padding(.horizontal, 24).padding(.top, 44).padding(.bottom, 12).frame(maxWidth: 520)
+                        .frame(maxHeight: typeSize.isAccessibilitySize ? nil : geometry.size.height)
                         .frame(maxWidth: .infinity)
                 }
             }
         }
         .background(Color(uiColor: .systemBackground))
+        .sheet(isPresented: $showingSpeed) { PlaybackSpeedSheet(playback: playback) }
         .sheet(isPresented: $showingQueue) {
-            NavigationStack {
-                List {
-                    if let context = presentation.context {
-                        ForEach(context.tracks.indices, id: \.self) { index in
-                            let track = context.tracks[index]
-                            Button {
-                                if index == context.trackIndex { playback.play() }
-                                else { playback.load(artifact: context.artifact, tracks: context.tracks, trackIndex: index) }
-                                showingQueue = false
-                            } label: {
-                                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                    Text((index + 1).formatted()).font(.caption.monospacedDigit()).foregroundStyle(Color.funstonSecondaryText)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(track.title).foregroundStyle(.primary)
-                                        if let duration = track.duration { Text(PlayerTimePresentation.clock(duration)).font(.caption).foregroundStyle(Color.funstonSecondaryText) }
-                                    }
-                                    Spacer(minLength: 0)
-                                    if index == context.trackIndex { Image(systemName: "speaker.wave.2.fill").accessibilityHidden(true) }
-                                }.padding(.vertical, 4)
-                            }.accessibilityValue(index == context.trackIndex ? "Current recording" : "")
-                        }
-                    }
-                }.navigationTitle("Recordings").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showingQueue = false } } }
+            if let context = presentation.context {
+                RecordingQueueView(playback: playback, identifier: context.artifact.identifier)
             }
         }
     }
 
+    @ViewBuilder private func playerLayout<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if typeSize.isAccessibilitySize { ScrollView { content() } }
+        else { content() }
+    }
+
     private func transport(_ label: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: symbol).font(.title).frame(minWidth: 56, minHeight: 56) }.accessibilityLabel(label)
+        Button(action: action) { Image(systemName: symbol).font(.system(size: 28, weight: .medium)).frame(width: 64, height: 64) }.accessibilityLabel(label)
+    }
+}
+
+/// Deliberate surfaces avoid automatic system button fills while retaining
+/// the user's request for stronger control boundaries.
+private struct PlayerControlStyle: ButtonStyle {
+    @Environment(\.accessibilityShowBorders) private var showBorders
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(.primary.opacity(configuration.isPressed ? 0.18 : 0.08), in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(.primary.opacity(showBorders ? 0.55 : 0.12),
+                                       lineWidth: showBorders ? 2 : 1)
+            }
+            .contentShape(Capsule())
+            .opacity(isEnabled ? 1 : 0.4)
     }
 }
 
@@ -118,10 +142,13 @@ private final class PlayerPresentationState: ObservableObject {
     @Published private(set) var context: PlaybackContext?
     @Published private(set) var phase: PlaybackPhase
     @Published private(set) var wantsToPlay: Bool
+    @Published private(set) var playbackRate: Double
     var showsPauseControl: Bool { phase.showsPauseControl(wantsToPlay: wantsToPlay) }
     private var subscriptions = Set<AnyCancellable>()
     init(playback: PlaybackController) {
         context = playback.context; phase = playback.phase; wantsToPlay = playback.wantsToPlay
+        playbackRate = playback.playbackRate
+        playback.$playbackRate.removeDuplicates().sink { [weak self] in self?.playbackRate = $0 }.store(in: &subscriptions)
         playback.$context.removeDuplicates().sink { [weak self] in self?.context = $0 }.store(in: &subscriptions)
         playback.$phase.removeDuplicates().sink { [weak self] in self?.phase = $0 }.store(in: &subscriptions)
         playback.$wantsToPlay.removeDuplicates().sink { [weak self] in self?.wantsToPlay = $0 }.store(in: &subscriptions)
@@ -215,14 +242,16 @@ struct DownloadButton: View {
     let artifact: ArtifactSummary
     let file: ArchiveFile
     var noun = "Recording"
+    var compact = false
     @State private var record: DownloadRecord?
     @State private var subscription: AnyCancellable?
     @State private var isVisible = false
+    @Environment(\.accessibilityShowBorders) private var showBorders
     private var identity: DownloadButtonIdentity { DownloadButtonIdentity(identifier: artifact.identifier, fileName: file.name) }
     private var label: String {
         switch record?.state {
         case .completed: "Downloaded"
-        case .downloading: "Downloading…"
+        case .downloading: progressValue.isEmpty ? "Downloading" : "Downloading, \(Int(min(100, max(0, Double(record?.receivedBytes ?? 0) / Double(record?.totalBytes ?? record?.expectedBytes ?? 1) * 100)))) percent"
         case .queued: "Download queued"
         case .failed, .missing, .cancelled: "Retry Download"
         case nil: "Download \(noun)"
@@ -230,16 +259,107 @@ struct DownloadButton: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button(label, systemImage: record?.state == .completed ? "checkmark.circle" : "arrow.down.circle") {
-                Task { await downloads.start(identifier: artifact.identifier, artifactTitle: artifact.title, file: file) }
+            if record?.state == .completed {
+                if compact {
+                    VStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 23))
+                            .foregroundStyle(.tint).frame(width: 48, height: 48)
+                        Text("Downloaded").font(.caption).foregroundStyle(Color.funstonSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }.frame(maxWidth: .infinity)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Downloaded")
+                        .accessibilityHint("Available offline. Manage this download in Downloads.")
+                        .accessibilityIdentifier("player.downloaded")
+                } else {
+                    Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(.tint)
+                        .accessibilityElement(children: .ignore).accessibilityLabel("Downloaded")
+                        .accessibilityHint("Available offline. Manage this download in Downloads.")
+                }
+            } else if compact {
+                Button {
+                    Task { await downloads.start(identifier: artifact.identifier, artifactTitle: artifact.title, file: file) }
+                } label: {
+                    VStack(spacing: 6) {
+                        Group {
+                            if record?.state == .downloading {
+                                if let total = record?.totalBytes ?? record?.expectedBytes, total > 0 {
+                                    ZStack {
+                                        Circle().stroke(.secondary.opacity(0.2), lineWidth: 3)
+                                        Circle().trim(from: 0, to: min(1, max(0, Double(record?.receivedBytes ?? 0) / Double(total))))
+                                            .stroke(.tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                                            .rotationEffect(.degrees(-90))
+                                    }.frame(width: 24, height: 24)
+                                } else { ProgressView() }
+                            } else {
+                                Image(systemName: downloadSymbol).font(.system(size: 23))
+                            }
+                        }.frame(width: 48, height: 48)
+                            .overlay { Circle().strokeBorder(.primary.opacity(showBorders ? 0.55 : 0), lineWidth: 2) }
+                        Text(compactTitle).font(.caption).foregroundStyle(Color.funstonSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }.frame(maxWidth: .infinity).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                .accessibilityLabel(record == nil ? "Download" : label)
+                .accessibilityValue("")
+                .accessibilityHint(record?.errorMessage ?? "Download this recording for offline listening.")
+                .accessibilityIdentifier("player.download")
+                .disabled(record?.state == .completed || record?.state == .downloading || record?.state == .queued)
+            } else {
+                Button {
+                    Task { await downloads.start(identifier: artifact.identifier, artifactTitle: artifact.title, file: file) }
+                } label: {
+                    HStack {
+                        if record?.state == .downloading { downloadProgress }
+                        else { Image(systemName: "arrow.down.circle") }
+                        Text(label)
+                    }
+                }.accessibilityLabel(label)
+                .buttonStyle(.bordered).controlSize(.large)
+                .disabled(record?.state == .completed || record?.state == .downloading || record?.state == .queued)
+                if let message = record?.errorMessage { Text(message).font(.caption).foregroundStyle(Color.funstonSecondaryText) }
             }
-            .buttonStyle(.bordered).controlSize(.large)
-            .disabled(record?.state == .completed || record?.state == .downloading || record?.state == .queued)
-            if let message = record?.errorMessage { Text(message).font(.caption).foregroundStyle(Color.funstonSecondaryText) }
         }
         .onAppear { isVisible = true; bindRecord() }
         .onChange(of: identity) { _, _ in if isVisible { bindRecord() } }
         .onDisappear { isVisible = false; subscription = nil }
+    }
+
+    @ViewBuilder private var downloadProgress: some View {
+        if let total = record?.totalBytes ?? record?.expectedBytes, total > 0 {
+            ZStack {
+                Circle().stroke(.secondary.opacity(0.2), lineWidth: 3)
+                Circle().trim(from: 0, to: min(1, max(0, Double(record?.receivedBytes ?? 0) / Double(total))))
+                    .stroke(.tint, style: StrokeStyle(lineWidth: 3, lineCap: .round)).rotationEffect(.degrees(-90))
+            }.frame(width: 24, height: 24)
+        } else { ProgressView() }
+    }
+
+    private var downloadSymbol: String {
+        switch record?.state {
+        case .completed: "checkmark.circle.fill"
+        case .queued: "clock.arrow.circlepath"
+        case .failed, .missing, .cancelled: "arrow.clockwise.circle"
+        default: "arrow.down.circle"
+        }
+    }
+
+    private var compactTitle: String {
+        switch record?.state {
+        case .completed: "Downloaded"
+        case .downloading: progressValue.isEmpty ? "Downloading" : progressValue
+        case .queued: "Queued"
+        case .failed, .missing, .cancelled: "Retry"
+        case nil: "Download"
+        }
+    }
+
+    private var progressValue: String {
+        guard record?.state == .downloading,
+              let total = record?.totalBytes ?? record?.expectedBytes, total > 0 else { return "" }
+        return min(1, max(0, Double(record?.receivedBytes ?? 0) / Double(total))).formatted(.percent.precision(.fractionLength(0)))
     }
 
     private func bindRecord() {
@@ -267,6 +387,8 @@ struct RoutePicker: UIViewRepresentable {
 /// minute, and only while a countdown is running.
 struct SleepTimerMenu: View {
     @ObservedObject var timer: SleepTimer
+    var compact = false
+    @Environment(\.accessibilityShowBorders) private var showBorders
     private static let refreshInterval: TimeInterval = 60
 
     var body: some View {
@@ -280,9 +402,22 @@ struct SleepTimerMenu: View {
                     Button("Turn Off Sleep Timer", role: .destructive) { timer.turnOff() }
                 }
             } label: {
-                Label(visibleTitle(at: context.date), systemImage: timer.setting == .off ? "moon.zzz" : "moon.zzz.fill")
-                    .font(.subheadline).frame(minHeight: 44)
+                if compact {
+                    VStack(spacing: 6) {
+                        Image(systemName: timer.setting == .off ? "moon.zzz" : "moon.zzz.fill")
+                            .font(.system(size: 23)).frame(width: 48, height: 48)
+                            .overlay { Circle().strokeBorder(.primary.opacity(showBorders ? 0.55 : 0), lineWidth: 2) }
+                        Text(timer.setting == .endOfRecording ? "End" : visibleTitle(at: context.date))
+                            .font(.caption).foregroundStyle(Color.funstonSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }.frame(maxWidth: .infinity).contentShape(Rectangle())
+                } else {
+                    Label(visibleTitle(at: context.date), systemImage: timer.setting == .off ? "moon.zzz" : "moon.zzz.fill")
+                        .font(.subheadline).frame(minHeight: 44)
+                }
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tint)
             .accessibilityLabel("Sleep timer")
             .accessibilityValue(spokenValue(at: context.date))
             .accessibilityIdentifier("player.sleepTimer")
@@ -312,4 +447,79 @@ struct SleepTimerMenu: View {
 
 private extension String {
     var capitalizedFirstLetter: String { prefix(1).uppercased() + dropFirst() }
+}
+
+@MainActor
+struct PlaybackSpeedSheet: View {
+    @ObservedObject var playback: PlaybackController
+    @Environment(\.dismiss) private var dismiss
+    @State private var collectionOverride = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: typeSize.isAccessibilitySize ? 1 : 2)) {
+                    ForEach([1.0, 1.25, 1.5, 2.0], id: \.self) { speed in
+                        Button("\(speed.formatted())×") { set(speed) }
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel("\(speed.formatted()) times")
+                            .accessibilityAddTraits(playback.playbackRate == speed ? .isSelected : [])
+                    }
+                }
+                HStack {
+                    Button { set(playback.playbackRate - 0.1) } label: { Image(systemName: "minus") }
+                        .disabled(playback.playbackRate <= 0.5)
+                    Spacer()
+                    Text("\(playback.playbackRate.formatted())×").monospacedDigit()
+                    Spacer()
+                    Button { set(playback.playbackRate + 0.1) } label: { Image(systemName: "plus") }
+                        .disabled(playback.playbackRate >= 3)
+                }.buttonStyle(.bordered)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Playback speed")
+                    .accessibilityValue("\(playback.playbackRate.formatted()) times")
+                    .accessibilityIdentifier("player.speed.adjustable")
+                    .accessibilityAdjustableAction { direction in
+                        switch direction {
+                        case .increment: set(playback.playbackRate + 0.1)
+                        case .decrement: set(playback.playbackRate - 0.1)
+                        @unknown default: break
+                        }
+                    }
+                if let collection = playback.context?.artifact.collections.first {
+                    Toggle("Remember speed for this collection", isOn: $collectionOverride)
+                        .accessibilityHint(collection)
+                        .onChange(of: collectionOverride) { _, enabled in
+                            if enabled { playback.setPlaybackSpeed(playback.playbackRate, forCollection: true) }
+                            else { playback.useGlobalPlaybackSpeed() }
+                        }
+                }
+            }.navigationTitle("Playback Speed").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }.onAppear { collectionOverride = playback.hasCollectionSpeedOverride }
+    }
+    private func set(_ speed: Double) { playback.setPlaybackSpeed(speed, forCollection: collectionOverride) }
+}
+
+@MainActor
+struct PlaybackSpeedPreference {
+    private let defaults: UserDefaults
+    private static let globalKey = "playback.speed"
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    static func clamped(_ value: Double) -> Double {
+        guard value.isFinite else { return 1 }
+        return min(3, max(0.5, (value * 100).rounded() / 100))
+    }
+    func rate(collection: String? = nil) -> Double {
+        let key = collection.map { "playback.speed.collection." + $0 }
+        let value = key.flatMap { defaults.object(forKey: $0) as? Double }
+            ?? defaults.object(forKey: Self.globalKey) as? Double ?? 1
+        return Self.clamped(value)
+    }
+    func set(_ value: Double, collection: String? = nil) {
+        defaults.set(Self.clamped(value), forKey: collection.map { "playback.speed.collection." + $0 } ?? Self.globalKey)
+    }
+    func hasOverride(collection: String) -> Bool { defaults.object(forKey: "playback.speed.collection." + collection) != nil }
+    func removeOverride(collection: String) { defaults.removeObject(forKey: "playback.speed.collection." + collection) }
 }

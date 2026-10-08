@@ -76,6 +76,100 @@ final class ResumePolicyTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(firstSaved), 12, accuracy: 0.05, "Leaving a recording keeps its place.")
     }
 
+    func testDownloadedRecordingRestoresCollectionQueueAndPositionWithoutReloadingAudio() async throws {
+        let (store, downloads, records) = try await audioFixture(seconds: 60, names: ["second.wav"])
+        let record = records[0]
+        try await store.setPlaybackPosition(identifier: record.identifier, fileName: record.fileName, seconds: 20)
+        let detail = queueDetail(names: ["first.wav", "second.wav", "third.wav"])
+        try await store.storeCache(key: "metadata:resume", kind: "metadata", response: Data(),
+            snapshot: JSONEncoder().encode(detail), maxAge: 86_400)
+        let repository = CachingArchiveRepository(store: store)
+        let player = AVPlayer()
+        let playback = PlaybackController(store: store, downloads: downloads, player: player,
+            audioSessionActivator: {}, audioSessionDeactivator: {},
+            artworkLoader: { _ in throw URLError(.cancelled) },
+            artifactDetailLoader: { identifier in try await repository.detail(identifier: identifier) })
+        playback.playDownloaded(record, autoplay: false)
+        let originalItem = try XCTUnwrap(player.currentItem)
+        let generation = playback.loadGeneration
+        try await until { playback.phase == .paused && playback.context?.artifact.title == detail.summary.title }
+        XCTAssertEqual(playback.context?.tracks.count, 3)
+        XCTAssertEqual(playback.context?.trackIndex, 1)
+        XCTAssertEqual(playback.context?.track.title, "Episode 2")
+        XCTAssertTrue(player.currentItem === originalItem)
+        XCTAssertEqual(playback.loadGeneration, generation)
+        XCTAssertEqual(player.currentTime().seconds, 20, accuracy: 0.05)
+        XCTAssertEqual((player.currentItem?.asset as? AVURLAsset)?.url.path, record.localPath)
+        XCTAssertFalse(playback.wantsToPlay)
+    }
+
+    func testOfflineDownloadsFormANavigableQueueWhenMetadataIsUnavailable() async throws {
+        let (store, downloads, records) = try await audioFixture(seconds: 60, names: ["track1.wav", "track2.wav", "track10.wav"])
+        let player = AVPlayer()
+        let playback = PlaybackController(store: store, downloads: downloads, player: player,
+            audioSessionActivator: {}, audioSessionDeactivator: {},
+            artworkLoader: { _ in throw URLError(.cancelled) },
+            artifactDetailLoader: { _ in throw URLError(.notConnectedToInternet) })
+        playback.playDownloaded(records[1], autoplay: false)
+        try await until { playback.phase == .paused }
+        XCTAssertEqual(playback.context?.tracks.map(\.id), ["track1.wav", "track2.wav", "track10.wav"])
+        XCTAssertEqual(playback.context?.trackIndex, 1)
+        playback.nextTrack()
+        try await until { playback.phase == .paused && playback.context?.file.name == "track10.wav" }
+        XCTAssertEqual((player.currentItem?.asset as? AVURLAsset)?.url.path, records[2].localPath)
+        playback.previousTrack()
+        try await until { playback.phase == .paused && playback.context?.file.name == "track2.wav" }
+    }
+
+    func testDownloadedRecordingPreservesAKnownQueueAndTheExactChosenDerivative() async throws {
+        let (store, downloads, records) = try await audioFixture(seconds: 60, names: ["episode.wav", "episode-alt.wav"])
+        let summary = ArtifactSummary(identifier: "resume", title: "Known collection", mediaType: .audio)
+        let tracks = [PlayableTrack(id: "episode", title: "Episode", candidates: [ArchiveFile(name: "episode.wav"), ArchiveFile(name: "episode-alt.wav")]),
+                      PlayableTrack(id: "next", title: "Next", candidates: [ArchiveFile(name: "next.wav")])]
+        let player = AVPlayer()
+        let playback = PlaybackController(store: store, downloads: downloads, player: player,
+            audioSessionActivator: {}, audioSessionDeactivator: {},
+            artworkLoader: { _ in throw URLError(.cancelled) })
+        playback.load(artifact: summary, tracks: tracks, trackIndex: 0, autoplay: false)
+        playback.playDownloaded(records[1], autoplay: false)
+        XCTAssertEqual(playback.context?.tracks, tracks)
+        XCTAssertEqual(playback.context?.artifact.title, summary.title)
+        XCTAssertEqual(playback.context?.file.name, "episode-alt.wav")
+        XCTAssertEqual((player.currentItem?.asset as? AVURLAsset)?.url.path, records[1].localPath)
+    }
+
+    func testDelayedDownloadMetadataCannotOverwriteANewerSelection() async throws {
+        let (store, downloads, records) = try await audioFixture(seconds: 60, names: ["first.wav", "second.wav"])
+        var continuation: CheckedContinuation<ArtifactDetail, Never>?
+        var returned = false
+        let playback = PlaybackController(store: store, downloads: downloads,
+            audioSessionActivator: {}, audioSessionDeactivator: {},
+            artworkLoader: { _ in throw URLError(.cancelled) },
+            artifactDetailLoader: { _ in
+                let detail = await withCheckedContinuation { continuation = $0 }
+                returned = true
+                return detail
+            })
+        playback.playDownloaded(records[1], autoplay: false)
+        try await until { continuation != nil }
+        let replacement = ArtifactSummary(identifier: "resume", title: "New selection", mediaType: .audio)
+        playback.load(artifact: replacement,
+            tracks: [PlayableTrack(id: "first", title: "First", candidates: [ArchiveFile(name: "first.wav")])],
+            trackIndex: 0, autoplay: false)
+        continuation?.resume(returning: queueDetail(names: ["first.wav", "second.wav"]))
+        try await until { returned }
+        XCTAssertEqual(playback.context?.artifact.title, "New selection")
+        XCTAssertEqual(playback.context?.file.name, "first.wav")
+        XCTAssertEqual(playback.context?.tracks.count, 1)
+    }
+
+    private func queueDetail(names: [String]) -> ArtifactDetail {
+        ArtifactDetail(summary: ArtifactSummary(identifier: "resume", title: "Archive collection", mediaType: .audio),
+            tracks: names.enumerated().map { index, name in
+                PlayableTrack(id: name, title: "Episode \(index + 1)", candidates: [ArchiveFile(name: name)], duration: 60)
+            })
+    }
+
     private func until(file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(4)
         while !condition(), Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }

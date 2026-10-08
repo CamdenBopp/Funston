@@ -1,11 +1,12 @@
 import UIKit
 import Combine
+import AppIntents
 
 actor LibraryPersistence {
     let store: SQLiteStore
     init(store: SQLiteStore) { self.store = store }
     func all() async throws -> [ArtifactSummary] {
-        try await store.savedArtifacts().compactMap { try? JSONDecoder().decode(ArtifactSummary.self, from: $0) }
+        try await store.savedArtifacts().compactMap { try? JSONDecoder().decode(ArtifactSummary.self, from: $0) }.filter { !$0.isAccessRestricted }
     }
     func save(_ artifact: ArtifactSummary) async throws {
         try await store.saveArtifact(identifier: artifact.identifier, snapshot: JSONEncoder().encode(artifact))
@@ -30,7 +31,9 @@ final class AppEnvironment: ObservableObject {
         self.store = store
         repository = CachingArchiveRepository(store: store)
         downloads = DownloadManager(store: store, mediaDirectory: mediaDirectory, sessionConfiguration: downloadSession)
-        playback = PlaybackController(store: store, downloads: downloads)
+        let playbackRepository = repository
+        playback = PlaybackController(store: store, downloads: downloads,
+            artifactDetailLoader: { identifier in try await playbackRepository.detail(identifier: identifier) })
         library = LibraryPersistence(store: store)
     }
 
@@ -53,6 +56,11 @@ final class AppEnvironment: ObservableObject {
         // simulator would publish its Now Playing over the test's own.
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
         #endif
+        await restorePlaybackIfNeeded()
+    }
+
+    /// Shared by scene startup and background Shortcuts without starting playback.
+    func restorePlaybackIfNeeded() async {
         guard let bookmark = try? await store.lastPlayback(), playback.context == nil else { return }
         let restoreGeneration = playback.loadGeneration
         if let localRecord = await downloads.completedRecord(
@@ -81,6 +89,7 @@ final class AppEnvironment: ObservableObject {
         if shouldSave { try await library.save(artifact) } else { try await library.remove(artifact) }
         saved = try await library.all()
         libraryError = nil
+        FunstonShortcuts.updateAppShortcutParameters()
     }
 }
 
@@ -95,6 +104,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         // Background URLSession relaunches do not necessarily create a scene. Start the
         // app-scoped services from the application lifecycle so the session is recreated.
+        FunstonShortcuts.updateAppShortcutParameters()
         Task { _ = try? await prepareEnvironment() }
         return true
     }

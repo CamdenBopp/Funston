@@ -74,6 +74,7 @@ final class VideoPlaybackSession: ObservableObject {
 
     func start() {
         stop()
+        guard !summary.isAccessRestricted else { state = .failed("This item is unavailable."); return }
         let expected = generation
         state = .loading
         restoring = true; ended = false
@@ -97,9 +98,17 @@ final class VideoPlaybackSession: ObservableObject {
                 let url = lease ?? ArchiveURLs.download(identifier: summary.identifier, fileName: file.name)
                 let item = AVPlayerItem(url: url)
                 let title = AVMutableMetadataItem()
-                title.identifier = .commonIdentifierTitle; title.value = summary.title as NSString
+                title.identifier = .commonIdentifierTitle; title.value = ArchiveMediaTitle.readable(file.name) as NSString
                 title.extendedLanguageTag = "und"
                 item.externalMetadata = [title]
+                Task { [weak self, weak item] in
+                    guard let self, let image = try? await ArtworkPipeline.shared.image(url: summary.artworkURL, pointSize: CGSize(width: 512, height: 512), scale: 1),
+                          let item, player.currentItem === item, let data = image.value.jpegData(compressionQuality: 0.85) else { return }
+                    let artwork = AVMutableMetadataItem()
+                    artwork.identifier = .commonIdentifierArtwork
+                    artwork.value = data as NSData
+                    item.externalMetadata = [title, artwork]
+                }
                 observation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
                     Task { @MainActor in self?.receive(item, generation: expected) }
                 }

@@ -6,7 +6,7 @@ actor ArchiveNormalizer {
         let dto = try JSONDecoder().decode(ArchiveSearchDTO.self, from: data)
         try Task.checkCancellation()
         var seen = Set<String>()
-        let items = dto.documents.compactMap(Self.summary).filter { seen.insert($0.identifier).inserted }
+        let items = dto.documents.filter { !Self.isControlledLending($0) }.compactMap(Self.summary).filter { seen.insert($0.identifier).inserted }
         return SearchPage(items: items, total: dto.total, page: request.page, pageSize: request.pageSize)
     }
 
@@ -14,6 +14,7 @@ actor ArchiveNormalizer {
         try Task.checkCancellation()
         let dto = try JSONDecoder().decode(ArchiveMetadataDTO.self, from: data)
         try Task.checkCancellation()
+        guard !Self.isControlledLending(dto.metadata), !Self.isControlledLending(dto.envelope) else { throw ArchiveError.missingItem }
         guard !dto.metadata.isEmpty else { throw ArchiveError.missingItem }
         let summary = Self.summary(dto.metadata) ?? ArtifactSummary(identifier: identifier, title: dto.metadata.text("title") ?? identifier)
         let access = Self.access(metadata: dto.metadata, envelope: dto.envelope)
@@ -31,9 +32,14 @@ actor ArchiveNormalizer {
         guard let identifier = fields.text("identifier"), !identifier.isEmpty else { return nil }
         var seenCollections = Set<String>()
         return ArtifactSummary(identifier: identifier, title: fields.text("title") ?? identifier,
-                               creators: fields.texts("creator"), date: fields.text("date") ?? fields.text("year"),
+                               creators: fields.texts("creator").isEmpty ? fields.texts("author") : fields.texts("creator"), date: fields.text("date") ?? fields.text("year"),
                                mediaType: fields.text("mediatype") == "etree" ? .audio : MediaType(rawValue: fields.text("mediatype") ?? "") ?? .unknown,
-                               collections: fields.texts("collection").filter { seenCollections.insert($0).inserted })
+                               collections: fields.texts("collection").filter { seenCollections.insert($0).inserted }, accessRestricted: isControlledLending(fields))
+    }
+
+    static func isControlledLending(_ fields: ArchiveFields) -> Bool {
+        fields.texts("collection").contains("access-restricted-item") ||
+        (fields["access-restricted-item"] != nil && flag(fields.text("access-restricted-item")) != false)
     }
 
     private static func flag(_ text: String?) -> Bool? {

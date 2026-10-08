@@ -77,6 +77,17 @@ struct PDFPageTextResult: Codable, Equatable, Sendable {
     /// A stable, open-ended identifier rather than a closed enum so another
     /// OCR implementation can be registered without changing cached results.
     let engineID: String?
+    let lines: [PDFTextBox]
+
+    init(text: String, engineID: String?, lines: [PDFTextBox] = []) {
+        self.text = text; self.engineID = engineID; self.lines = lines
+    }
+}
+
+struct PDFRecognizedPage: Sendable {
+    let text: String
+    let lines: [PDFTextBox]
+    init(text: String, lines: [PDFTextBox] = []) { self.text = text; self.lines = lines }
 }
 
 enum PDFTextEngineID {
@@ -98,7 +109,7 @@ struct PDFTextEngineDescriptor: Hashable, Sendable {
 /// reader depends on this protocol and registry, not Apple-specific branching.
 protocol PDFPageOCREngine: Sendable {
     var descriptor: PDFTextEngineDescriptor { get }
-    func recognize(_ image: CGImage) async -> String
+    func recognize(_ image: CGImage) async -> PDFRecognizedPage
 }
 
 private struct PDFLiveTextEngine: PDFPageOCREngine {
@@ -106,20 +117,21 @@ private struct PDFLiveTextEngine: PDFPageOCREngine {
         PDFTextEngineDescriptor(
             id: PDFTextEngineID.appleLiveText,
             title: "Apple Live Text",
-            isAvailable: ImageAnalyzer.isSupported
+            isAvailable: ImageAnalyzer.isSupported,
+            subtitle: "Text view only; page view uses Automatic"
         )
     }
 
-    func recognize(_ image: CGImage) async -> String {
-        guard ImageAnalyzer.isSupported else { return "" }
+    func recognize(_ image: CGImage) async -> PDFRecognizedPage {
+        guard ImageAnalyzer.isSupported else { return PDFRecognizedPage(text: "") }
         var configuration = ImageAnalyzer.Configuration([.text])
         configuration.locales = []
         guard let analysis = try? await ImageAnalyzer().analyze(
             image,
             orientation: .up,
             configuration: configuration
-        ) else { return "" }
-        return analysis.transcript
+        ) else { return PDFRecognizedPage(text: "") }
+        return PDFRecognizedPage(text: analysis.transcript)
     }
 }
 
@@ -135,35 +147,49 @@ private struct PDFVisionTextEngine: PDFPageOCREngine {
     /// paragraphs. Sorting a whole page's lines top to bottom interleaves
     /// columns, and a whole-page pass misses lines a crop finds (82% of the
     /// words on 73 Magazine, December 1981 page 6, against 90%).
-    func recognize(_ image: CGImage) async -> String {
+    func recognize(_ image: CGImage) async -> PDFRecognizedPage {
         let pageAspect = CGFloat(image.width) / CGFloat(max(image.height, 1))
         let lines = await Self.lines(in: image)
-        var columns: [(lines: [PDFTextBox], aspectRatio: CGFloat, region: CGRect)] = []
+        var columns: [(lines: [PDFTextBox], aspectRatio: CGFloat, region: CGRect, pageLines: [PDFTextBox])] = []
         for run in PDFTextLayout.runs(PDFTextLayout.blocks(lines)) {
-            guard !Task.isCancelled else { return "" }
+            guard !Task.isCancelled else { return PDFRecognizedPage(text: "") }
             // One line has nothing a second pass would put in order, and a table
             // row is already whole.
-            guard run.count > 1, !run[0].isTableRow else { columns.append((run, pageAspect, PDFTextLayout.region(of: run))); continue }
+            guard run.count > 1, !run[0].isTableRow else { columns.append((run, pageAspect, PDFTextLayout.region(of: run), run)); continue }
             let region = PDFTextLayout.region(of: run)
             let pixels = CGRect(x: region.minX * CGFloat(image.width), y: region.minY * CGFloat(image.height),
                                 width: region.width * CGFloat(image.width), height: region.height * CGFloat(image.height)).integral
             // A crop that can't be made falls back to the lines already found for it.
             if let crop = image.cropping(to: pixels), case let cropped = await Self.lines(in: crop), !cropped.isEmpty {
-                columns.append((cropped.sorted { $0.rect.minY < $1.rect.minY }, pixels.width / max(pixels.height, 1), region))
+                let ordered = cropped.sorted { $0.rect.minY < $1.rect.minY }
+                let actualPixels = pixels.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+                let actualRegion = CGRect(x: actualPixels.minX / CGFloat(image.width), y: actualPixels.minY / CGFloat(image.height),
+                                          width: CGFloat(crop.width) / CGFloat(image.width), height: CGFloat(crop.height) / CGFloat(image.height))
+                let pageLines = ordered.map { line in
+                    PDFTextBox(text: PDFPageTextPolicy.normalize(line.text), rect: CGRect(
+                        x: actualRegion.minX + line.rect.minX * actualRegion.width,
+                        y: actualRegion.minY + line.rect.minY * actualRegion.height,
+                        width: line.rect.width * actualRegion.width, height: line.rect.height * actualRegion.height))
+                }
+                columns.append((ordered, pixels.width / max(pixels.height, 1), region, pageLines))
             } else {
-                columns.append((run, pageAspect, region))
+                columns.append((run, pageAspect, region, run))
             }
         }
         let normalized = columns.map { column in
-            (column.lines.map { PDFTextBox(text: PDFPageTextPolicy.normalize($0.text), rect: $0.rect, isTableRow: $0.isTableRow) }, column.aspectRatio, column.region)
+            (column.lines.map { PDFTextBox(text: PDFPageTextPolicy.normalize($0.text), rect: $0.rect, isTableRow: $0.isTableRow) }, column.aspectRatio, column.region, column.pageLines)
         }
         return await MainActor.run {
-            let columns = normalized.map { lines, aspectRatio, region in
+            let columns = normalized.map { lines, aspectRatio, region, _ in
                 let paragraphs = lines.first?.isTableRow == true
                     ? lines.map(\.text) : PDFTextLayout.paragraphs(lines, aspectRatio: aspectRatio, isWord: SpellingDictionary.isWord)
                 return (paragraphs, region)
             }
-            return PDFTextLayout.threading(columns, isWord: SpellingDictionary.isWord).joined(separator: "\n\n")
+            let threaded = PDFTextLayout.threaded(columns, isWord: SpellingDictionary.isWord)
+            return PDFRecognizedPage(text: threaded.paragraphs.joined(separator: "\n\n"),
+                lines: threaded.columnIndices.flatMap { normalized[$0].3 }.map {
+                    PDFTextBox(text: PDFPageTextPolicy.normalize($0.text), rect: $0.rect, isTableRow: $0.isTableRow)
+                })
         }
     }
 
@@ -193,9 +219,9 @@ private struct PDFDocumentTextEngine: PDFPageOCREngine {
                                        isAvailable: available, subtitle: "Faster, but can skip lines on rough scans")
     }
 
-    func recognize(_ image: CGImage) async -> String {
-        guard #available(iOS 26.0, *) else { return "" }
-        guard let observations = try? await RecognizeDocumentsRequest().perform(on: image, orientation: .up) else { return "" }
+    func recognize(_ image: CGImage) async -> PDFRecognizedPage {
+        guard #available(iOS 26.0, *) else { return PDFRecognizedPage(text: "") }
+        guard let observations = try? await RecognizeDocumentsRequest().perform(on: image, orientation: .up) else { return PDFRecognizedPage(text: "") }
         func topLeft(_ rect: NormalizedRect) -> CGRect {
             let box = rect.cgRect
             return CGRect(x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height)
@@ -207,7 +233,16 @@ private struct PDFDocumentTextEngine: PDFPageOCREngine {
                         topLeft(first.boundingBox), topLeft(last.boundingBox))
             }
         }
-        return await MainActor.run { PDFTextLayout.stitch(fragments, isWord: SpellingDictionary.isWord) }.joined(separator: "\n\n")
+        let lines = observations.flatMap { observation in
+            observation.document.paragraphs.flatMap { paragraph in
+                paragraph.lines.compactMap { line -> PDFTextBox? in
+                    guard let text = line.topCandidates(1).first?.string else { return nil }
+                    return PDFTextBox(text: PDFPageTextPolicy.normalize(text), rect: topLeft(line.boundingBox))
+                }
+            }
+        }
+        let text = await MainActor.run { PDFTextLayout.stitch(fragments, isWord: SpellingDictionary.isWord) }.joined(separator: "\n\n")
+        return PDFRecognizedPage(text: text, lines: lines)
     }
 }
 
@@ -219,11 +254,8 @@ struct PDFPageTextEngineRegistry: Sendable {
     }
 
     static var builtIn: Self {
-        // Automatic tries these in order. Lines kept in order on 73 Magazine
-        // (August 1976 pages 30 and 40, December 1981 page 6): column-by-column
-        // Vision 100/99/99%, the document reader 100/99/75% (it also drops lines
-        // on the December scan), Live Text 100/52/99%.
-        Self(engines: [PDFVisionTextEngine(), PDFDocumentTextEngine(), PDFLiveTextEngine()])
+        // Prefer Apple Document Reader when available, then fall back to Vision.
+        Self(engines: [PDFDocumentTextEngine(), PDFVisionTextEngine(), PDFLiveTextEngine()])
     }
 
     var descriptors: [PDFTextEngineDescriptor] {
@@ -235,23 +267,25 @@ struct PDFPageTextEngineRegistry: Sendable {
     }
 }
 
-/// The preference is global and durable. Opening recognized text never prompts;
-/// a reader who wants a different engine chooses it once in Reading Options.
+/// Books remember their engine independently; legacy global choices remain a fallback.
 @MainActor
 struct PDFTextEnginePreference {
     static let key = "pdf.textRecognitionEngine"
     private let defaults: UserDefaults
+    private let bookKey: String?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, bookKey: String? = nil) {
         self.defaults = defaults
+        self.bookKey = bookKey
     }
 
+    private var preferenceKey: String { bookKey.map { Self.key + "." + $0 } ?? Self.key }
     var selectedID: String {
-        defaults.string(forKey: Self.key) ?? PDFTextEngineID.automatic
+        defaults.string(forKey: preferenceKey) ?? defaults.string(forKey: Self.key) ?? PDFTextEngineID.automatic
     }
 
     func select(_ engineID: String) {
-        defaults.set(engineID, forKey: Self.key)
+        defaults.set(engineID, forKey: preferenceKey)
     }
 
     func options(ocrEngines: [PDFTextEngineDescriptor]) -> [PDFTextEngineDescriptor] {
@@ -309,9 +343,8 @@ enum PDFPageTextPolicy {
         availableEngineIDs: [String]
     ) -> [String] {
         if selectedEngineID == PDFTextEngineID.embedded { return [] }
-        if selectedEngineID == PDFTextEngineID.automatic { return availableEngineIDs }
-        if availableEngineIDs.contains(selectedEngineID) { return [selectedEngineID] }
-        return availableEngineIDs
+        if selectedEngineID != PDFTextEngineID.automatic, availableEngineIDs.contains(selectedEngineID) { return [selectedEngineID] }
+        return availableEngineIDs.filter { $0 != PDFTextEngineID.appleLiveText }
     }
 }
 
@@ -320,12 +353,30 @@ enum PDFPageTextPolicy {
 final class PDFPageRenderSource: @unchecked Sendable {
     let page: CGPDFPage
     let embeddedText: String
+    let embeddedLines: [PDFTextBox]
 
     @MainActor
     init?(page: PDFPage) {
         guard let pageRef = page.pageRef else { return nil }
         self.page = pageRef
         embeddedText = page.string ?? ""
+        let bounds = pageRef.getBoxRect(.cropBox)
+        let transform = pageRef.getDrawingTransform(.cropBox, rect: CGRect(origin: .zero, size: bounds.size), rotate: 0, preserveAspectRatio: true)
+        embeddedLines = page.selection(for: NSRange(location: 0, length: page.numberOfCharacters))?.selectionsByLine().compactMap { selection in
+            let text = PDFPageTextPolicy.normalize(selection.string ?? "")
+            let rect = selection.bounds(for: page).applying(transform)
+            guard !text.isEmpty, bounds.width > 0, bounds.height > 0, !rect.isEmpty else { return nil }
+            return PDFTextBox(text: text, rect: CGRect(x: rect.minX / bounds.width, y: 1 - rect.maxY / bounds.height,
+                                                      width: rect.width / bounds.width, height: rect.height / bounds.height))
+        } ?? []
+    }
+
+    /// Reverse the exact transform used by the OCR raster, including crop origins and rotation.
+    func pageRect(for normalized: CGRect) -> CGRect {
+        let bounds = page.getBoxRect(.cropBox)
+        let transform = page.getDrawingTransform(.cropBox, rect: CGRect(origin: .zero, size: bounds.size), rotate: 0, preserveAspectRatio: true)
+        return CGRect(x: normalized.minX * bounds.width, y: (1 - normalized.maxY) * bounds.height,
+                      width: normalized.width * bounds.width, height: normalized.height * bounds.height).applying(transform.inverted())
     }
 
     func image(maxDimension: Int = 3_000) -> CGImage? {
@@ -367,6 +418,12 @@ struct PDFPageTextRequest: Sendable {
     let expectedBytes: Int64?
     let preferLocalRecognition: Bool
     let selectedEngineID: String
+
+    var forPageImage: Self {
+        Self(page: page, documentKey: documentKey, pageIndex: pageIndex, expectedBytes: expectedBytes,
+             preferLocalRecognition: preferLocalRecognition,
+             selectedEngineID: selectedEngineID == PDFTextEngineID.appleLiveText ? PDFTextEngineID.automatic : selectedEngineID)
+    }
 }
 
 /// The default path remains automatic, while a remembered engine preference is
@@ -378,12 +435,15 @@ actor PDFPageTextRecognizer {
     // 6: Vision joins lines into paragraphs.
     // 7: a sidebar waits until the sentence beside it ends.
     // 8: tables read row by row.
-    private static let cacheVersion = 8
+    // 9: text and ordered line boxes are cached together for both reader views.
+    // 10: Automatic prefers Apple Document Reader.
+    private static let cacheVersion = 10
     private static let cacheLifetime: TimeInterval = 60 * 60 * 24 * 365 * 10
     private let store: SQLiteStore
     let engineDescriptors: [PDFTextEngineDescriptor]
     private let registry: PDFPageTextEngineRegistry
     private var memory: [String: PDFPageTextResult] = [:]
+    private var inFlight: [String: Task<PDFPageTextResult, Never>] = [:]
 
     init(store: SQLiteStore, registry: PDFPageTextEngineRegistry = .builtIn) {
         self.store = store
@@ -392,73 +452,54 @@ actor PDFPageTextRecognizer {
     }
 
     func text(for request: PDFPageTextRequest) async -> PDFPageTextResult {
-        let embedded = PDFPageTextPolicy.normalize(request.page.embeddedText)
-        if request.selectedEngineID == PDFTextEngineID.embedded {
-            return embeddedResult(embedded)
-        }
-        if request.selectedEngineID == PDFTextEngineID.automatic,
-           !request.preferLocalRecognition,
-           PDFPageTextPolicy.hasUsableEmbeddedText(embedded) {
-            return PDFPageTextResult(text: embedded, engineID: PDFTextEngineID.embedded)
-        }
-
         let key = cacheKey(for: request)
         if let result = memory[key] { return result }
+        if let task = inFlight[key] { return await task.value }
+        // The task outlives an individual view's cancelled wait. A page-image
+        // request and the Page text screen join this same operation.
+        let task = Task { await self.recognizeAndCache(request, key: key) }
+        inFlight[key] = task
+        let result = await task.value
+        inFlight[key] = nil
+        return result
+    }
+
+    private func recognizeAndCache(_ request: PDFPageTextRequest, key: String) async -> PDFPageTextResult {
         if let entry = try? await store.cacheEntry(key: key), entry.kind == "page-ocr",
            let result = try? JSONDecoder().decode(PDFPageTextResult.self, from: entry.response) {
             memory[key] = result
             return result
         }
-
-        guard !Task.isCancelled,
-              let image = await Task.detached(priority: .userInitiated, operation: { request.page.image() }).value else {
-            return fallback(embedded)
-        }
-
-        let availableIDs = registry.descriptors.filter(\.isAvailable).map(\.id)
-        let engineIDs = PDFPageTextPolicy.recognitionOrder(
-            selectedEngineID: request.selectedEngineID,
-            availableEngineIDs: availableIDs
-        )
-        var result: PDFPageTextResult?
-        for engineID in engineIDs where !Task.isCancelled {
-            guard let engine = registry.engine(id: engineID) else { continue }
-            let text = PDFPageTextPolicy.normalize(await engine.recognize(image))
-            if PDFPageTextPolicy.hasMeaningfulRecognition(text) {
-                result = PDFPageTextResult(text: text, engineID: engineID)
-                break
+        let embedded = PDFPageTextPolicy.normalize(request.page.embeddedText)
+        let embeddedResult = PDFPageTextResult(text: embedded, engineID: embedded.isEmpty ? nil : PDFTextEngineID.embedded,
+                                             lines: request.page.embeddedLines)
+        var resolved = embeddedResult
+        if request.selectedEngineID != PDFTextEngineID.embedded,
+           !(request.selectedEngineID == PDFTextEngineID.automatic && !request.preferLocalRecognition && PDFPageTextPolicy.hasUsableEmbeddedText(embedded)),
+           let image = await Task.detached(priority: .userInitiated, operation: { request.page.image() }).value {
+            let engineIDs = PDFPageTextPolicy.recognitionOrder(selectedEngineID: request.selectedEngineID,
+                availableEngineIDs: registry.descriptors.filter(\.isAvailable).map(\.id))
+            for engineID in engineIDs {
+                guard let engine = registry.engine(id: engineID) else { continue }
+                let recognized = await engine.recognize(image)
+                let text = PDFPageTextPolicy.normalize(recognized.text)
+                if PDFPageTextPolicy.hasMeaningfulRecognition(text) {
+                    resolved = PDFPageTextResult(text: text, engineID: engineID, lines: recognized.lines)
+                    break
+                }
             }
         }
-
-        let resolved = result ?? fallback(embedded)
         memory[key] = resolved
-        if !Task.isCancelled, let data = try? JSONEncoder().encode(resolved) {
-            try? await store.storeCache(
-                key: key,
-                kind: "page-ocr",
-                response: data,
-                snapshot: nil,
-                maxAge: Self.cacheLifetime
-            )
+        if let data = try? JSONEncoder().encode(resolved) {
+            try? await store.storeCache(key: key, kind: "page-ocr", response: data, snapshot: nil, maxAge: Self.cacheLifetime)
         }
         return resolved
-    }
-
-    private func fallback(_ embedded: String) -> PDFPageTextResult {
-        embeddedResult(embedded)
-    }
-
-    private func embeddedResult(_ embedded: String) -> PDFPageTextResult {
-        if !embedded.isEmpty {
-            return PDFPageTextResult(text: embedded, engineID: PDFTextEngineID.embedded)
-        }
-        return PDFPageTextResult(text: "", engineID: nil)
     }
 
     private func cacheKey(for request: PDFPageTextRequest) -> String {
         let os = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
         let available = registry.descriptors.filter(\.isAvailable).map(\.id).joined(separator: ",")
-        let route = "\(request.selectedEngineID):\(available)"
+        let route = "\(request.selectedEngineID):\(available):\(request.preferLocalRecognition)"
         return "ocr:\(Self.cacheVersion):\(os):\(route):\(request.documentKey):\(request.expectedBytes ?? -1):\(request.pageIndex)"
     }
 }

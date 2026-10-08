@@ -275,7 +275,7 @@ final class ServiceReviewTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let request = SearchRequest(text: "radio")
         let page = SearchPage(items: [], total: 0, page: 1, pageSize: 40)
-        try await store.storeCache(key: "search:" + request.cacheKey, kind: "search", response: Data(), snapshot: JSONEncoder().encode(page), maxAge: -1)
+        try await store.storeCache(key: CachingArchiveRepository.searchCacheKey(request), kind: "search", response: Data(#"{"response":{"numFound":0,"docs":[]}}"#.utf8), snapshot: JSONEncoder().encode(page), maxAge: -1)
         let transport = GatedArchiveTransport()
         let repository = CachingArchiveRepository(store: store, transport: transport)
         var iterator = repository.searchUpdates(request).makeAsyncIterator()
@@ -296,7 +296,7 @@ final class ServiceReviewTests: XCTestCase {
         let (store, directory, _) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let old = ArtifactDetail(summary: ArtifactSummary(identifier: "item", title: "Old title"))
-        try await store.storeCache(key: "metadata:item", kind: "metadata", response: Data(), snapshot: JSONEncoder().encode(old), maxAge: -1)
+        try await store.storeCache(key: "metadata:item", kind: "metadata", response: Data(#"{"metadata":{"identifier":"item","title":"Old title"},"files":[]}"#.utf8), snapshot: JSONEncoder().encode(old), maxAge: -1)
         let transport = GatedArchiveTransport()
         let repository = CachingArchiveRepository(store: store, transport: transport)
         var iterator = repository.detailUpdates(identifier: "item").makeAsyncIterator()
@@ -459,7 +459,7 @@ final class ServiceReviewTests: XCTestCase {
                                     errorMessage: "The download timed out.", updatedAt: .now)
         let store = FaultingDownloadStore(records: [failed])
         await store.setDownloadResumeData(Data("stale resume data".utf8), key: key)
-        let manager = DownloadManager(store: store, mediaDirectory: media, sessionConfiguration: .ephemeral)
+        let manager = DownloadManager(store: store, mediaDirectory: media, sessionConfiguration: .ephemeral, accessRepository: PublicDownloadFixtureRepository())
         await manager.waitUntilReady()
         await manager.retry(failed, file: ArchiveFile(name: "film.mkv", size: 3))
         let consumed = await store.downloadResumeData(key: key)
@@ -967,5 +967,12 @@ final class ServiceReviewTests: XCTestCase {
         buffer.frameLength = 8_000
         buffer.floatChannelData?[0].initialize(repeating: 0, count: 8_000)
         for _ in 0..<seconds { try file.write(from: buffer) }
+    }
+}
+
+private struct PublicDownloadFixtureRepository: ArchiveRepository {
+    func search(_ request: SearchRequest) async throws -> SearchPage { throw URLError(.unsupportedURL) }
+    func detail(identifier: String) async throws -> ArtifactDetail {
+        ArtifactDetail(summary: ArtifactSummary(identifier: identifier, title: "Film"), files: [ArchiveFile(name: "film.mkv", size: 3)])
     }
 }

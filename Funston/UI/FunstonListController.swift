@@ -20,9 +20,14 @@ class FunstonListController: UICollectionViewController {
     private var snapshotGeneration = 0
 
     init(title: String, appearance: UICollectionLayoutListConfiguration.Appearance = .plain) {
-        let configuration = UICollectionLayoutListConfiguration(appearance: appearance)
+        var configuration = UICollectionLayoutListConfiguration(appearance: appearance)
         super.init(collectionViewLayout: UICollectionViewCompositionalLayout.list(using: configuration))
         self.title = title
+        configuration.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
+            guard let self, let id = dataSource?.itemIdentifier(for: indexPath), let row = byID[id] else { return nil }
+            return swipeActions(for: row)
+        }
+        collectionView.collectionViewLayout = UICollectionViewCompositionalLayout.list(using: configuration)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -67,6 +72,17 @@ class FunstonListController: UICollectionViewController {
         cell.accessibilityLabel = [row.title, row.subtitle].compactMap { $0 }.joined(separator: ". ")
         cell.accessibilityTraits = row.navigates ? .button : .staticText
         cell.accessibilityIdentifier = row.id
+    }
+
+    func swipeActions(for row: FunstonRow) -> UISwipeActionsConfiguration? { nil }
+    func isRowVisible(id: String) -> Bool {
+        guard let index = dataSource?.indexPath(for: id) else { return false }
+        return collectionView.indexPathsForVisibleItems.contains(index)
+    }
+
+    func scrollToRow(id: String) {
+        guard let index = dataSource.indexPath(for: id) else { return }
+        collectionView.scrollToItem(at: index, at: .centeredVertically, animated: true)
     }
 
     func apply(_ newRows: [FunstonRow]) {

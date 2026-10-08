@@ -1,4 +1,5 @@
 import AVFoundation
+import MediaPlayer
 import XCTest
 @testable import Funston
 
@@ -36,6 +37,22 @@ final class PlaybackLifecyclePolishTests: XCTestCase {
         XCTAssertTrue(condition(), "Audio lifecycle did not settle", file: file, line: line)
     }
 
+    func testPlaybackSpeedUpdatesPlayerAndNowPlayingWhilePaused() async throws {
+        let (store, downloads, record) = try await fixture()
+        let player = AVPlayer()
+        let playback = PlaybackController(store: store, downloads: downloads, player: player,
+            audioSessionActivator: {}, audioSessionDeactivator: {}, artworkLoader: { _ in throw URLError(.cancelled) })
+        let original = playback.playbackRate
+        defer { playback.setPlaybackSpeed(original) }
+        playback.playDownloaded(record, autoplay: false)
+        try await until { playback.phase == .paused }
+        playback.setPlaybackSpeed(1.5)
+        XCTAssertEqual(player.defaultRate, 1.5)
+        XCTAssertEqual(player.rate, 0, "Setting speed must keep paused playback paused")
+        XCTAssertEqual(player.currentItem?.audioTimePitchAlgorithm, .timeDomain)
+        XCTAssertEqual(MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyDefaultPlaybackRate] as? Double, 1.5)
+    }
+
     func testLastTrackCompletionReleasesSessionAndKeepsEndedState() async throws {
         let (store, downloads, record) = try await fixture()
         let player = AVPlayer()
@@ -52,6 +69,10 @@ final class PlaybackLifecyclePolishTests: XCTestCase {
         XCTAssertFalse(playback.wantsToPlay)
         XCTAssertTrue(player.currentItem === item, "Completion keeps the selected track available for replay.")
         XCTAssertEqual(player.rate, 0)
+        let history = try await playback.savedRecordingProgress(identifier: record.identifier)
+        XCTAssertEqual(history[record.fileName]?.isPlayed, true, "Completion must remain visible after its resume position resets.")
+        let position = try await store.playbackPosition(identifier: record.identifier, fileName: record.fileName)
+        XCTAssertEqual(position, 0)
     }
 
     func testTerminalItemFailureReleasesSessionWithoutBecomingPaused() async throws {

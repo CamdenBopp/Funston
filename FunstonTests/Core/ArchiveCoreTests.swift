@@ -3,6 +3,63 @@ import XCTest
 @testable import Funston
 
 final class ArchiveCoreTests: XCTestCase {
+    func testBookAuthorMetadataIsAvailableToTheDetailHeader() async throws {
+        let raw = Data(#"{"metadata":{"identifier":"book","title":"Book","mediatype":"texts","author":"An Author"},"files":[]}"#.utf8)
+        let detail = try await ArchiveNormalizer().detail(data: raw, identifier: "book")
+        XCTAssertEqual(detail.summary.creators, ["An Author"])
+    }
+
+    func testReadableMediaTitlePreservesNamesAndNumbers() {
+        XCTAssertEqual(ArchiveMediaTitle.readable("folder/Ben_Slade's_Saloon_004.mp4"), "Ben Slade's Saloon 004")
+        XCTAssertEqual(ArchiveMediaTitle.readable("DuckAndCover1951.mpeg"), "Duck And Cover1951")
+        XCTAssertEqual(ArchiveMediaTitle.readable("already readable.m4v"), "already readable")
+        XCTAssertEqual(ArchiveMediaTitle.readable("part-one.second_edition.mp4"), "part one second edition")
+    }
+
+    func testControlledLendingIsExcludedFromSearchAndDetail() async throws {
+        let data = Data(#"{"response":{"numFound":3,"docs":[{"identifier":"public"},{"identifier":"flagged","access-restricted-item":"true"},{"identifier":"collection","collection":["texts","access-restricted-item"]}]}}"#.utf8)
+        let page = try await ArchiveNormalizer().search(data: data, request: SearchRequest())
+        XCTAssertEqual(page.items.map(\.identifier), ["public"])
+        for marker in [#""access-restricted-item":"true""#, #""collection":["access-restricted-item"]"#] {
+            let metadata = Data("{\"metadata\":{\"identifier\":\"book\",\(marker)},\"files\":[{\"name\":\"book.pdf\"}]}".utf8)
+            do { _ = try await ArchiveNormalizer().detail(data: metadata, identifier: "book"); XCTFail("Restricted detail exposed") }
+            catch { XCTAssertEqual(error as? ArchiveError, .missingItem) }
+        }
+    }
+
+    func testLegacySearchCacheWithoutRestrictionFieldsIsNotPublished() async throws {
+        let store = try SQLiteStore(url: URL(string: "file::memory:")!)
+        let request = SearchRequest(text: "book")
+        let old = Data(#"{"response":{"numFound":1,"docs":[{"identifier":"unverified"}]}}"#.utf8)
+        try await store.storeCache(key: "search:" + request.cacheKey, kind: "search", response: old, snapshot: nil, maxAge: 86400)
+        let fresh = Data(#"{"response":{"numFound":0,"docs":[]}}"#.utf8)
+        let repository = CachingArchiveRepository(store: store, transport: StubTransport(response: ArchiveHTTPResponse(data: fresh)))
+        let result = try await repository.search(request)
+        XCTAssertTrue(result.items.isEmpty)
+    }
+
+    func testCachedRestrictedSnapshotCannotBypassRawMetadata() async throws {
+        let store = try SQLiteStore(url: URL(string: "file::memory:")!)
+        let raw = Data(#"{"metadata":{"identifier":"restricted","collection":["access-restricted-item"]},"files":[{"name":"book.pdf"}]}"#.utf8)
+        let unsafe = ArtifactDetail(summary: ArtifactSummary(identifier: "restricted", title: "Old snapshot"), files: [ArchiveFile(name: "book.pdf")])
+        try await store.storeCache(key: "metadata:restricted", kind: "metadata", response: raw, snapshot: JSONEncoder().encode(unsafe), maxAge: 86400)
+        let repository = CachingArchiveRepository(store: store, transport: StubTransport(response: ArchiveHTTPResponse(data: raw)))
+        do { _ = try await repository.detail(identifier: "restricted"); XCTFail("Restricted cache exposed") }
+        catch { XCTAssertEqual(error as? ArchiveError, .missingItem) }
+    }
+
+    @MainActor func testRestrictedDownloadDoesNotCreateATransfer() async throws {
+        let store = try SQLiteStore(url: URL(string: "file::memory:")!)
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let raw = Data(#"{"metadata":{"identifier":"restricted","access-restricted-item":"true"},"files":[{"name":"book.pdf"}]}"#.utf8)
+        let repository = NetworkArchiveRepository(transport: StubTransport(response: ArchiveHTTPResponse(data: raw)))
+        let manager = DownloadManager(store: store, mediaDirectory: directory, sessionConfiguration: .ephemeral, accessRepository: repository)
+        await manager.start(identifier: "restricted", artifactTitle: "Book", file: ArchiveFile(name: "book.pdf"))
+        XCTAssertEqual(manager.records.first?.state, .failed)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: manager.records.first?.localPath ?? ""))
+    }
+
     func testArtworkResolverPrefersExplicitPublicCoverAndRejectsUnsafeAssets() {
         let rejected = [
             ArchiveFile(name: "cover.jpg", format: "Item Image", size: 50, isPrivate: true),
@@ -51,7 +108,7 @@ final class ArchiveCoreTests: XCTestCase {
         let request = SearchRequest(text: #"radio" OR mediatype:movies"#, scope: .audio, collection: "oldtimeradio")
         let url = ArchiveURLs.search(request)
         let query = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "q" }?.value)
-        XCTAssertEqual(query, #""radio\" OR mediatype:movies" AND mediatype:(audio OR etree) AND collection:"oldtimeradio""#)
+        XCTAssertEqual(query, #"("radio\" OR mediatype:movies" AND mediatype:(audio OR etree) AND collection:"oldtimeradio") AND -collection:access-restricted-item AND -access-restricted-item:true"#)
         XCTAssertEqual(url.host, "archive.org")
     }
 
@@ -121,7 +178,7 @@ final class ArchiveCoreTests: XCTestCase {
 
     func testRestrictionAndUnknownCapabilityNeverExposeTracks() async throws {
         for (flag, expected) in [("true", ArtifactAccess.restricted), ("maybe", .unresolved)] {
-            let data = Data("{\"metadata\":{\"identifier\":\"a\",\"access-restricted-item\":\"\(flag)\"},\"files\":[{\"name\":\"a.mp3\"}]}".utf8)
+            let data = Data("{\"metadata\":{\"identifier\":\"a\",\"is_restricted\":\"\(flag)\"},\"files\":[{\"name\":\"a.mp3\"}]}".utf8)
             let detail = try await ArchiveNormalizer().detail(data: data, identifier: "a")
             XCTAssertEqual(detail.access, expected)
             XCTAssertTrue(detail.tracks.isEmpty)

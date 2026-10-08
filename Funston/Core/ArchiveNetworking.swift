@@ -30,9 +30,9 @@ enum ArchiveURLs {
         else if request.scope != .all && request.scope != .unknown { clauses.append("mediatype:" + quoted(request.scope.rawValue)) }
         if let collection = request.collection, !collection.isEmpty { clauses.append("collection:" + quoted(collection)) }
         let query = clauses.isEmpty ? "mediatype:(audio OR movies OR texts OR image OR software OR collection)" : clauses.joined(separator: " AND ")
-        var parameters = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "output", value: "json"),
+        var parameters = [URLQueryItem(name: "q", value: "(" + query + ") AND -collection:access-restricted-item AND -access-restricted-item:true"), URLQueryItem(name: "output", value: "json"),
                           URLQueryItem(name: "page", value: String(request.page)), URLQueryItem(name: "rows", value: String(request.pageSize))]
-        parameters += ["identifier", "title", "creator", "date", "year", "mediatype", "collection"].map { URLQueryItem(name: "fl[]", value: $0) }
+        parameters += ["identifier", "title", "creator", "author", "date", "year", "mediatype", "collection", "access-restricted-item"].map { URLQueryItem(name: "fl[]", value: $0) }
         if request.text.isEmpty {
             parameters.append(URLQueryItem(name: "sort[]", value: "downloads desc"))
             parameters.append(URLQueryItem(name: "sort[]", value: "identifier asc"))

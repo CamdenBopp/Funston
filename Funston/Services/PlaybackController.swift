@@ -92,12 +92,42 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     @Published private(set) var elapsed: Double = 0
     @Published private(set) var duration: Double?
     var loadGeneration: UInt64 { generation }
+    var acceptsAudioCommands: Bool { videoOwnership == nil }
     /// The speed play() uses, even while paused, for time-left estimates.
-    var playbackRate: Double { Double(player.defaultRate) }
+    @Published private(set) var playbackRate: Double = 1
+    private let speedPreference = PlaybackSpeedPreference()
+
+    func setPlaybackSpeed(_ value: Double, forCollection: Bool = false) {
+        speedPreference.set(value, collection: forCollection ? context?.artifact.collections.first : nil)
+        applyPlaybackSpeed()
+    }
+
+    func useGlobalPlaybackSpeed() {
+        if let collection = context?.artifact.collections.first { speedPreference.removeOverride(collection: collection) }
+        applyPlaybackSpeed()
+    }
+
+    var hasCollectionSpeedOverride: Bool {
+        context?.artifact.collections.first.map { speedPreference.hasOverride(collection: $0) } ?? false
+    }
+
+    private func applyPlaybackSpeed() {
+        playbackRate = speedPreference.rate(collection: context?.artifact.collections.first)
+        player.defaultRate = Float(playbackRate)
+        if player.rate != 0 { player.rate = Float(playbackRate) }
+        updateNowPlaying()
+    }
+
+    func setRecordingPlayed(identifier: String, track: PlayableTrack, played: Bool) async throws {
+        for file in track.candidates { try await store.setRecordingPlayed(identifier: identifier, fileName: file.name, played: played) }
+        if !played, context?.artifact.identifier == identifier, context?.track.id == track.id { seek(to: 0) }
+    }
 
     private let player: AVPlayer
     private let audioSessionActivator: @MainActor () async throws -> Void
     private let audioSessionDeactivator: @MainActor () async -> Void
+    private let artifactDetailLoader: (@MainActor (String) async throws -> ArtifactDetail)?
+    private var downloadQueueTask: Task<Void, Never>?
     private let artworkLoader: @MainActor (URL) async throws -> SendableImage
     private var artworkTask: Task<Void, Never>?
     private var artworkURL: URL?
@@ -132,9 +162,11 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     init(store: SQLiteStore, downloads: DownloadManager, player: AVPlayer = AVPlayer(),
          audioSessionActivator: (@MainActor () async throws -> Void)? = nil,
          audioSessionDeactivator: (@MainActor () async -> Void)? = nil,
-         artworkLoader: (@MainActor (URL) async throws -> SendableImage)? = nil) {
+         artworkLoader: (@MainActor (URL) async throws -> SendableImage)? = nil,
+         artifactDetailLoader: (@MainActor (String) async throws -> ArtifactDetail)? = nil) {
         self.store = store
         self.downloads = downloads
+        self.artifactDetailLoader = artifactDetailLoader
         self.player = player
         self.audioSessionActivator = audioSessionActivator ?? {
             try await AudioSessionWorker.shared.setActive(true)
@@ -143,6 +175,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         self.artworkLoader = artworkLoader ?? { url in
             try await ArtworkPipeline.shared.image(url: url, pointSize: CGSize(width: 768, height: 768), scale: 1)
         }
+        applyPlaybackSpeed()
         configureRemoteCommands()
         configureAudioNotifications()
         sleepTimer.attach(to: self)
@@ -160,6 +193,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     }
 
     isolated deinit {
+        downloadQueueTask?.cancel()
         artworkTask?.cancel()
         audioSessionTail?.cancel()
         if let persistenceObserver { player.removeTimeObserver(persistenceObserver) }
@@ -171,8 +205,10 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         for (command, token) in remoteCommandTokens { command.removeTarget(token) }
     }
 
-    func load(artifact: ArtifactSummary, tracks: [PlayableTrack], trackIndex: Int, autoplay: Bool = true) {
+    func load(artifact: ArtifactSummary, tracks: [PlayableTrack], trackIndex: Int, autoplay: Bool = true,
+              preferredFileName: String? = nil) {
         guard videoOwnership == nil else { return }
+        guard !artifact.isAccessRestricted else { phase = .failed("This item is unavailable."); return }
         guard tracks.indices.contains(trackIndex) else {
             phase = .failed("No supported audio file is available.")
             return
@@ -181,7 +217,10 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         wantsToPlay = autoplay
         intentRevision &+= 1
         let selectedTrack = tracks[trackIndex]
-        let localFile = selectedTrack.candidates.first {
+        let requestedLocalFile = selectedTrack.candidates.first {
+            $0.name == preferredFileName && downloads.completedLocalURL(identifier: artifact.identifier, fileName: $0.name) != nil
+        }
+        let localFile = requestedLocalFile ?? selectedTrack.candidates.first {
             downloads.completedLocalURL(identifier: artifact.identifier, fileName: $0.name) != nil
         }
         guard let file = localFile ?? selectedTrack.preferredFile else {
@@ -199,18 +238,58 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     }
 
     func playDownloaded(_ record: DownloadRecord, autoplay: Bool = true) {
+        guard videoOwnership == nil else { return }
         guard record.state == .completed,
               downloads.completedLocalURL(identifier: record.identifier, fileName: record.fileName)?.path == record.localPath,
               Self.playsDownloadedAudio(fileName: record.fileName) else {
             phase = .failed("This downloaded file is not available for audio playback.")
             return
         }
-        let file = ArchiveFile(name: record.fileName, size: record.expectedBytes)
-        let track = PlayableTrack(id: record.fileName, title: (record.fileName as NSString).lastPathComponent, candidates: [file])
-        load(artifact: ArtifactSummary(identifier: record.identifier, title: record.title, mediaType: .audio), tracks: [track], trackIndex: 0, autoplay: autoplay)
+        // Preserve a known collection queue. Without metadata, other available
+        // downloads from this item still form a useful offline queue.
+        let knownContext = context.flatMap { current -> PlaybackContext? in
+            current.artifact.identifier == record.identifier && current.tracks.contains {
+                $0.candidates.contains { $0.name == record.fileName }
+            } ? current : nil
+        }
+        let tracks = knownContext?.tracks ?? downloads.records
+            .filter { $0.identifier == record.identifier && $0.state == .completed &&
+                Self.playsDownloadedAudio(fileName: $0.fileName) &&
+                downloads.completedLocalURL(identifier: $0.identifier, fileName: $0.fileName) != nil }
+            .sorted { $0.fileName.localizedStandardCompare($1.fileName) == .orderedAscending }
+            .map { downloaded in
+                PlayableTrack(id: downloaded.fileName,
+                    title: (downloaded.fileName as NSString).lastPathComponent,
+                    candidates: [ArchiveFile(name: downloaded.fileName, size: downloaded.expectedBytes)])
+            }
+        guard let index = tracks.firstIndex(where: { $0.candidates.contains { $0.name == record.fileName } }) else { return }
+        let artifact = knownContext?.artifact ?? ArtifactSummary(identifier: record.identifier, title: record.title, mediaType: .audio)
+        load(artifact: artifact, tracks: tracks, trackIndex: index, autoplay: autoplay, preferredFileName: record.fileName)
+        restoreDownloadedQueue(identifier: record.identifier, fileName: record.fileName)
+    }
+
+    private func restoreDownloadedQueue(identifier: String, fileName: String) {
+        guard let artifactDetailLoader else { return }
+        let expectedGeneration = generation
+        downloadQueueTask = Task { [weak self] in
+            guard let detail = try? await artifactDetailLoader(identifier), !Task.isCancelled,
+                  let self, self.generation == expectedGeneration,
+                  let current = self.context, current.artifact.identifier == identifier,
+                  current.file.name == fileName, detail.summary.identifier == identifier,
+                  let index = detail.tracks.firstIndex(where: { $0.candidates.contains { $0.name == fileName } }) else { return }
+            // Replace only the metadata: retain the AVPlayerItem, position, local
+            // file lease and the listener's current play/pause intent.
+            self.context = PlaybackContext(artifact: detail.summary, tracks: detail.tracks,
+                                          trackIndex: index, file: current.file)
+            self.loadNowPlayingArtwork(for: detail.summary)
+            self.applyPlaybackSpeed()
+            self.downloadQueueTask = nil
+        }
     }
 
     private func install(artifact: ArtifactSummary, tracks: [PlayableTrack], trackIndex: Int, file: ArchiveFile, resumeOverride: Double? = nil) {
+        downloadQueueTask?.cancel()
+        downloadQueueTask = nil
         generation &+= 1
         let currentGeneration = generation
         attemptedFiles.insert(file.name)
@@ -235,7 +314,9 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         statusObservation = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver); self.endObserver = nil }
         player.pause()
+        applyPlaybackSpeed()
         let item = AVPlayerItem(url: url)
+        item.audioTimePitchAlgorithm = .timeDomain
         player.replaceCurrentItem(with: item)
         // AVPlayer releases its old item before a removed file's lease is released.
         if let oldLease { downloads.releaseLocalURL(oldLease) }
@@ -382,6 +463,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     func releaseVideoPlayback(_ token: UInt64) {
         guard videoOwnership == token else { return }
         videoOwnership = nil
+        applyPlaybackSpeed()
         configureRemoteCommands()
         pause()
     }
@@ -619,6 +701,11 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         }
     }
 
+    func savedRecordingProgress(identifier: String) async throws -> [String: RecordingProgress] {
+        await persistenceTail?.value
+        return try await store.recordingProgress(identifier: identifier)
+    }
+
     private func saveCurrentPosition() {
         guard !restoringPosition else { return }
         persist(seconds: player.currentTime().seconds)
@@ -631,9 +718,11 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
             fileName: context.file.name,
             seconds: phase == .ended ? 0 : max(0, seconds)
         )
+        let completed = phase == .ended
         let previous = persistenceTail
         persistenceTail = Task {
             await previous?.value
+            if completed { try? await store.markRecordingPlayed(identifier: bookmark.identifier, fileName: bookmark.fileName) }
             try? await store.setPlaybackPosition(
                 identifier: bookmark.identifier,
                 fileName: bookmark.fileName,
@@ -721,7 +810,8 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
             MPMediaItemPropertyTitle: context.track.title,
             MPMediaItemPropertyAlbumTitle: context.artifact.title,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentSeconds,
-            MPNowPlayingInfoPropertyPlaybackRate: player.rate
+            MPNowPlayingInfoPropertyPlaybackRate: player.rate,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: playbackRate
         ]
         if let creator = context.artifact.creators.first {
             info[MPMediaItemPropertyArtist] = creator

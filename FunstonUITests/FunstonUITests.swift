@@ -102,6 +102,69 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(waitForValue("Paused", of: toggle))
     }
 
+    @MainActor
+    func testFullPlayerLayoutRemainsStableWhenTogglingPlayback() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--skip-playback-restoration"]
+        app.launch()
+        XCTAssertTrue(app.buttons["oldtimeradio"].waitForExistence(timeout: 10))
+        app.buttons["oldtimeradio"].tap()
+        let recording = app.collectionViews.cells["artifact:OTRR_Gunsmoke_Singles"]
+        XCTAssertTrue(recording.waitForExistence(timeout: 30))
+        recording.tap()
+        let play = app.buttons["artifact.play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 30))
+        play.tap()
+        let popup = app.descendants(matching: .any)["compactPlayer.open"].firstMatch
+        XCTAssertTrue(popup.waitForExistence(timeout: 15))
+        popup.tap()
+        let toggle = app.buttons["player.toggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitForValue("Playing", of: toggle))
+        let title = app.staticTexts["player.trackTitle"]
+        let position = app.sliders["Playback position"]
+        let toggleFrame = toggle.frame
+        let titleFrame = title.frame
+        let positionFrame = position.frame
+        for _ in 0..<3 {
+            toggle.tap()
+            XCTAssertTrue(waitForValue("Paused", of: toggle))
+            XCTAssertEqual(toggle.frame.minY, toggleFrame.minY, accuracy: 1)
+            XCTAssertEqual(title.frame.minY, titleFrame.minY, accuracy: 1)
+            XCTAssertEqual(position.frame.minY, positionFrame.minY, accuracy: 1)
+            toggle.tap()
+            XCTAssertTrue(waitForValue("Playing", of: toggle))
+            XCTAssertEqual(toggle.frame.minY, toggleFrame.minY, accuracy: 1)
+            XCTAssertEqual(title.frame.minY, titleFrame.minY, accuracy: 1)
+            XCTAssertEqual(position.frame.minY, positionFrame.minY, accuracy: 1)
+        }
+        toggle.tap()
+        XCTAssertTrue(waitForValue("Paused", of: toggle))
+        let download = app.buttons["player.download"]
+        let output = app.descendants(matching: .any)["player.audioOutput"].firstMatch
+        XCTAssertTrue(download.exists)
+        XCTAssertTrue(output.exists)
+        let sleep = app.buttons["player.sleepTimer"]
+        XCTAssertEqual(sleep.frame.minY, download.frame.minY, accuracy: 2)
+        XCTAssertEqual(sleep.frame.minY, output.frame.minY, accuracy: 2)
+        capture(app, name: "04c Stable player controls")
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Recordings,")).firstMatch.tap()
+        let currentRow = app.buttons["queue.recording.0"]
+        XCTAssertTrue(currentRow.waitForExistence(timeout: 8))
+        XCTAssertTrue(currentRow.label.contains("Current recording."))
+        let search = app.searchFields["Find a recording"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("zzzz-no-such-recording")
+        XCTAssertFalse(currentRow.exists)
+        if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
+        app.buttons["queue.current"].tap()
+        XCTAssertTrue(currentRow.waitForExistence(timeout: 5))
+        capture(app, name: "04d Searchable recording list")
+        app.buttons["queue.done"].tap()
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+    }
+
     /// Listen past the short-listen threshold, relaunch, and pick the recording
     /// back up from Explore. The tile is one element whose value is time left,
     /// and the player resumes where the listener paused.
@@ -255,10 +318,14 @@ final class FunstonUITests: XCTestCase {
         XCTAssertFalse(reopened.contains("The Project Gutenberg EBook of Man and Maid, by Elinor Glyn"), "It reopened at the start")
     }
 
+    @MainActor func testVideoViewingJourneyAndNativeControls() throws { try videoJourney(category: "UICTContentSizeCategoryL") }
+    @MainActor func testVideoViewingAtXXXLType() throws { try videoJourney(category: "UICTContentSizeCategoryXXXL") }
+    @MainActor func testVideoViewingAtAX5Type() throws { try videoJourney(category: "UICTContentSizeCategoryAccessibilityXXXL") }
+
     @MainActor
-    func testVideoViewingJourneyAndNativeControls() throws {
+    private func videoJourney(category: String) throws {
         let app = XCUIApplication()
-        app.launchArguments += ["--skip-playback-restoration"]
+        app.launchArguments += ["--skip-playback-restoration", "-UIPreferredContentSizeCategoryName", category]
         app.launch()
         app.tabBars.buttons["Search"].tap()
         let field = app.searchFields["Search the Internet Archive"]
@@ -266,7 +333,9 @@ final class FunstonUITests: XCTestCase {
         field.tap()
         field.typeText("DuckandC1951\n")
         let film = app.collectionViews.cells["artifact:DuckandC1951"]
-        XCTAssertTrue(film.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.collectionViews.cells.firstMatch.waitForExistence(timeout: 30))
+        for _ in 0..<16 where !film.exists { app.collectionViews.firstMatch.swipeUp() }
+        XCTAssertTrue(film.waitForExistence(timeout: 5), app.debugDescription)
         film.tap()
         let watch = app.buttons["artifact.watch"]
         XCTAssertTrue(watch.waitForExistence(timeout: 30))
@@ -289,10 +358,15 @@ final class FunstonUITests: XCTestCase {
         XCTAssertFalse(app.buttons["video.done"].exists, "Preparation toolbar must not overlay the film")
         capture(app, name: "08 Native video player")
         if transport.label == "Play" { transport.tap() }
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: speed)], timeout: 12), .completed,
-                       "The native playback toolbar should auto-hide while playing")
-        assertFourByThreeFilmIsCenteredIn(app.screenshot().image)
-        capture(app, name: "09 Fullscreen video without toolbar")
+        if UIAccessibility.isVoiceOverRunning {
+            XCTAssertTrue(transport.isHittable, "Native playback controls must remain reachable with VoiceOver")
+            capture(app, name: "09 Video with VoiceOver controls")
+        } else {
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: speed)], timeout: 12), .completed,
+                           "The native playback toolbar should auto-hide while playing")
+            assertFourByThreeFilmIsCenteredIn(app.screenshot().image)
+            capture(app, name: "09 Fullscreen video without toolbar")
+        }
         if !transport.exists { canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
         if transport.label == "Pause" { transport.tap() }
         XCTAssertEqual(transport.label, "Play")
@@ -361,6 +435,99 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         done.tap()
         XCTAssertTrue(original.waitForExistence(timeout: 5), "Closing the player should return to file selection")
+    }
+
+    @MainActor func testCleanupScreensAtDefaultType() throws { try cleanupScreens(category: "UICTContentSizeCategoryL", name: "Default") }
+    @MainActor func testCleanupScreensAtXXXLType() throws { try cleanupScreens(category: "UICTContentSizeCategoryXXXL", name: "XXXL") }
+    @MainActor func testCleanupScreensAtAX5Type() throws { try cleanupScreens(category: "UICTContentSizeCategoryAccessibilityXXXL", name: "AX5") }
+
+    @MainActor private func cleanupScreens(category: String, name: String) throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--skip-playback-restoration", "-UIPreferredContentSizeCategoryName", category]
+        app.launch()
+        app.tabBars.buttons["Search"].tap()
+        let search = app.searchFields["Search the Internet Archive"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("OTRR_Gunsmoke_Singles\n")
+        let item = app.collectionViews.cells["artifact:OTRR_Gunsmoke_Singles"]
+        XCTAssertTrue(app.collectionViews.cells.firstMatch.waitForExistence(timeout: 30))
+        for _ in 0..<24 where !item.exists { app.collectionViews.firstMatch.swipeUp() }
+        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        item.tap()
+        let play = app.buttons["artifact.play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 30))
+        for _ in 0..<5 where !play.isHittable { app.swipeUp() }
+        capture(app, name: name + " Recording detail")
+        play.tap()
+        let compact = app.descendants(matching: .any)["compactPlayer.open"].firstMatch
+        XCTAssertTrue(compact.waitForExistence(timeout: 10))
+        compact.tap()
+        XCTAssertTrue(app.buttons["player.toggle"].waitForExistence(timeout: 8))
+        let speed = app.buttons["player.speed"]
+        if name == "AX5" {
+            for _ in 0..<8 where !speed.isHittable { app.swipeUp() }
+        } else {
+            XCTAssertEqual(app.scrollViews.count, 0, "Standard Dynamic Type must fit without scrolling")
+            XCTAssertTrue(app.buttons["player.toggle"].isHittable)
+            XCTAssertTrue(app.buttons["player.sleepTimer"].isHittable)
+            XCTAssertTrue(speed.isHittable)
+            XCTAssertTrue(app.buttons["Close player"].isHittable)
+            XCTAssertGreaterThanOrEqual(app.buttons["Close player"].frame.minY, app.frame.minY)
+            XCTAssertLessThanOrEqual(speed.frame.maxY, app.frame.maxY)
+            XCTAssertTrue(app.buttons["player.download"].isHittable || app.descendants(matching: .any)["player.downloaded"].firstMatch.isHittable)
+        }
+        capture(app, name: name + " Player")
+        speed.tap()
+        let stepper = app.descendants(matching: .any)["player.speed.adjustable"].firstMatch
+        XCTAssertTrue(stepper.waitForExistence(timeout: 5))
+        XCTAssertEqual(stepper.label, "Playback speed")
+        XCTAssertTrue((stepper.value as? String ?? "").hasSuffix(" times"))
+        app.buttons["1.5 times"].tap()
+        XCTAssertEqual(stepper.value as? String, "1.5 times")
+        capture(app, name: name + " Speed")
+        app.buttons["1 times"].tap()
+        app.buttons["Done"].tap()
+        let recordings = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Recordings,")).firstMatch
+        if name == "AX5" { for _ in 0..<8 where !recordings.isHittable { app.swipeDown() } }
+        recordings.tap()
+        let current = app.buttons["queue.recording.0"]
+        XCTAssertTrue(current.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["queue.current"].isEnabled)
+        XCTAssertEqual(app.buttons["queue.current"].label, "Jump to now playing")
+        capture(app, name: name + " Recordings")
+        app.buttons["queue.done"].tap()
+        app.buttons["Close player"].tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        search.tap()
+        search.buttons["Clear text"].tap()
+        search.typeText("flatlandromanceo00abbouoft\n")
+        let book = app.collectionViews.cells["artifact:flatlandromanceo00abbouoft"]
+        if !book.waitForExistence(timeout: 5) {
+            for _ in 0..<12 where !book.exists { app.collectionViews.firstMatch.swipeDown() }
+            for _ in 0..<12 where !book.exists { app.collectionViews.firstMatch.swipeUp() }
+        }
+        XCTAssertTrue(book.waitForExistence(timeout: 5), app.debugDescription)
+        book.tap()
+        XCTAssertTrue(app.navigationBars["Book"].waitForExistence(timeout: 5))
+        let read = app.buttons["artifact.read"]
+        XCTAssertTrue(read.waitForExistence(timeout: 30))
+        for _ in 0..<8 where !read.isHittable { app.swipeUp() }
+        capture(app, name: name + " Book detail")
+        read.tap()
+        let page = app.descendants(matching: .any).matching(NSPredicate(format: "label MATCHES %@", "Page [0-9]+ of [0-9]+")).firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 60))
+        app.buttons["Next page"].tap()
+        let label = page.label
+        app.buttons["Reading options"].tap()
+        app.buttons["Continuous Scroll"].tap()
+        XCTAssertEqual(page.label, label)
+        capture(app, name: name + " Continuous reader")
+        app.buttons["Reading options"].tap()
+        app.buttons["Page by Page"].tap()
+        XCTAssertEqual(page.label, label)
+        capture(app, name: name + " Page reader")
+        app.terminate()
     }
 
     @MainActor

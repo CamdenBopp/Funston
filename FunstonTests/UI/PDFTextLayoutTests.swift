@@ -189,7 +189,7 @@ final class PDFTextLayoutTests: XCTestCase {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: fixture, withExtension: "jpg"))
         let image = try XCTUnwrap(UIImage(contentsOfFile: url.path)?.cgImage)
         let engine = try XCTUnwrap(PDFPageTextEngineRegistry.builtIn.engine(id: engineID))
-        return await engine.recognize(image)
+        return await engine.recognize(image).text
     }
 
     private static func words(_ text: String) -> [String] {

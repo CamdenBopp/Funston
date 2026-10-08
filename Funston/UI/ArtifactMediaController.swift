@@ -37,12 +37,12 @@ enum ArtifactMediaPresentation {
     }
 
     private static func book(in detail: ArtifactDetail) -> ArchiveFile? {
-        guard detail.access == .available, detail.summary.mediaType == .texts else { return nil }
+        guard detail.access == .available, !detail.summary.isAccessRestricted, detail.summary.mediaType == .texts else { return nil }
         return bookFile(in: detail.files)
     }
 
     private static func supportedFiles(in detail: ArtifactDetail) -> [ArchiveFile] {
-        guard detail.access == .available, detail.summary.mediaType == .movies || detail.summary.mediaType == .texts else { return [] }
+        guard detail.access == .available, !detail.summary.isAccessRestricted, detail.summary.mediaType == .movies || detail.summary.mediaType == .texts else { return [] }
         let candidates = detail.files.filter { file in
             guard !file.isPrivate else { return false }
             let suffix = (file.name as NSString).pathExtension.lowercased()
@@ -70,7 +70,7 @@ enum ArtifactMediaPresentation {
 
     static func watch(file: ArchiveFile, summary: ArtifactSummary, from controller: UIViewController,
                       environment: AppEnvironment, downloadedOnly: Bool = false) {
-        guard !file.isPrivate, isVideoFile(file.name), controller.presentedViewController == nil else { return }
+        guard !summary.isAccessRestricted, !file.isPrivate, isVideoFile(file.name), controller.presentedViewController == nil else { return }
         if (file.name as NSString).pathExtension.lowercased() == "mkv" {
             let viewer = UINavigationController(rootViewController: ArtifactOriginalVideoController(
                 summary: summary, file: file, environment: environment, downloadedOnly: downloadedOnly))
@@ -147,9 +147,9 @@ private final class ArtifactPDFController: UIViewController {
     private let downloads: DownloadManager
     private let textRecognizer: PDFPageTextRecognizer
     private let textEngineRegistry: PDFPageTextEngineRegistry
-    private let textEnginePreference = PDFTextEnginePreference()
-    private let pdfView = PDFView()
-    private let pageLabel = UILabel()
+    private let textEnginePreference: PDFTextEnginePreference
+    private let pdfView = PDFLineAccessibleView()
+    private let pageLabel = AdjustablePageLabel()
     private let previous = UIButton(type: .system)
     private let nextPageButton = UIButton(type: .system)
     private var subscriptions = Set<AnyCancellable>()
@@ -163,12 +163,14 @@ private final class ArtifactPDFController: UIViewController {
     private var restoringPage = false
     private var closed = false
     private var displayedPage: Int?
+    private var displayedTextEngineID = PDFTextEngineID.automatic
     private var readingLayout = PDFReadingLayout.saved
     private lazy var progress = PDFReadingProgress(key: resumeKey)
     private var resumeKey: String { "pdf.page.\(DownloadManager.key(identifier: summary.identifier, fileName: file.name))" }
 
     init(summary: ArtifactSummary, file: ArchiveFile, downloads: DownloadManager, store: SQLiteStore) {
         self.summary = summary; self.file = file; self.downloads = downloads
+        textEnginePreference = PDFTextEnginePreference(bookKey: DownloadManager.key(identifier: summary.identifier, fileName: file.name))
         let textEngineRegistry = PDFPageTextEngineRegistry.builtIn
         self.textEngineRegistry = textEngineRegistry
         textRecognizer = PDFPageTextRecognizer(store: store, registry: textEngineRegistry)
@@ -197,6 +199,8 @@ private final class ArtifactPDFController: UIViewController {
         pdfView.pageShadowsEnabled = false
         pdfView.isFindInteractionEnabled = true
         pdfView.accessibilityIdentifier = "reader.document"
+        pdfView.isAccessibilityElement = false
+        pdfView.visiblePagesDidChange = { [weak self] in self?.prefetchTextForVoiceOver() }
         pdfView.backgroundColor = .secondarySystemBackground
         pdfView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(pdfView)
@@ -204,7 +208,14 @@ private final class ArtifactPDFController: UIViewController {
         pageLabel.font = .preferredFont(forTextStyle: .footnote)
         pageLabel.adjustsFontForContentSizeCategory = true
         pageLabel.textAlignment = .center
+        pageLabel.isAccessibilityElement = true
+        pageLabel.accessibilityTraits = .adjustable
         pageLabel.numberOfLines = 0
+        pageLabel.adjustPage = { [weak self] amount in
+            guard let self, let document = pdfView.document, let current = pdfView.currentPage,
+                  let page = document.page(at: document.index(for: current) + amount) else { return }
+            pdfView.go(to: page)
+        }
         previous.setImage(UIImage(systemName: readingLayout.previousSymbol), for: .normal)
         previous.accessibilityLabel = "Previous page"
         previous.isEnabled = false
@@ -248,7 +259,14 @@ private final class ArtifactPDFController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        if pdfView.document != nil { installDocumentActions() }
+        if pdfView.document != nil {
+            if displayedTextEngineID != textEnginePreference.selectedID {
+                pdfView.clearRecognizedLines()
+                displayedTextEngineID = textEnginePreference.selectedID
+            }
+            installDocumentActions()
+            prefetchTextForVoiceOver()
+        }
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -342,6 +360,7 @@ private final class ArtifactPDFController: UIViewController {
             let saved = UserDefaults.standard.integer(forKey: resumeKey)
             contentUnavailableConfiguration = nil
             restoringPage = true
+            pdfView.clearRecognizedLines()
             pdfView.document = document
             if let page = document.page(at: min(max(0, saved), document.pageCount - 1)) { pdfView.go(to: page) }
             restoringPage = false
@@ -405,7 +424,7 @@ private final class ArtifactPDFController: UIViewController {
         let menu = UIMenu(children: [
             page,
             share,
-            UIMenu(title: "Text Recognition", children: engines),
+            UIMenu(title: "Text Recognition", image: UIImage(systemName: "text.viewfinder"), children: engines),
             UIMenu(title: "Reading Layout", options: .displayInline, children: layouts)
         ])
         let options = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), menu: menu)
@@ -429,10 +448,30 @@ private final class ArtifactPDFController: UIViewController {
 
     private func prefetchTextForVoiceOver() {
         textPrefetchTask?.cancel()
-        guard UIAccessibility.isVoiceOverRunning, let index = displayedPage,
-              let request = pageTextRequest(index: index) else { return }
-        textPrefetchTask = Task { [textRecognizer] in
-            _ = await textRecognizer.text(for: request)
+        guard !restoringPage, UIAccessibility.isVoiceOverRunning, let document = pdfView.document,
+              let index = displayedPage, let current = pageTextRequest(index: index) else { return }
+        let selectedEngineID = current.selectedEngineID
+        displayedTextEngineID = selectedEngineID
+        var indices = Set(pdfView.visiblePages.map { document.index(for: $0) })
+        indices.insert(index)
+        let requests = indices.sorted { abs($0 - index) < abs($1 - index) }.compactMap { pageTextRequest(index: $0)?.forPageImage }
+        let recognizer = textRecognizer
+        textPrefetchTask = Task { [weak self] in
+            await withTaskGroup(of: (PDFPageTextRequest, PDFPageTextResult).self) { group in
+                // Live Text keeps its separate transcript prefetch. Its words are
+                // never aligned to Automatic's boxes or used for image-view labels.
+                if selectedEngineID == PDFTextEngineID.appleLiveText {
+                    group.addTask { (current, await recognizer.text(for: current)) }
+                }
+                for request in requests { group.addTask { (request, await recognizer.text(for: request)) } }
+                for await (request, result) in group {
+                    guard !Task.isCancelled, let self, !self.closed,
+                          self.textEnginePreference.selectedID == selectedEngineID,
+                          request.selectedEngineID != PDFTextEngineID.appleLiveText,
+                          let page = self.pdfView.document?.page(at: request.pageIndex) else { continue }
+                    self.pdfView.install(result, source: request.page, page: page, index: request.pageIndex)
+                }
+            }
         }
     }
 
@@ -458,6 +497,8 @@ private final class ArtifactPDFController: UIViewController {
     private func changeTextEngine(to engineID: String) {
         guard engineID != textEnginePreference.selectedID else { return }
         textEnginePreference.select(engineID)
+        displayedTextEngineID = engineID
+        pdfView.clearRecognizedLines()
         textPrefetchTask?.cancel()
         installDocumentActions()
         prefetchTextForVoiceOver()
@@ -517,11 +558,11 @@ private final class PDFTextReaderController: UIViewController {
     private let expectedBytes: Int64?
     private let preferLocalRecognition: Bool
     private let textEngineDescriptors: [PDFTextEngineDescriptor]
-    private let textEnginePreference = PDFTextEnginePreference()
+    private let textEnginePreference: PDFTextEnginePreference
     private let recognizer: PDFPageTextRecognizer
     private let showPage: (Int) -> Void
     private let textView = UITextView()
-    private let pageLabel = UILabel()
+    private let pageLabel = AdjustablePageLabel()
     private let previous = UIButton(type: .system)
     private let nextPage = UIButton(type: .system)
     private var pageIndex: Int
@@ -534,6 +575,7 @@ private final class PDFTextReaderController: UIViewController {
         self.document = document
         self.pageIndex = initialPage
         self.documentKey = documentKey
+        textEnginePreference = PDFTextEnginePreference(bookKey: documentKey)
         self.expectedBytes = expectedBytes
         self.preferLocalRecognition = preferLocalRecognition
         self.textEngineDescriptors = textEngineDescriptors
@@ -541,6 +583,7 @@ private final class PDFTextReaderController: UIViewController {
         self.showPage = showPage
         super.init(nibName: nil, bundle: nil)
         title = "Page Text"
+        pageLabel.adjustPage = { [weak self] amount in self?.move(by: amount) }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -563,6 +606,8 @@ private final class PDFTextReaderController: UIViewController {
         pageLabel.font = .preferredFont(forTextStyle: .footnote)
         pageLabel.adjustsFontForContentSizeCategory = true
         pageLabel.textAlignment = .center
+        pageLabel.isAccessibilityElement = true
+        pageLabel.accessibilityTraits = .adjustable
         previous.setImage(UIImage(systemName: "chevron.backward"), for: .normal)
         previous.accessibilityLabel = "Previous page text"
         nextPage.setImage(UIImage(systemName: "chevron.forward"), for: .normal)
@@ -608,7 +653,7 @@ private final class PDFTextReaderController: UIViewController {
                 loadPage()
             }
         }
-        let item = UIBarButtonItem(title: "Text Engine", menu: UIMenu(title: "Text Recognition", children: actions))
+        let item = UIBarButtonItem(title: "Text Engine", menu: UIMenu(title: "Text Recognition", image: UIImage(systemName: "text.viewfinder"), children: actions))
         item.accessibilityLabel = "Text engine"
         item.accessibilityValue = textEnginePreference.title(ocrEngines: textEngineDescriptors)
         navigationItem.rightBarButtonItem = item
@@ -672,4 +717,11 @@ private final class PDFTextReaderController: UIViewController {
         contentUnavailableConfiguration = unavailable
         UIAccessibility.post(notification: .screenChanged, argument: view)
     }
+}
+
+@MainActor
+final class AdjustablePageLabel: UILabel {
+    var adjustPage: ((Int) -> Void)?
+    override func accessibilityIncrement() { adjustPage?(1) }
+    override func accessibilityDecrement() { adjustPage?(-1) }
 }

@@ -169,6 +169,31 @@ actor SQLiteStore {
         }.compactMap { $0 }
     }
 
+    func markRecordingPlayed(identifier: String, fileName: String) throws {
+        try execute("INSERT OR IGNORE INTO played_recordings(identifier, file_name) VALUES(?, ?)",
+                    bindings: [.text(identifier), .text(fileName)])
+    }
+
+    func setRecordingPlayed(identifier: String, fileName: String, played: Bool) throws {
+        if played { try markRecordingPlayed(identifier: identifier, fileName: fileName) }
+        else {
+            try execute("DELETE FROM played_recordings WHERE identifier=? AND file_name=?", bindings: [.text(identifier), .text(fileName)])
+            try setPlaybackPosition(identifier: identifier, fileName: fileName, seconds: 0)
+        }
+    }
+
+    func recordingProgress(identifier: String) throws -> [String: RecordingProgress] {
+        let positions = try query("SELECT file_name, seconds FROM playback_positions WHERE identifier=?", bindings: [.text(identifier)]) {
+            (Self.text($0, column: 0) ?? "", sqlite3_column_double($0, 1))
+        }
+        var result = Dictionary(uniqueKeysWithValues: positions.map { ($0.0, RecordingProgress(seconds: $0.1)) })
+        let played = try query("SELECT file_name FROM played_recordings WHERE identifier=?", bindings: [.text(identifier)]) {
+            Self.text($0, column: 0) ?? ""
+        }
+        for name in played { result[name, default: RecordingProgress()].isPlayed = true }
+        return result
+    }
+
     func setLastPlayback(_ bookmark: PlaybackBookmark?) throws {
         if let bookmark {
             try execute(
@@ -464,6 +489,14 @@ actor SQLiteStore {
           file_name TEXT NOT NULL,
           locator TEXT NOT NULL,
           updated_at REAL NOT NULL,
+          PRIMARY KEY(identifier, file_name)
+        );
+        """,
+        // 5: completion is separate from the resume position, which resets at the end.
+        """
+        CREATE TABLE IF NOT EXISTS played_recordings(
+          identifier TEXT NOT NULL,
+          file_name TEXT NOT NULL,
           PRIMARY KEY(identifier, file_name)
         );
         """

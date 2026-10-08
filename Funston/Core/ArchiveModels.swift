@@ -34,13 +34,15 @@ struct ArtifactSummary: Identifiable, Codable, Hashable, Sendable {
     let mediaType: MediaType
     let collections: [String]
     let artworkFileName: String?
+    let accessRestricted: Bool?
+    var isAccessRestricted: Bool { accessRestricted == true || collections.contains("access-restricted-item") }
     var id: String { identifier }
     var artworkURL: URL {
         artworkFileName.map { ArchiveURLs.download(identifier: identifier, fileName: $0) } ?? ArchiveURLs.thumbnail(identifier: identifier)
     }
 
     init(identifier: String, title: String, creators: [String] = [], date: String? = nil,
-         mediaType: MediaType = .unknown, collections: [String] = [], artworkFileName: String? = nil) {
+         mediaType: MediaType = .unknown, collections: [String] = [], artworkFileName: String? = nil, accessRestricted: Bool? = nil) {
         self.identifier = identifier
         self.title = title
         self.creators = creators
@@ -48,12 +50,13 @@ struct ArtifactSummary: Identifiable, Codable, Hashable, Sendable {
         self.mediaType = mediaType
         self.collections = collections
         self.artworkFileName = artworkFileName
+        self.accessRestricted = accessRestricted
     }
 
     func resolvingArtwork(files: [ArchiveFile]) -> ArtifactSummary {
         ArtifactSummary(identifier: identifier, title: title, creators: creators, date: date,
                         mediaType: mediaType, collections: collections,
-                        artworkFileName: ArtifactArtworkResolver.fileName(identifier: identifier, files: files))
+                        artworkFileName: ArtifactArtworkResolver.fileName(identifier: identifier, files: files), accessRestricted: accessRestricted)
     }
 }
 
@@ -170,5 +173,17 @@ enum ArchiveError: Error, Sendable, Equatable {
         case .http: "Internet Archive could not complete this request. Try again."
         case .invalidResponse, .malformedData: "Internet Archive returned information that could not be read. Try again."
         }
+    }
+}
+
+/// Preserve names and numbers while removing path, extension and filename separators.
+enum ArchiveMediaTitle {
+    static func readable(_ filename: String) -> String {
+        let stem = ((filename as NSString).lastPathComponent as NSString).deletingPathExtension
+        let words = stem.replacingOccurrences(of: "[_.-]+", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "(?<=[a-z])(?=[A-Z])", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return words.isEmpty ? filename : words
     }
 }

@@ -125,14 +125,16 @@ final class DownloadManager: NSObject, ObservableObject {
     private let mediaDirectory: URL
     private let delegate: DownloadSessionDelegate
     private let session: URLSession
+    private let accessRepository: any ArchiveRepository
     private var operationTail: Task<Void, Never>?
     private var backgroundCompletionHandler: (() -> Void)?
     private var backgroundEventsDrained = false
     private var pendingRemovals = Set<String>()
     private var leases: [String: Int] = [:]
 
-    init(store: any DownloadPersistence, mediaDirectory: URL, sessionConfiguration: URLSessionConfiguration? = nil) {
+    init(store: any DownloadPersistence, mediaDirectory: URL, sessionConfiguration: URLSessionConfiguration? = nil, accessRepository: any ArchiveRepository = NetworkArchiveRepository()) {
         self.store = store; self.mediaDirectory = mediaDirectory
+        self.accessRepository = accessRepository
         let delegate = DownloadSessionDelegate(mediaDirectory: mediaDirectory)
         self.delegate = delegate
         let configuration: URLSessionConfiguration
@@ -188,6 +190,9 @@ final class DownloadManager: NSObject, ObservableObject {
                                     state: .queued, receivedBytes: 0, totalBytes: file.size, errorMessage: nil, updatedAt: .now)
         var task: URLSessionDownloadTask?
         do {
+            let detail = try await accessRepository.detail(identifier: identifier)
+            guard detail.access == .available, !detail.summary.isAccessRestricted,
+                  detail.files.contains(where: { $0.name == file.name && !$0.isPrivate }) else { throw ArchiveError.missingItem }
             // Retry continues from the bytes a failed attempt left behind. The blob is
             // used once: if it's stale, that attempt fails and a fresh one starts next time.
             let resumeData = await consumeResumeData(key: key)
