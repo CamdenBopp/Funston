@@ -71,6 +71,23 @@ final class PreflightUITests: XCTestCase {
         }
     }
 
+    func testExploreLayoutAtAllTextSizes() throws {
+        for category in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryXXXL", "UICTContentSizeCategoryAccessibilityXXXL"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["--skip-playback-restoration", "-UIPreferredContentSizeCategoryName", category]
+            app.launch()
+            let cover = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "explore.artifact.")).firstMatch
+            for _ in 0..<8 where !cover.waitForExistence(timeout: 3) { app.swipeUp() }
+            XCTAssertTrue(cover.waitForExistence(timeout: 30))
+            XCTAssertGreaterThanOrEqual(cover.frame.minX, 16)
+            XCTAssertLessThanOrEqual(cover.frame.maxX, app.frame.maxX - 16)
+            capture(app, "Explore \(category)")
+            for _ in 0..<12 { app.swipeUp() }
+            capture(app, "Explore bottom \(category)")
+            app.terminate()
+        }
+    }
+
     private func capture(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name

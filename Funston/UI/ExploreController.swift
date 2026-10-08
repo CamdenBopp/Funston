@@ -50,7 +50,8 @@ final class ExploreController: UICollectionViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         collectionView.backgroundColor = .systemBackground
-        collectionView.contentInset.bottom = 24
+        collectionView.contentInsetAdjustmentBehavior = .always
+        collectionView.contentInset.bottom = 32
         // A cover's height is only known once its image loads; let the tile re-measure.
         collectionView.selfSizingInvalidation = .enabledIncludingConstraints
         collectionView.setCollectionViewLayout(Self.layout(accessibility: traitCollection.preferredContentSizeCategory.isAccessibilityCategory), animated: false)
@@ -111,19 +112,25 @@ final class ExploreController: UICollectionViewController {
         refreshContinueListening()
     }
 
-    private static func tileWidth(container: CGFloat, accessibility: Bool) -> CGFloat {
-        accessibility ? container - 2 * Metrics.sideInset : min(192, max(156, container * 0.43))
-    }
-
     private static func layout(accessibility: Bool) -> UICollectionViewLayout {
         UICollectionViewCompositionalLayout { _, environment in
-            let width = tileWidth(container: environment.container.effectiveContentSize.width, accessibility: accessibility)
-            let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(Metrics.estimatedTileHeight)))
-            let group = NSCollectionLayoutGroup.horizontal(layoutSize: .init(widthDimension: .absolute(width), heightDimension: .estimated(Metrics.estimatedTileHeight)), subitems: [item])
+            let available = environment.container.effectiveContentSize.width - 2 * Metrics.sideInset
+            let count = accessibility || available < 300 ? 1 : max(2, Int((available + Metrics.tileSpacing) / 208))
+            let width = (available - CGFloat(count - 1) * Metrics.tileSpacing) / CGFloat(count)
+            let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .absolute(width), heightDimension: .estimated(Metrics.estimatedTileHeight)))
+            let group = NSCollectionLayoutGroup.horizontal(layoutSize: .init(widthDimension: .absolute(available), heightDimension: .estimated(Metrics.estimatedTileHeight)), subitems: Array(repeating: item, count: count))
+            group.interItemSpacing = .fixed(Metrics.tileSpacing)
             let section = NSCollectionLayoutSection(group: group)
-            section.orthogonalScrollingBehavior = accessibility ? .none : .continuousGroupLeadingBoundary
-            section.interGroupSpacing = Metrics.tileSpacing
+            section.orthogonalScrollingBehavior = accessibility ? .none : .groupPaging
+            section.interGroupSpacing = 2 * Metrics.sideInset
             section.contentInsets = .init(top: Metrics.shelfTop, leading: Metrics.sideInset, bottom: Metrics.shelfBottom, trailing: Metrics.sideInset)
+            section.visibleItemsInvalidationHandler = { items, offset, environment in
+                let right = offset.x + environment.container.effectiveContentSize.width - Metrics.sideInset
+                for item in items where item.representedElementCategory == .cell {
+                    // A neighboring page never exposes a few letters at the edge.
+                    item.alpha = item.frame.minX >= offset.x + Metrics.sideInset - 1 && item.frame.maxX <= right + 1 ? 1 : 0
+                }
+            }
             section.boundarySupplementaryItems = [NSCollectionLayoutBoundarySupplementaryItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(Metrics.estimatedHeaderHeight)), elementKind: UICollectionView.elementKindSectionHeader, alignment: .top)]
             return section
         }
@@ -310,17 +317,7 @@ final class ExploreController: UICollectionViewController {
 
 @MainActor
 private final class ExploreArtifactCell: UICollectionViewCell {
-    /// The tallest a cover gets. Each cover takes only the height its shape needs
-    /// at the tile's width, so a wide film still sits right under the heading
-    /// instead of at the bottom of an empty band.
     nonisolated static let maximumCoverHeight: CGFloat = 176
-    private var coverHeightConstraint: NSLayoutConstraint?
-    /// Width / height of this tile's cover, once known.
-    private var coverAspect: CGFloat?
-    /// Cover shapes seen this session, so a reused or revisited tile gets its
-    /// height before it's measured instead of resizing mid-swipe.
-    private static var knownAspects: [String: CGFloat] = [:]
-    private static let knownAspectsLimit = 2_000
 
     private enum Metrics {
         static let artworkHeight: CGFloat = ExploreArtifactCell.maximumCoverHeight
@@ -336,9 +333,6 @@ private final class ExploreArtifactCell: UICollectionViewCell {
     private let artwork = UIImageView()
     private let placeholder = UIImageView()
     private let placeholderSurface = UIView()
-    /// Artwork keeps its own shape, sitting on the shelf's bottom edge like a
-    /// book cover, so no card or letterbox frames it.
-    private var artworkAspect: NSLayoutConstraint?
     private let titleLabel = UILabel()
     private let metadataLabel = UILabel()
     /// Continue listening only: how far in, as a bar and in words.
@@ -361,9 +355,10 @@ private final class ExploreArtifactCell: UICollectionViewCell {
         let imageSurface = UIView()
         placeholderSurface.backgroundColor = .secondarySystemBackground
         placeholderSurface.layer.cornerRadius = Metrics.artworkCornerRadius
-        artwork.contentMode = .scaleAspectFill
-        artwork.layer.cornerRadius = Metrics.artworkCornerRadius
-        artwork.clipsToBounds = true
+        imageSurface.backgroundColor = .secondarySystemBackground
+        imageSurface.layer.cornerRadius = Metrics.artworkCornerRadius
+        imageSurface.clipsToBounds = true
+        artwork.contentMode = .scaleAspectFit
         placeholder.contentMode = .scaleAspectFit
         placeholder.tintColor = .tertiaryLabel
         for view in [placeholderSurface, artwork, placeholder] as [UIView] {
@@ -407,22 +402,15 @@ private final class ExploreArtifactCell: UICollectionViewCell {
             placeholderSurface.topAnchor.constraint(equalTo: imageSurface.topAnchor),
             placeholderSurface.bottomAnchor.constraint(equalTo: imageSurface.bottomAnchor),
             artwork.leadingAnchor.constraint(equalTo: imageSurface.leadingAnchor),
+            artwork.trailingAnchor.constraint(equalTo: imageSurface.trailingAnchor),
+            artwork.topAnchor.constraint(equalTo: imageSurface.topAnchor),
             artwork.bottomAnchor.constraint(equalTo: imageSurface.bottomAnchor),
-            artwork.widthAnchor.constraint(lessThanOrEqualTo: imageSurface.widthAnchor),
-            artwork.heightAnchor.constraint(lessThanOrEqualTo: imageSurface.heightAnchor),
             placeholder.centerXAnchor.constraint(equalTo: imageSurface.centerXAnchor),
             placeholder.centerYAnchor.constraint(equalTo: imageSurface.centerYAnchor),
             placeholder.widthAnchor.constraint(equalToConstant: Metrics.placeholderSymbolSide),
             placeholder.heightAnchor.constraint(equalToConstant: Metrics.placeholderSymbolSide)
         ])
-        // Fill whichever dimension the cover's shape allows.
-        for fill in [artwork.widthAnchor.constraint(equalTo: imageSurface.widthAnchor),
-                     artwork.heightAnchor.constraint(equalTo: imageSurface.heightAnchor)] {
-            fill.priority = .defaultHigh; fill.isActive = true
-        }
-        coverHeightConstraint = imageSurface.heightAnchor.constraint(equalToConstant: Metrics.artworkHeight)
-        coverHeightConstraint?.isActive = true
-        setArtworkAspect(1)
+        imageSurface.heightAnchor.constraint(equalToConstant: Metrics.artworkHeight).isActive = true
         updateTextLayout()
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (cell: ExploreArtifactCell, _: UITraitCollection) in cell.updateTextLayout() }
     }
@@ -456,8 +444,6 @@ private final class ExploreArtifactCell: UICollectionViewCell {
         if identifier != artifact.identifier {
             cancelArtwork(); identifier = artifact.identifier
             showPlaceholder()
-            coverAspect = Self.knownAspects[artifact.identifier]
-            updateCoverHeight(width: contentView.bounds.width)
         }
         placeholder.image = UIImage(systemName: artifact.mediaType.artworkSymbol)
         titleLabel.text = artifact.title
@@ -486,39 +472,13 @@ private final class ExploreArtifactCell: UICollectionViewCell {
             guard !Task.isCancelled, let self, self.identifier == identifier else { return }
             artworkTask = nil
             if let image = result?.value, image.size.width > 0, image.size.height > 0 {
-                let aspect = image.size.width / image.size.height
-                setArtworkAspect(aspect)
                 artwork.image = image; hasArtwork = true
                 placeholder.isHidden = true; placeholderSurface.isHidden = true
-                if Self.knownAspects.count >= Self.knownAspectsLimit { Self.knownAspects.removeAll() }
-                Self.knownAspects[identifier] = aspect
-                if coverAspect != aspect {
-                    coverAspect = aspect
-                    updateCoverHeight(width: contentView.bounds.width)
-                }
+
             }
         }
     }
 
-
-    /// The layout hands over the tile's real width before measuring it.
-    override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
-        super.apply(layoutAttributes)
-        updateCoverHeight(width: layoutAttributes.size.width)
-    }
-
-    /// The cover's own height at this width, or the full height while its shape is unknown.
-    private func updateCoverHeight(width: CGFloat) {
-        guard width > 0 else { return }
-        let height = coverAspect.map { min(Metrics.artworkHeight, width / $0) } ?? Metrics.artworkHeight
-        if coverHeightConstraint?.constant != height { coverHeightConstraint?.constant = height }
-    }
-
-    private func setArtworkAspect(_ aspect: CGFloat) {
-        artworkAspect?.isActive = false
-        artworkAspect = artwork.widthAnchor.constraint(equalTo: artwork.heightAnchor, multiplier: aspect)
-        artworkAspect?.isActive = true
-    }
 
     private func showPlaceholder() {
         artwork.image = nil; hasArtwork = false

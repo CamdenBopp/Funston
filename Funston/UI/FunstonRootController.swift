@@ -87,6 +87,13 @@ final class FunstonRootController: UIViewController {
                 histories.forEach { $0.collapseDetail() }
                 self.split = nil
             }
+            let appearance = UITabBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            appearance.backgroundColor = .systemBackground
+            tabs.tabBar.backgroundColor = .systemBackground
+            tabs.tabBar.isTranslucent = false
+            tabs.tabBar.standardAppearance = appearance
+            tabs.tabBar.scrollEdgeAppearance = appearance
             tabs.setViewControllers(destinations, animated: false)
             tabs.selectedIndex = selectedDestination
             install(tabs)
