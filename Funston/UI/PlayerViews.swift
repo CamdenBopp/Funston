@@ -48,7 +48,7 @@ struct FullPlayer: View {
                         }
                         PlaybackPositionView(playback: playback)
                         HStack {
-                            transport("Back 15 seconds", symbol: "gobackward.15") { playback.skip(by: -15) }
+                            transport("Back \(Int(playback.skipBackInterval)) seconds", symbol: "gobackward.\(Int(playback.skipBackInterval))") { playback.skip(by: -playback.skipBackInterval) }
                             Spacer()
                             Button { playback.togglePlayback() } label: {
                                 Image(systemName: presentation.showsPauseControl ? "pause.fill" : "play.fill")
@@ -57,7 +57,7 @@ struct FullPlayer: View {
                                 .accessibilityValue(presentation.phase.spokenValue)
                                 .accessibilityIdentifier("player.toggle")
                             Spacer()
-                            transport("Forward 15 seconds", symbol: "goforward.15") { playback.skip(by: 15) }
+                            transport("Forward \(Int(playback.skipForwardInterval)) seconds", symbol: "goforward.\(Int(playback.skipForwardInterval))") { playback.skip(by: playback.skipForwardInterval) }
                         }.buttonStyle(PlayerControlStyle()).foregroundStyle(.primary).padding(.horizontal, 8)
                         if context.tracks.count > 1 {
                             HStack {
@@ -170,8 +170,8 @@ private struct PlaybackPositionView: View {
                 .accessibilityValue(PlayerTimePresentation.spokenPosition(playback.elapsed, duration: duration, rate: playback.playbackRate))
                 .accessibilityAdjustableAction { direction in
                     switch direction {
-                    case .increment: playback.skip(by: 15)
-                    case .decrement: playback.skip(by: -15)
+                    case .increment: playback.skip(by: playback.skipForwardInterval)
+                    case .decrement: playback.skip(by: -playback.skipBackInterval)
                     @unknown default: break
                     }
                 }
@@ -570,11 +570,12 @@ struct PlaybackSpeedPreference {
     func rate(collection: String? = nil) -> Double {
         let key = collection.map { "playback.speed.collection." + $0 }
         let value = key.flatMap { defaults.object(forKey: $0) as? Double }
-            ?? defaults.object(forKey: Self.globalKey) as? Double ?? 1
+            ?? SettingsStore.playbackSpeed(defaults: defaults)
         return Self.clamped(value)
     }
     func set(_ value: Double, collection: String? = nil) {
-        defaults.set(Self.clamped(value), forKey: collection.map { "playback.speed.collection." + $0 } ?? Self.globalKey)
+        if let collection { defaults.set(Self.clamped(value), forKey: "playback.speed.collection." + collection) }
+        else { SettingsStore.setPlaybackSpeed(value, defaults: defaults) }
     }
     func hasOverride(collection: String) -> Bool { defaults.object(forKey: "playback.speed.collection." + collection) != nil }
     func removeOverride(collection: String) { defaults.removeObject(forKey: "playback.speed.collection." + collection) }

@@ -76,7 +76,12 @@ final class ArtifactOriginalVideoController: UIViewController {
 
     init(summary: ArtifactSummary, file: ArchiveFile, environment: AppEnvironment, downloadedOnly: Bool) {
         self.summary = summary; self.file = file; self.environment = environment; self.downloadedOnly = downloadedOnly
-        bookmark = OriginalVideoBookmark(store: environment.store, identifier: summary.identifier, fileName: file.name)
+        bookmark = OriginalVideoBookmark(store: environment.store, identifier: summary.identifier, fileName: file.name) {
+            try? await environment.downloads.removePlayedDownload(identifier: summary.identifier, fileName: file.name)
+        }
+        let speedPreference = PlaybackSpeedPreference()
+        let collection = summary.collections.first
+        rate = Float(collection.map { speedPreference.hasOverride(collection: $0) } == true ? speedPreference.rate(collection: collection) : environment.settings.defaultPlaybackSpeed)
         trackMemory = OriginalVideoTrackMemory(store: environment.store, identifier: summary.identifier, fileName: file.name)
         super.init(nibName: nil, bundle: nil)
         title = summary.title
@@ -112,7 +117,8 @@ final class ArtifactOriginalVideoController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .black
         view.accessibilityIdentifier = "original.video.viewer"
-        remote = OriginalVideoRemoteControl { [weak self] command in self?.handleRemote(command) ?? false }
+        remote = OriginalVideoRemoteControl(skipBack: Double(environment.settings.skipBackSeconds), skipForward: Double(environment.settings.skipForwardSeconds)) { [weak self] command in self?.handleRemote(command) ?? false }
+        chrome.configureSkipIntervals(back: environment.settings.skipBackSeconds, forward: environment.settings.skipForwardSeconds)
         navigationItem.largeTitleDisplayMode = .never
         canvas.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(canvas)
@@ -143,8 +149,8 @@ final class ArtifactOriginalVideoController: UIViewController {
         chrome.setTime(elapsed: 0, duration: file.duration)
         chrome.closeButton.addAction(UIAction { [weak self] _ in self?.close() }, for: .primaryActionTriggered)
         chrome.playButton.addAction(UIAction { [weak self] _ in self?.togglePlayback() }, for: .primaryActionTriggered)
-        chrome.backButton.addAction(UIAction { [weak self] _ in self?.seek(by: -OriginalVideoControlsView.skipInterval) }, for: .primaryActionTriggered)
-        chrome.forwardButton.addAction(UIAction { [weak self] _ in self?.seek(by: OriginalVideoControlsView.skipInterval) }, for: .primaryActionTriggered)
+        chrome.backButton.addAction(UIAction { [weak self] _ in if let self { self.seek(by: -Double(self.environment.settings.skipBackSeconds)) } }, for: .primaryActionTriggered)
+        chrome.forwardButton.addAction(UIAction { [weak self] _ in if let self { self.seek(by: Double(self.environment.settings.skipForwardSeconds)) } }, for: .primaryActionTriggered)
         chrome.muteButton.addAction(UIAction { [weak self] _ in self?.toggleMute() }, for: .primaryActionTriggered)
         chrome.pictureInPictureButton.addAction(UIAction { [weak self] _ in
             guard let pictureInPicture = self?.pictureInPicture else { return }

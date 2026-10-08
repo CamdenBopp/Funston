@@ -6,15 +6,13 @@ import VisionKit
 enum PDFReadingLayout: String, CaseIterable {
     case pages, continuous
 
-    static var saved: Self {
-        Self(rawValue: UserDefaults.standard.string(forKey: "pdf.readingLayout") ?? "") ?? .continuous
-    }
+    @MainActor static var saved: Self { SettingsStore.shared.readingLayout }
 
     var title: String { self == .pages ? "Page by Page" : "Continuous Scroll" }
     var previousSymbol: String { self == .pages ? "chevron.backward" : "chevron.up" }
     var nextSymbol: String { self == .pages ? "chevron.forward" : "chevron.down" }
 
-    func save() { UserDefaults.standard.set(rawValue, forKey: "pdf.readingLayout") }
+    @MainActor func save() { SettingsStore.shared.readingLayout = self }
 
     @MainActor
     func apply(to view: PDFView) {
@@ -281,11 +279,12 @@ struct PDFTextEnginePreference {
 
     private var preferenceKey: String { bookKey.map { Self.key + "." + $0 } ?? Self.key }
     var selectedID: String {
-        defaults.string(forKey: preferenceKey) ?? defaults.string(forKey: Self.key) ?? PDFTextEngineID.automatic
+        defaults.string(forKey: preferenceKey) ?? SettingsStore(defaults: defaults).textRecognitionEngine
     }
 
     func select(_ engineID: String) {
-        defaults.set(engineID, forKey: preferenceKey)
+        if bookKey == nil { SettingsStore(defaults: defaults).textRecognitionEngine = engineID }
+        else { defaults.set(engineID, forKey: preferenceKey) }
     }
 
     func options(ocrEngines: [PDFTextEngineDescriptor]) -> [PDFTextEngineDescriptor] {

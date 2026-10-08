@@ -33,13 +33,18 @@ final class VideoPlaybackSession: ObservableObject {
     private var notifications: [NSObjectProtocol] = []
     private var restoring = true
     private var ended = false
+    private let settings: SettingsStore
 
     init(summary: ArtifactSummary, file: ArchiveFile, source: Source = .archive,
-         store: SQLiteStore, downloads: DownloadManager, player: AVPlayer = AVPlayer(),
+         store: SQLiteStore, downloads: DownloadManager, player: AVPlayer = AVPlayer(), settings: SettingsStore = .shared,
          acquireAudio: @escaping @MainActor () async throws -> UInt64?,
          releaseAudio: @escaping @MainActor (UInt64) -> Void) {
         self.summary = summary; self.file = file; self.source = source
         self.store = store; self.downloads = downloads; self.player = player
+        self.settings = settings
+        let speedPreference = PlaybackSpeedPreference()
+        let collection = summary.collections.first
+        player.defaultRate = Float(collection.map { speedPreference.hasOverride(collection: $0) } == true ? speedPreference.rate(collection: collection) : settings.defaultPlaybackSpeed)
         self.acquireAudio = acquireAudio; self.releaseAudio = releaseAudio
         rateObservation = player.observe(\.rate, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in
@@ -156,9 +161,14 @@ final class VideoPlaybackSession: ObservableObject {
         let position = ended ? 0 : seconds
         let previous = persistence
         let store = store, identifier = summary.identifier, fileName = file.name
+        let finished = ended
         persistence = Task {
             await previous?.value
             try? await store.setPlaybackPosition(identifier: identifier, fileName: fileName, seconds: position)
+            if finished {
+                try? await store.markRecordingPlayed(identifier: identifier, fileName: fileName)
+                try? await downloads.removePlayedDownload(identifier: identifier, fileName: fileName)
+            }
         }
     }
 

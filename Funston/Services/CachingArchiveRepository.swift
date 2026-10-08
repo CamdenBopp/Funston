@@ -14,9 +14,11 @@ actor CachingArchiveRepository: ArchiveRepository {
     private let client: ArchiveHTTPClient
     private let normalizer: ArchiveNormalizer
     private let encoder = JSONEncoder()
+    private let settings: SettingsStore?
 
-    init(store: SQLiteStore, transport: any ArchiveTransport = URLSessionArchiveTransport(), normalizer: ArchiveNormalizer = ArchiveNormalizer()) {
+    init(store: SQLiteStore, transport: any ArchiveTransport = URLSessionArchiveTransport(), normalizer: ArchiveNormalizer = ArchiveNormalizer(), settings: SettingsStore? = nil) {
         self.store = store; client = ArchiveHTTPClient(transport: transport); self.normalizer = normalizer
+        self.settings = settings
     }
 
     nonisolated func searchUpdates(_ request: SearchRequest) -> AsyncThrowingStream<RepositoryUpdate<SearchPage>, Error> {
@@ -56,8 +58,9 @@ actor CachingArchiveRepository: ArchiveRepository {
             let key = Self.searchCacheKey(request)
             let cached = try? await store.cacheEntry(key: key)
             if let cached, let value = try? await decodeSearch(cached, request: request) {
-                cachedValue = value
-                continuation.yield(RepositoryUpdate(value: value, freshness: cached.isFresh ? .fresh : .stale, isRefreshing: !cached.isFresh, refreshError: nil))
+                let filtered = await filteredSearch(value)
+                cachedValue = filtered.page
+                continuation.yield(RepositoryUpdate(value: filtered.page, freshness: cached.isFresh ? .fresh : .stale, isRefreshing: !cached.isFresh, refreshError: filtered.lookupFailed ? "Some items could not be checked for available media. Try again when Internet Archive is reachable." : nil))
                 if cached.isFresh { continuation.finish(); return }
             }
             try Task.checkCancellation()
@@ -68,7 +71,8 @@ actor CachingArchiveRepository: ArchiveRepository {
             if let lifetime = response.cacheLifetime(defaultLifetime: request.collection == nil ? 900 : 3600) {
                 try? await store.storeCache(key: key, kind: "search", response: data, snapshot: try? encoder.encode(page), maxAge: lifetime)
             }
-            continuation.yield(RepositoryUpdate(value: page, freshness: .fresh, isRefreshing: false, refreshError: nil))
+            let filtered = await filteredSearch(page)
+            continuation.yield(RepositoryUpdate(value: filtered.page, freshness: .fresh, isRefreshing: false, refreshError: filtered.lookupFailed ? "Some items could not be checked for available media. Try again when Internet Archive is reachable." : nil))
             continuation.finish()
         } catch {
             finish(error: error, cached: cachedValue, continuation: continuation)
@@ -115,6 +119,12 @@ actor CachingArchiveRepository: ArchiveRepository {
         var request = ArchiveNetworkPolicy.request(url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         return try await client.send(request)
+    }
+
+    private func filteredSearch(_ page: SearchPage) async -> (page: SearchPage, lookupFailed: Bool) {
+        let hidesUnsupported = await MainActor.run { (settings ?? .shared).hideUnsupportedMedia }
+        guard hidesUnsupported else { return (page, false) }
+        return await MediaAvailability.filter(page) { identifier in try await self.detail(identifier: identifier) }
     }
 
     private func decodeSearch(_ entry: StoredCacheEntry, request: SearchRequest) async throws -> SearchPage {

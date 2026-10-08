@@ -26,9 +26,8 @@ final class FunstonRootController: UIViewController {
         let explore = ExploreController(environment: environment, openCollection: { [weak self] collection in self?.openCollection(collection, destination: 0) }, openArtifact: { [weak self] artifact in self?.open(artifact, destination: 0) })
         let search = SearchController(environment: environment) { [weak self] artifact in self?.open(artifact, destination: 1) }
         let library = LibraryController(environment: environment) { [weak self] artifact in self?.open(artifact, destination: 2) }
-        let downloads = DownloadsController(environment: environment) { [weak self] artifact in self?.open(artifact, destination: 3) }
-        let symbols = ["safari", "magnifyingglass", "books.vertical", "arrow.down.circle"]
-        destinations = [explore, search, library, downloads].enumerated().map { index, controller in
+        let symbols = ["safari", "magnifyingglass", "books.vertical"]
+        destinations = [explore, search, library].enumerated().map { index, controller in
             let navigation = UINavigationController(rootViewController: controller)
             navigation.navigationBar.prefersLargeTitles = true
             navigation.tabBarItem = UITabBarItem(title: controller.title, image: UIImage(systemName: symbols[index]), tag: index)
@@ -236,7 +235,7 @@ private final class DestinationController: FunstonListController {
         self.selectedIndex = selectedIndex
         self.choose = choose
         super.init(title: "Funston", appearance: .sidebar)
-        apply([FunstonRow(id: "0", title: "Explore", symbol: "safari"), FunstonRow(id: "1", title: "Search", symbol: "magnifyingglass"), FunstonRow(id: "2", title: "Library", symbol: "books.vertical"), FunstonRow(id: "3", title: "Downloads", symbol: "arrow.down.circle")])
+        apply([FunstonRow(id: "0", title: "Explore", symbol: "safari"), FunstonRow(id: "1", title: "Search", symbol: "magnifyingglass"), FunstonRow(id: "2", title: "Library", symbol: "books.vertical")])
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func configure(_ cell: UICollectionViewListCell, row: FunstonRow) {

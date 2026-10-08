@@ -83,6 +83,11 @@ actor ArtworkPipeline {
         } onCancel: { Task { await self.cancel(key: key, consumer: consumer) } }
     }
 
+    func clearCache() {
+        cache.removeAllObjects()
+        session.configuration.urlCache?.removeAllCachedResponses()
+    }
+
     private func subscribe(key: String, consumer: UUID, url: URL, bucket: Int, continuation: CheckedContinuation<SendableImage, Error>) {
         if inFlight[key] != nil { inFlight[key]?.consumers[consumer] = continuation; return }
         let flightID = UUID()

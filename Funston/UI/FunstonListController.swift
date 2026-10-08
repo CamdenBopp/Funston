@@ -8,6 +8,7 @@ struct FunstonRow: Hashable {
     var symbol: String? = nil
     var artworkIdentifier: String? = nil
     var mediaType: MediaType = .unknown
+    var accessibilityValue: String? = nil
 }
 
 @MainActor
@@ -47,6 +48,10 @@ class FunstonListController: UICollectionViewController {
         apply(rows)
     }
 
+    func setSupplementaryViewProvider(_ provider: @escaping UICollectionViewDiffableDataSource<Int, String>.SupplementaryViewProvider) {
+        dataSource.supplementaryViewProvider = provider
+    }
+
     func configure(_ cell: UICollectionViewListCell, row: FunstonRow) {
         var configuration = cell.defaultContentConfiguration()
         configuration.text = row.title
@@ -70,6 +75,7 @@ class FunstonListController: UICollectionViewController {
         cell.accessories = row.navigates ? [.disclosureIndicator()] : []
         cell.isAccessibilityElement = true
         cell.accessibilityLabel = [row.title, row.subtitle].compactMap { $0 }.joined(separator: ". ")
+        cell.accessibilityValue = row.accessibilityValue
         cell.accessibilityTraits = row.navigates ? .button : .staticText
         cell.accessibilityIdentifier = row.id
     }

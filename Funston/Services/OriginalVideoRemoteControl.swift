@@ -17,22 +17,26 @@ final class OriginalVideoRemoteControl {
     static let skipInterval: Double = 15
     private let handler: @MainActor (Command) -> Bool
     private var targets: [(MPRemoteCommand, Any)] = []
+    private let skipBack: Double
+    private let skipForward: Double
 
     /// `handler` returns false when there is no film to act on.
-    init(handler: @escaping @MainActor (Command) -> Bool) { self.handler = handler }
+    init(skipBack: Double = skipInterval, skipForward: Double = skipInterval, handler: @escaping @MainActor (Command) -> Bool) {
+        self.skipBack = skipBack; self.skipForward = skipForward; self.handler = handler
+    }
 
     var isActive: Bool { !targets.isEmpty }
 
     func activate() {
         guard targets.isEmpty else { return }
         let center = MPRemoteCommandCenter.shared()
-        center.skipForwardCommand.preferredIntervals = [NSNumber(value: Self.skipInterval)]
-        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: Self.skipInterval)]
+        center.skipForwardCommand.preferredIntervals = [NSNumber(value: skipForward)]
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: skipBack)]
         add(center.playCommand) { _ in .play }
         add(center.pauseCommand) { _ in .pause }
         add(center.togglePlayPauseCommand) { _ in .toggle }
-        add(center.skipForwardCommand) { _ in .skip(by: Self.skipInterval) }
-        add(center.skipBackwardCommand) { _ in .skip(by: -Self.skipInterval) }
+        add(center.skipForwardCommand) { [skipForward] event in .skip(by: (event as? MPSkipIntervalCommandEvent)?.interval ?? skipForward) }
+        add(center.skipBackwardCommand) { [skipBack] event in .skip(by: -((event as? MPSkipIntervalCommandEvent)?.interval ?? skipBack)) }
         add(center.changePlaybackPositionCommand) { event in
             (event as? MPChangePlaybackPositionCommandEvent).map { .seek(to: $0.positionTime) }
         }

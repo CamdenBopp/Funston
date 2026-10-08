@@ -96,9 +96,14 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     /// The speed play() uses, even while paused, for time-left estimates.
     @Published private(set) var playbackRate: Double = 1
     private let speedPreference = PlaybackSpeedPreference()
+    private let settings: SettingsStore
+    private var settingsObservation: AnyCancellable?
+    var skipBackInterval: Double { Double(settings.skipBackSeconds) }
+    var skipForwardInterval: Double { Double(settings.skipForwardSeconds) }
 
     func setPlaybackSpeed(_ value: Double, forCollection: Bool = false) {
-        speedPreference.set(value, collection: forCollection ? context?.artifact.collections.first : nil)
+        if forCollection, let collection = context?.artifact.collections.first { speedPreference.set(value, collection: collection) }
+        else { settings.defaultPlaybackSpeed = value }
         applyPlaybackSpeed()
     }
 
@@ -112,7 +117,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     }
 
     private func applyPlaybackSpeed() {
-        playbackRate = speedPreference.rate(collection: context?.artifact.collections.first)
+        playbackRate = hasCollectionSpeedOverride ? speedPreference.rate(collection: context?.artifact.collections.first) : settings.defaultPlaybackSpeed
         player.defaultRate = Float(playbackRate)
         if player.rate != 0 { player.rate = Float(playbackRate) }
         updateNowPlaying()
@@ -120,6 +125,9 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
 
     func setRecordingPlayed(identifier: String, track: PlayableTrack, played: Bool) async throws {
         for file in track.candidates { try await store.setRecordingPlayed(identifier: identifier, fileName: file.name, played: played) }
+        if played {
+            for file in track.candidates { try await downloads.removePlayedDownload(identifier: identifier, fileName: file.name) }
+        }
         if !played, context?.artifact.identifier == identifier, context?.track.id == track.id { seek(to: 0) }
     }
 
@@ -160,13 +168,14 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     private var interrupted = false
     private var videoOwnership: UInt64?
 
-    init(store: SQLiteStore, downloads: DownloadManager, player: AVPlayer = AVPlayer(),
+    init(store: SQLiteStore, downloads: DownloadManager, player: AVPlayer = AVPlayer(), settings: SettingsStore = .shared,
          audioSessionActivator: (@MainActor () async throws -> Void)? = nil,
          audioSessionDeactivator: (@MainActor () async -> Void)? = nil,
          artworkLoader: (@MainActor (URL) async throws -> SendableImage)? = nil,
          artifactDetailLoader: (@MainActor (String) async throws -> ArtifactDetail)? = nil) {
         self.store = store
         self.downloads = downloads
+        self.settings = settings
         self.artifactDetailLoader = artifactDetailLoader
         self.player = player
         self.audioSessionActivator = audioSessionActivator ?? {
@@ -180,6 +189,16 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         configureRemoteCommands()
         configureAudioNotifications()
         sleepTimer.attach(to: self)
+        settingsObservation = NotificationCenter.default.publisher(for: SettingsStore.didChange).sink { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.applyPlaybackSpeed()
+                let center = MPRemoteCommandCenter.shared()
+                center.skipBackwardCommand.preferredIntervals = [NSNumber(value: self.skipBackInterval)]
+                center.skipForwardCommand.preferredIntervals = [NSNumber(value: self.skipForwardInterval)]
+                self.objectWillChange.send()
+            }
+        }
         updateNowPlaying()
         timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.updateTransportPhase() }
@@ -215,6 +234,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
             phase = .failed("No supported audio file is available.")
             return
         }
+        let startsNewItem = context?.artifact.identifier != artifact.identifier
         attemptedFiles.removeAll()
         wantsToPlay = autoplay
         intentRevision &+= 1
@@ -231,6 +251,10 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         }
         saveCurrentPosition()
         install(artifact: artifact, tracks: tracks, trackIndex: trackIndex, file: file)
+        if startsNewItem && autoplay {
+            if settings.sleepTimerMinutes == -1 { sleepTimer.stopAtEndOfRecording() }
+            else if settings.sleepTimerMinutes > 0 { sleepTimer.start(after: .seconds(settings.sleepTimerMinutes * 60)) }
+        }
     }
 
     nonisolated private static let downloadedAudioExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "aiff", "aif"]
@@ -727,7 +751,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         guard videoOwnership == nil else { return }
         phase = .ended
         persist(seconds: 0)
-        if !stopsAfterCurrentRecording, let context, context.trackIndex + 1 < context.tracks.count {
+        if !stopsAfterCurrentRecording, settings.autoPlayNext, let context, context.trackIndex + 1 < context.tracks.count {
             nextTrack()
         } else {
             let requestedStop = stopsAfterCurrentRecording
@@ -758,6 +782,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
             seconds: phase == .ended ? 0 : max(0, seconds)
         )
         let completed = phase == .ended
+        let deletePlayedDownload = completed && settings.autoDeletePlayedDownloads
         let previous = persistenceTail
         persistenceTail = Task {
             await previous?.value
@@ -768,6 +793,12 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
                 seconds: bookmark.seconds
             )
             try? await store.setLastPlayback(bookmark)
+            if deletePlayedDownload {
+                for record in downloads.records where record.identifier == bookmark.identifier &&
+                    context.track.candidates.contains(where: { $0.name == record.fileName }) {
+                    try? await downloads.remove(record)
+                }
+            }
         }
     }
 
@@ -794,16 +825,16 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
             Task { @MainActor in self?.togglePlayback() }
             return .success
         }))
-        center.skipForwardCommand.preferredIntervals = [NSNumber(value: Self.remoteSkipInterval)]
-        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: Self.remoteSkipInterval)]
+        center.skipForwardCommand.preferredIntervals = [NSNumber(value: skipForwardInterval)]
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: skipBackInterval)]
         remoteCommandTokens.append((center.skipForwardCommand, center.skipForwardCommand.addTarget { [weak self] event in
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? Self.remoteSkipInterval
-            Task { @MainActor in self?.skip(by: interval) }
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval
+            Task { @MainActor in if let self { self.skip(by: interval ?? self.skipForwardInterval) } }
             return .success
         }))
         remoteCommandTokens.append((center.skipBackwardCommand, center.skipBackwardCommand.addTarget { [weak self] event in
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? Self.remoteSkipInterval
-            Task { @MainActor in self?.skip(by: -interval) }
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval
+            Task { @MainActor in if let self { self.skip(by: -(interval ?? self.skipBackInterval)) } }
             return .success
         }))
         center.changePlaybackPositionCommand.isEnabled = true

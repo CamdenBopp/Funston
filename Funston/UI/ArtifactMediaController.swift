@@ -80,7 +80,7 @@ enum ArtifactMediaPresentation {
         }
         let session = VideoPlaybackSession(summary: summary, file: file,
             source: downloadedOnly ? .downloadedOnly : .archive,
-            store: environment.store, downloads: environment.downloads,
+            store: environment.store, downloads: environment.downloads, settings: environment.settings,
             acquireAudio: { try await environment.playback.acquireVideoPlayback() },
             releaseAudio: { environment.playback.releaseVideoPlayback($0) })
         let viewer = UINavigationController(rootViewController: ArtifactVideoController(session: session))

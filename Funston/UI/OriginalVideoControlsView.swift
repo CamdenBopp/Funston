@@ -42,6 +42,12 @@ final class OriginalVideoControlsView: UIView {
                                                             diameter: Metrics.playButton, glyph: Metrics.playGlyph)
     let forwardButton = OriginalVideoControlsView.glassButton(symbol: "goforward.10", label: "Go Forward 10 Seconds",
                                                                diameter: Metrics.skipButton, glyph: Metrics.skipGlyph)
+    func configureSkipIntervals(back: Int, forward: Int) {
+        backButton.setImage(UIImage(systemName: "gobackward.\(back)") ?? UIImage(systemName: "gobackward"), for: .normal)
+        forwardButton.setImage(UIImage(systemName: "goforward.\(forward)") ?? UIImage(systemName: "goforward"), for: .normal)
+        backButton.accessibilityLabel = "Go Backward \(back) Seconds"
+        forwardButton.accessibilityLabel = "Go Forward \(forward) Seconds"
+    }
     let moreButton = OriginalVideoControlsView.glassButton(symbol: "ellipsis", label: "More")
     let titleLabel = UILabel()
     let scrubber = OriginalVideoScrubber()

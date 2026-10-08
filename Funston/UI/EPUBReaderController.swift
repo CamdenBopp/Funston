@@ -198,6 +198,7 @@ final class EPUBReaderController: UIViewController, EPUBNavigatorDelegate {
         return EPUBPreferences(
             fontSize: Double(scaled / Self.bodyPointSize),
             publisherStyles: false,
+            scroll: SettingsStore.shared.readingLayout == .continuous,
             textAlign: .start,
             theme: traitCollection.userInterfaceStyle == .dark ? .dark : .light)
     }

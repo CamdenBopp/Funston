@@ -177,4 +177,35 @@ final class VideoPlaybackTests: XCTestCase {
         host.playerViewControllerDidStopPictureInPicture(host.video)
         XCTAssertEqual(session.state, .idle, "A late PiP callback cannot resurrect a stopped session")
     }
+
+    func testSettingsSpeedAndAutoDeleteOnlyAfterVideoFinishes() async throws {
+        let (store, directory, _) = try await fixture()
+        let name = "VideoSettings." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = SettingsStore(defaults: defaults)
+        settings.defaultPlaybackSpeed = 1.5
+        settings.autoDeletePlayedDownloads = true
+        let url = directory.appending(path: "fixture--movie.mp4")
+        try await movie(at: url)
+        try await store.upsertDownload(record(url))
+        let downloads = DownloadManager(store: store, mediaDirectory: directory, sessionConfiguration: .ephemeral, settings: settings)
+        let video = VideoPlaybackSession(summary: ArtifactSummary(identifier: "film", title: "Film", mediaType: .movies),
+            file: ArchiveFile(name: "movie.mp4"), source: .downloadedOnly, store: store, downloads: downloads, settings: settings,
+            acquireAudio: { 1 }, releaseAudio: { _ in })
+        XCTAssertEqual(video.player.defaultRate, 1.5)
+        video.start()
+        try await until { video.state == .ready && video.player.rate > 0 }
+        video.stop()
+        await downloads.waitUntilReady()
+        XCTAssertEqual(downloads.records.count, 1, "Closing early must retain the download")
+        video.start()
+        try await until { video.state == .ready && video.player.rate > 0 }
+        XCTAssertEqual(video.player.rate, 1.5)
+        NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: video.player.currentItem)
+        try await until { downloads.records.isEmpty }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "The active video keeps its file lease")
+        video.stop()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    }
 }

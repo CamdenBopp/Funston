@@ -1,6 +1,10 @@
 import Foundation
 import SQLite3
 
+enum LibrarySaveReason: String, Codable, Sendable {
+    case explicit, viaDownload
+}
+
 enum DownloadState: String, Codable, Sendable {
     case queued
     case downloading
@@ -88,14 +92,17 @@ actor SQLiteStore {
         sqlite3_close(database)
     }
 
-    func saveArtifact(identifier: String, snapshot: Data, date: Date = .now) throws {
+    func saveArtifact(identifier: String, snapshot: Data, date: Date = .now, reason: LibrarySaveReason = .explicit) throws {
         try execute(
             """
-            INSERT INTO saved_artifacts(identifier, snapshot, saved_at)
-            VALUES(?, ?, ?)
-            ON CONFLICT(identifier) DO UPDATE SET snapshot=excluded.snapshot, saved_at=excluded.saved_at
+            INSERT INTO saved_artifacts(identifier, snapshot, saved_at, save_reason)
+            VALUES(?, ?, ?, ?)
+            ON CONFLICT(identifier) DO UPDATE SET
+              snapshot=CASE WHEN excluded.save_reason='explicit' THEN excluded.snapshot ELSE saved_artifacts.snapshot END,
+              saved_at=excluded.saved_at,
+              save_reason=CASE WHEN saved_artifacts.save_reason='explicit' THEN 'explicit' ELSE excluded.save_reason END
             """,
-            bindings: [.text(identifier), .blob(snapshot), .double(date.timeIntervalSince1970)]
+            bindings: [.text(identifier), .blob(snapshot), .double(date.timeIntervalSince1970), .text(reason.rawValue)]
         )
     }
 
@@ -118,6 +125,15 @@ actor SQLiteStore {
             "SELECT snapshot FROM saved_artifacts ORDER BY saved_at DESC"
         ) { statement in Self.blob(statement, column: 0) ?? Data() }
     }
+
+    func librarySaveReason(identifier: String) throws -> LibrarySaveReason? {
+        try queryOne("SELECT save_reason FROM saved_artifacts WHERE identifier=?", bindings: [.text(identifier)]) {
+            Self.text($0, column: 0).flatMap(LibrarySaveReason.init(rawValue:))
+        } ?? nil
+    }
+
+    /// Only cached Archive responses; library, downloads and progress are preserved.
+    func clearCache() throws { try execute("DELETE FROM cache_entries") }
 
     func setPlaybackPosition(identifier: String, fileName: String, seconds: Double) throws {
         try execute(
@@ -274,27 +290,39 @@ actor SQLiteStore {
     }
 
     func upsertDownload(_ record: DownloadRecord) throws {
-        try execute(
-            """
-            INSERT INTO downloads(
-              key, identifier, file_name, title, expected_bytes, local_path,
-              state, received_bytes, total_bytes, error_message, updated_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET
-              title=excluded.title, expected_bytes=excluded.expected_bytes,
-              local_path=excluded.local_path, state=excluded.state,
-              received_bytes=excluded.received_bytes, total_bytes=excluded.total_bytes,
-              error_message=excluded.error_message, updated_at=excluded.updated_at
-            """,
-            bindings: [
-                .text(record.key), .text(record.identifier), .text(record.fileName), .text(record.title),
-                record.expectedBytes.map(Binding.int64) ?? .null, .text(record.localPath),
-                .text(record.state.rawValue), .int64(record.receivedBytes),
-                record.totalBytes.map(Binding.int64) ?? .null,
-                record.errorMessage.map(Binding.text) ?? .null,
-                .double(record.updatedAt.timeIntervalSince1970)
-            ]
-        )
+        let isNew = try queryOne("SELECT key FROM downloads WHERE key=?", bindings: [.text(record.key)]) { Self.text($0, column: 0) } == nil
+        try execute("BEGIN IMMEDIATE")
+        do {
+            try execute(
+                """
+                INSERT INTO downloads(
+                  key, identifier, file_name, title, expected_bytes, local_path,
+                  state, received_bytes, total_bytes, error_message, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                  title=excluded.title, expected_bytes=excluded.expected_bytes,
+                  local_path=excluded.local_path, state=excluded.state,
+                  received_bytes=excluded.received_bytes, total_bytes=excluded.total_bytes,
+                  error_message=excluded.error_message, updated_at=excluded.updated_at
+                """,
+                bindings: [
+                    .text(record.key), .text(record.identifier), .text(record.fileName), .text(record.title),
+                    record.expectedBytes.map(Binding.int64) ?? .null, .text(record.localPath),
+                    .text(record.state.rawValue), .int64(record.receivedBytes),
+                    record.totalBytes.map(Binding.int64) ?? .null,
+                    record.errorMessage.map(Binding.text) ?? .null,
+                    .double(record.updatedAt.timeIntervalSince1970)
+                ]
+            )
+            if isNew {
+                let artifact = ArtifactSummary(identifier: record.identifier, title: record.title)
+                try saveArtifact(identifier: record.identifier, snapshot: JSONEncoder().encode(artifact), reason: .viaDownload)
+            }
+            try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
     }
 
     func downloads() throws -> [DownloadRecord] {
@@ -499,6 +527,15 @@ actor SQLiteStore {
           file_name TEXT NOT NULL,
           PRIMARY KEY(identifier, file_name)
         );
+        """,
+        // 6: durable membership intent, with one atomic, resumable import of old downloads.
+        """
+        ALTER TABLE saved_artifacts ADD COLUMN save_reason TEXT NOT NULL DEFAULT 'explicit';
+        INSERT OR IGNORE INTO saved_artifacts(identifier, snapshot, saved_at, save_reason)
+        SELECT identifier, CAST(json_object('identifier', identifier, 'title', title,
+          'creators', json('[]'), 'mediaType', 'unknown', 'collections', json('[]')) AS BLOB),
+          MAX(updated_at), 'viaDownload'
+        FROM downloads GROUP BY identifier;
         """
     ]
 

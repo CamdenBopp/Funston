@@ -168,36 +168,230 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
     }
 }
 
+enum LibraryFilter: Int, CaseIterable { case all, saved, downloads }
+
+struct LibraryItem {
+    let artifact: ArtifactSummary
+    let isSaved: Bool
+    let downloads: [DownloadRecord]
+
+    var downloadSummary: String? {
+        guard !downloads.isEmpty else { return nil }
+        return [DownloadState.completed, .downloading, .queued, .failed, .cancelled, .missing].compactMap { state in
+            let count = downloads.filter { $0.state == state }.count
+            return count == 0 ? nil : "\(count) \(state == .completed ? "downloaded" : state.rawValue)"
+        }.joined(separator: ", ")
+    }
+    var accessibilityProgress: String? {
+        let active = downloads.filter { $0.state == .downloading }
+        guard !active.isEmpty else { return nil }
+        return active.map { record in
+            guard let total = record.totalBytes, total > 0 else { return "Downloading \(DownloadPresentation.fileName(record.fileName))" }
+            return "\(DownloadPresentation.fileName(record.fileName)), " + Double(record.receivedBytes).divided(by: Double(total)).formatted(.percent.precision(.fractionLength(0)))
+        }.joined(separator: ". ")
+    }
+    static func project(saved: [ArtifactSummary], downloads: [DownloadRecord], filter: LibraryFilter) -> [LibraryItem] {
+        let grouped = Dictionary(grouping: downloads, by: \.identifier)
+        let savedIDs = Set(saved.map(\.identifier))
+        var artifacts = saved
+        var seen = savedIDs
+        for record in downloads where seen.insert(record.identifier).inserted {
+            artifacts.append(ArtifactSummary(identifier: record.identifier, title: record.title))
+        }
+        return artifacts.compactMap { artifact in
+            let records = grouped[artifact.identifier] ?? []
+            if filter == .saved && !savedIDs.contains(artifact.identifier) { return nil }
+            if filter == .downloads && records.isEmpty { return nil }
+            return LibraryItem(artifact: artifact, isSaved: savedIDs.contains(artifact.identifier), downloads: records)
+        }
+    }
+}
+
+@MainActor
+private final class LibraryFilterHeader: UICollectionReusableView {
+    let segments = UISegmentedControl(items: ["All", "Saved", "Downloads"])
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        segments.accessibilityIdentifier = "libraryFilter"
+        segments.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(segments)
+        NSLayoutConstraint.activate([
+            segments.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            segments.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            segments.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            segments.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+            segments.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
 @MainActor
 final class LibraryController: FunstonListController {
     private let environment: AppEnvironment
     private let open: (ArtifactSummary) -> Void
     private var subscriptions = Set<AnyCancellable>()
+    private var filterRevision = 0
+    private(set) var filter = LibraryFilter.all
+    private var items: [LibraryItem] = []
     init(environment: AppEnvironment, open: @escaping (ArtifactSummary) -> Void) {
         self.environment = environment; self.open = open
         super.init(title: "Library")
+        installFilter()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func viewDidLoad() {
         super.viewDidLoad()
-        environment.$saved.combineLatest(environment.$libraryError).sink { [weak self] saved, error in
+        navigationItem.rightBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "gearshape"), primaryAction: UIAction { [weak self] _ in
             guard let self else { return }
-            self.clearMessage()
-            var rows = saved.map { FunstonRow.artifact($0, prefix: "saved:") }
-            if let error, !saved.isEmpty { rows.append(FunstonRow(id: "__libraryRetry", title: "Try Again", subtitle: "Library could not be updated. " + error)) }
-            self.apply(rows)
-            if let error, saved.isEmpty { self.showMessage("Library could not be loaded", detail: error, retry: { [weak self] in Task { await self?.environment.reloadLibrary() } }) }
-            else if saved.isEmpty { self.showMessage("Nothing saved yet", detail: "Tap Save on any item to keep it here.") }
-        }.store(in: &subscriptions)
+            SettingsPresentation.present(from: self, environment: self.environment)
+        })
+        navigationItem.rightBarButtonItem?.accessibilityLabel = "Settings"
+        environment.$saved.combineLatest(environment.$libraryError, environment.downloads.$records, environment.downloads.$loadError)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, _, _, _ in self?.render() }.store(in: &subscriptions)
+    }
+    private func installFilter() {
+        var configuration = UICollectionLayoutListConfiguration(appearance: .plain)
+        configuration.headerMode = .none
+        configuration.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
+            guard let self, items.indices.contains(indexPath.item) else { return nil }
+            return swipeActions(for: rows[indexPath.item])
+        }
+        collectionView.collectionViewLayout = UICollectionViewCompositionalLayout { _, layoutEnvironment in
+            let section = NSCollectionLayoutSection.list(using: configuration, layoutEnvironment: layoutEnvironment)
+            section.boundarySupplementaryItems = [NSCollectionLayoutBoundarySupplementaryItem(
+                layoutSize: NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(60)),
+                elementKind: UICollectionView.elementKindSectionHeader, alignment: .top)]
+            return section
+        }
+        collectionView.register(LibraryFilterHeader.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: "filter")
+        setSupplementaryViewProvider { [weak self] collection, kind, index in
+            let header = collection.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "filter", for: index) as! LibraryFilterHeader
+            guard let self else { return header }
+            header.segments.selectedSegmentIndex = filter.rawValue
+            header.segments.removeTarget(nil, action: nil, for: .valueChanged)
+            header.segments.addTarget(self, action: #selector(changeFilter(_:)), for: .valueChanged)
+            return header
+        }
+    }
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Decide once on reopening, after reconciliation; never change a filter under the user's focus.
+        let revision = filterRevision
+        Task { [weak self] in
+            guard let self else { return }
+            await environment.downloads.waitUntilReady()
+            if revision == filterRevision && filter == .downloads && environment.downloads.loadError == nil && environment.downloads.records.isEmpty {
+                filter = .all
+                for header in collectionView.visibleSupplementaryViews(ofKind: UICollectionView.elementKindSectionHeader) {
+                    (header as? LibraryFilterHeader)?.segments.selectedSegmentIndex = filter.rawValue
+                }
+            }
+            render()
+        }
+    }
+    @objc private func changeFilter(_ sender: UISegmentedControl) {
+        filterRevision += 1
+        filter = LibraryFilter(rawValue: sender.selectedSegmentIndex) ?? .all
+        render()
+    }
+    private func render() {
+        items = LibraryItem.project(saved: environment.saved, downloads: environment.downloads.records, filter: filter)
+        clearMessage()
+        var rows = items.map { item in
+            var row = FunstonRow.artifact(item.artifact, prefix: "library:")
+            row.accessibilityValue = item.accessibilityProgress
+            row.subtitle = [row.subtitle, item.downloadSummary].compactMap { $0 }.joined(separator: "\n")
+            return row
+        }
+        let error = environment.libraryError ?? environment.downloads.loadError
+        if let error { rows.append(FunstonRow(id: "__libraryRetry", title: "Try Again", subtitle: error)) }
+        apply(rows)
+        if items.isEmpty && error == nil {
+            showMessage(filter == .downloads ? "No downloads" : "Nothing saved yet", detail: filter == .downloads ? "Download files from an item to keep them available offline." : "Save or download an item to keep it here.")
+        }
     }
     override func selected(_ id: String) {
-        if id == "__libraryRetry" { Task { await environment.reloadLibrary() }; return }
-        guard id.hasPrefix("saved:") else { return }
-        if let artifact = environment.saved.first(where: { $0.identifier == String(id.dropFirst(6)) }) { open(artifact) }
+        if id == "__libraryRetry" { Task { await environment.reloadLibrary(); await environment.downloads.reloadAfterFailure() }; return }
+        guard let item = items.first(where: { "library:" + $0.artifact.identifier == id }) else { return }
+        if item.downloads.isEmpty { open(item.artifact) }
+        else { navigationController?.pushViewController(LibraryItemDownloadsController(environment: environment, artifact: item.artifact, open: open), animated: true) }
     }
     override func configure(_ cell: UICollectionViewListCell, row: FunstonRow) {
         super.configure(cell, row: row)
-        if row.id == "__libraryRetry" { cell.accessories = [] }
+        guard let item = items.first(where: { "library:" + $0.artifact.identifier == row.id }) else { return }
+        cell.accessibilityValue = item.accessibilityProgress
+        cell.accessibilityCustomActions = actions(for: item).map { title in
+            UIAccessibilityCustomAction(name: title) { [weak self] _ in self?.perform(title, item: item); return true }
+        }
+    }
+    private func actions(for item: LibraryItem) -> [String] {
+        var actions = [item.isSaved ? "Remove from Library" : "Save to Library"]
+        if !item.downloads.isEmpty { actions += ["Delete Downloads", "Remove from Library and Delete Downloads"] }
+        return actions
+    }
+    override func swipeActions(for row: FunstonRow) -> UISwipeActionsConfiguration? {
+        guard let item = items.first(where: { "library:" + $0.artifact.identifier == row.id }) else { return nil }
+        let configuration = UISwipeActionsConfiguration(actions: actions(for: item).map { title in
+            UIContextualAction(style: title == "Save to Library" ? .normal : .destructive, title: title) { [weak self] _, _, done in self?.perform(title, item: item); done(true) }
+        })
+        configuration.performsFirstActionWithFullSwipe = false
+        return configuration
+    }
+    private func perform(_ action: String, item: LibraryItem) {
+        let change = { [weak self] in
+            guard let self else { return }
+            Task {
+                do {
+                    if action.contains("Delete Downloads") {
+                        for record in item.downloads { try await environment.downloads.remove(record) }
+                    }
+                    if action != "Delete Downloads" { try await environment.setSaved(item.artifact, saved: action == "Save to Library") }
+                } catch { showError(error) }
+            }
+        }
+        if action.contains("Delete Downloads"), item.downloads.contains(where: { $0.state == .completed }) {
+            let alert = UIAlertController(title: action + "?", message: "Active transfers will also be cancelled. Saved reading and listening positions will be kept.", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            alert.addAction(UIAlertAction(title: action, style: .destructive) { _ in change() })
+            present(alert, animated: true)
+        } else { change() }
+    }
+}
+
+@MainActor
+final class LibraryItemDownloadsController: FunstonListController {
+    private let environment: AppEnvironment
+    private let artifact: ArtifactSummary
+    private let open: (ArtifactSummary) -> Void
+    private var subscription: AnyCancellable?
+    private var records: [DownloadRecord] = []
+    private var projection = DownloadRowProjection()
+    init(environment: AppEnvironment, artifact: ArtifactSummary, open: @escaping (ArtifactSummary) -> Void) {
+        self.environment = environment; self.artifact = artifact; self.open = open
+        super.init(title: artifact.title)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        subscription = environment.downloads.$records.sink { [weak self] records in
+            guard let self else { return }
+            self.records = records.filter { $0.identifier == artifact.identifier }
+            let update = projection.update(self.records)
+            if update.replacesContents { apply([FunstonRow(id: "openItem", title: "Open Item")] + update.rows) }
+            else { updateRows(update.rows) }
+        }
+    }
+    override func selected(_ id: String) {
+        if id == "openItem" { open(artifact); return }
+        guard let record = records.first(where: { $0.key == id }) else { return }
+        navigationController?.pushViewController(DownloadDetailController(environment: environment, record: record, open: open), animated: true)
+    }
+    override func configure(_ cell: UICollectionViewListCell, row: FunstonRow) {
+        super.configure(cell, row: row)
+        guard let record = records.first(where: { $0.key == row.id }) else { return }
+        cell.accessibilityValue = LibraryItem(artifact: artifact, isSaved: false, downloads: [record]).accessibilityProgress
     }
 }
 
@@ -264,14 +458,12 @@ struct DownloadRowProjection {
     }
 
     private static func row(_ record: DownloadRecord) -> FunstonRow {
-        var state = record.state == .completed ? "File available offline" : record.state.rawValue.capitalized
-        if record.state == .downloading, let total = record.totalBytes, total > 0 {
-            state += ", " + Double(record.receivedBytes).divided(by: Double(total)).formatted(.percent.precision(.fractionLength(0)))
-        }
+        let state = record.state == .completed ? "File available offline" : record.state.rawValue.capitalized
         return FunstonRow(
             id: record.key,
             title: DownloadPresentation.fileName(record.fileName),
-            subtitle: ["From \(MetadataFormatter.title(record.title))", state, record.errorMessage].compactMap { $0 }.joined(separator: "\n")
+            subtitle: ["From \(MetadataFormatter.title(record.title))", state, record.errorMessage].compactMap { $0 }.joined(separator: "\n"),
+            accessibilityValue: LibraryItem(artifact: ArtifactSummary(identifier: record.identifier, title: record.title), isSaved: false, downloads: [record]).accessibilityProgress
         )
     }
 }
@@ -335,7 +527,9 @@ final class DownloadDetailController: FunstonListController, QLPreviewController
             rows.append(FunstonRow(id: "openLocal", title: fileExtension == "pdf" ? "Read Downloaded PDF"
                                    : fileExtension == "epub" ? "Read Downloaded Book" : "Open Downloaded File"))
             rows.append(FunstonRow(id: "remove", title: "Remove Download"))
-        } }
+        }
+        if record.state != .completed { rows.append(FunstonRow(id: "remove", title: "Remove Download")) }
+        }
         if let mutationError, let failedMutation {
             rows.append(FunstonRow(id: "retryMutation", title: failedMutation == .remove ? "Retry Removing Download" : "Retry Cancelling Download", subtitle: mutationError))
         }
@@ -354,17 +548,23 @@ final class DownloadDetailController: FunstonListController, QLPreviewController
         case "retryMutation": if let failedMutation { performMutation(failedMutation) }
         case "retry": Task { await environment.downloads.retry(record, file: ArchiveFile(name: record.fileName, size: record.expectedBytes)) }
         case "remove":
-            let alert = UIAlertController(title: "Remove downloaded file?", message: "Your library and saved progress will be kept.", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            alert.addAction(UIAlertAction(title: "Remove Download", style: .destructive) { [weak self] _ in
-                self?.performMutation(.remove)
-            })
-            present(alert, animated: true)
+            Task { [weak self] in
+                guard let self else { return }
+                let lastDownload = environment.downloads.records.filter { $0.identifier == record.identifier }.count == 1
+                let reason = try? await environment.store.librarySaveReason(identifier: record.identifier)
+                let alert = UIAlertController(title: "Remove downloaded file?", message: "Saved reading and listening positions will be kept.", preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                alert.addAction(UIAlertAction(title: "Remove Download", style: .destructive) { [weak self] _ in self?.performMutation(.remove) })
+                if lastDownload && reason == .viaDownload {
+                    alert.addAction(UIAlertAction(title: "Remove Download and Library Item", style: .destructive) { [weak self] _ in self?.performMutation(.remove, removeMembership: true) })
+                }
+                present(alert, animated: true)
+            }
         default: break
         }
     }
 
-    private func performMutation(_ operation: DownloadMutation) {
+    private func performMutation(_ operation: DownloadMutation, removeMembership: Bool = false) {
         guard mutation == nil else { return }
         mutation = operation
         failedMutation = nil
@@ -378,6 +578,9 @@ final class DownloadDetailController: FunstonListController, QLPreviewController
                 switch operation {
                 case .cancel: try await downloads.cancel(record)
                 case .remove: try await downloads.remove(record, deferPhysicalRemoval: deferRemoval)
+                }
+                if removeMembership {
+                    try await self?.environment.setSaved(ArtifactSummary(identifier: record.identifier, title: record.title), saved: false)
                 }
                 self?.mutation = nil
                 if operation == .remove { self?.navigationController?.popViewController(animated: true) }

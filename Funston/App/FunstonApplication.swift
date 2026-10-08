@@ -22,19 +22,25 @@ final class AppEnvironment: ObservableObject {
     let repository: CachingArchiveRepository
     let downloads: DownloadManager
     let playback: PlaybackController
+    let settings: SettingsStore
+    private var librarySubscriptions = Set<AnyCancellable>()
     private let library: LibraryPersistence
     @Published private(set) var saved: [ArtifactSummary] = []
     @Published private(set) var libraryError: String?
 
     /// Tests pass an ephemeral session so they never touch the app's background transfers.
-    init(store: SQLiteStore, mediaDirectory: URL, downloadSession: URLSessionConfiguration? = nil) {
+    init(store: SQLiteStore, mediaDirectory: URL, downloadSession: URLSessionConfiguration? = nil, settings: SettingsStore = .shared) {
         self.store = store
-        repository = CachingArchiveRepository(store: store)
-        downloads = DownloadManager(store: store, mediaDirectory: mediaDirectory, sessionConfiguration: downloadSession)
+        self.settings = settings
+        repository = CachingArchiveRepository(store: store, settings: settings)
+        downloads = DownloadManager(store: store, mediaDirectory: mediaDirectory, sessionConfiguration: downloadSession, settings: settings)
         let playbackRepository = repository
-        playback = PlaybackController(store: store, downloads: downloads,
+        playback = PlaybackController(store: store, downloads: downloads, settings: settings,
             artifactDetailLoader: { identifier in try await playbackRepository.detail(identifier: identifier) })
         library = LibraryPersistence(store: store)
+        downloads.$records.map { Set($0.map(\.identifier)) }.removeDuplicates()
+            .dropFirst().sink { [weak self] _ in Task { await self?.reloadLibrary() } }
+            .store(in: &librarySubscriptions)
     }
 
     static func make() async throws -> AppEnvironment {
@@ -161,6 +167,13 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene, let delegate = UIApplication.shared.delegate as? AppDelegate else { return }
         let window = UIWindow(windowScene: scene)
+        #if DEBUG
+        switch ProcessInfo.processInfo.environment["FUNSTON_TEST_APPEARANCE"] {
+        case "Light": window.overrideUserInterfaceStyle = .light
+        case "Dark": window.overrideUserInterfaceStyle = .dark
+        default: break
+        }
+        #endif
         let loadingController = UIViewController()
         loadingController.view.backgroundColor = .systemBackground
         var loading = UIContentUnavailableConfiguration.loading()

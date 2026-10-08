@@ -2,6 +2,7 @@ import Combine
 import CryptoKit
 import Foundation
 import OSLog
+import UIKit
 
 struct DownloadTaskIdentity: Codable, Sendable, Equatable {
     let key: String
@@ -151,9 +152,11 @@ final class DownloadManager: NSObject, ObservableObject {
     private var backgroundEventsDrained = false
     private var pendingRemovals = Set<String>()
     private var leases: [String: Int] = [:]
+    private let settings: SettingsStore
 
-    init(store: any DownloadPersistence, mediaDirectory: URL, sessionConfiguration: URLSessionConfiguration? = nil, accessRepository: any ArchiveRepository = NetworkArchiveRepository()) {
+    init(store: any DownloadPersistence, mediaDirectory: URL, sessionConfiguration: URLSessionConfiguration? = nil, accessRepository: any ArchiveRepository = NetworkArchiveRepository(), settings: SettingsStore = .shared) {
         self.store = store; self.mediaDirectory = mediaDirectory
+        self.settings = settings
         self.accessRepository = accessRepository
         let delegate = DownloadSessionDelegate(mediaDirectory: mediaDirectory)
         self.delegate = delegate
@@ -219,8 +222,10 @@ final class DownloadManager: NSObject, ObservableObject {
             let resumeData = await consumeResumeData(key: key)
             try await store.upsertDownload(record)
             upsertInMemory(record)
-            let created = resumeData.map { session.downloadTask(withResumeData: $0) }
-                ?? session.downloadTask(with: ArchiveNetworkPolicy.request(ArchiveURLs.download(identifier: identifier, fileName: file.name)))
+            let request = downloadRequest(identifier: identifier, fileName: file.name)
+            // Resume data retains its original network policy; a Wi-Fi-only choice uses a fresh request.
+            let created = (settings.allowCellularDownloads ? resumeData : nil).map { session.downloadTask(withResumeData: $0) }
+                ?? session.downloadTask(with: request)
             task = created
             created.taskDescription = identity.taskDescription
             record.state = .downloading
@@ -238,6 +243,12 @@ final class DownloadManager: NSObject, ObservableObject {
     }
     func retry(_ record: DownloadRecord, file: ArchiveFile) async {
         await start(identifier: record.identifier, artifactTitle: record.title, file: file)
+    }
+    func downloadRequest(identifier: String, fileName: String) -> URLRequest {
+        var request = ArchiveNetworkPolicy.request(ArchiveURLs.download(identifier: identifier, fileName: fileName))
+        request.allowsCellularAccess = settings.allowCellularDownloads
+        request.allowsExpensiveNetworkAccess = settings.allowCellularDownloads
+        return request
     }
     func cancel(_ record: DownloadRecord) async throws {
         try await serializeThrowing { [self] in
@@ -260,6 +271,28 @@ final class DownloadManager: NSObject, ObservableObject {
             }
             retire(path: current.localPath)
         }
+    }
+    func removeAllDownloads() async throws {
+        try await serializeThrowing { [self] in
+            for record in records {
+                try await store.deleteDownload(key: record.key)
+                records.removeAll { $0.key == record.key }
+                for task in await session.allTasks {
+                    if DownloadTaskIdentity(taskDescription: task.taskDescription)?.matches(record, directory: mediaDirectory) == true { task.cancel() }
+                }
+                retire(path: record.localPath)
+            }
+        }
+    }
+    var storageUsedBytes: Int64 {
+        records.reduce(0) { total, record in
+            total + ((try? FileManager.default.attributesOfItem(atPath: record.localPath)[.size] as? NSNumber)?.int64Value ?? 0)
+        }
+    }
+    func removePlayedDownload(identifier: String, fileName: String) async throws {
+        guard settings.autoDeletePlayedDownloads,
+              let record = records.first(where: { $0.identifier == identifier && $0.fileName == fileName && $0.state == .completed }) else { return }
+        try await remove(record)
     }
     private func retire(path: String) {
         if leases[path, default: 0] > 0 { pendingRemovals.insert(path) }
@@ -483,8 +516,13 @@ final class DownloadManager: NSObject, ObservableObject {
                    options: .regularExpression) != nil
     }
     private func upsertInMemory(_ record: DownloadRecord) {
+        let previous = records.first { $0.key == record.key }
         if let index = records.firstIndex(where: { $0.key == record.key }) { records[index] = record }
         else { records.insert(record, at: 0) }
+        if let previous, [.queued, .downloading].contains(previous.state),
+           [.completed, .failed, .cancelled].contains(record.state) {
+            UIAccessibility.post(notification: .announcement, argument: "\(record.title). Download \(record.state.rawValue).")
+        }
     }
     /// A download that fails partway (lost connection, timeout) usually carries the
     /// state URLSession needs to continue it. Explicit cancels don't produce it.

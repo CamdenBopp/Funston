@@ -19,9 +19,11 @@ final class OriginalVideoBookmark {
     private(set) var restoring = true
     private var persistence: Task<Void, Never>?
     private var lastSave: Date?
+    private let completed: (@MainActor () async -> Void)?
 
-    init(store: SQLiteStore, identifier: String, fileName: String) {
+    init(store: SQLiteStore, identifier: String, fileName: String, completed: (@MainActor () async -> Void)? = nil) {
         self.store = store; self.identifier = identifier; self.fileName = fileName
+        self.completed = completed
     }
 
     /// Reads the saved position once queued writes have landed and seeks there.
@@ -48,6 +50,10 @@ final class OriginalVideoBookmark {
             await previous?.value
             do { try await store.setPlaybackPosition(identifier: identifier, fileName: fileName, seconds: position) }
             catch { Self.logger.error("Saving the film position failed: \(error.localizedDescription, privacy: .public)") }
+            if ended {
+                try? await store.markRecordingPlayed(identifier: identifier, fileName: fileName)
+                await completed?()
+            }
         }
     }
 

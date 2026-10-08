@@ -16,7 +16,6 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Explore"].exists)
         XCTAssertTrue(app.tabBars.buttons["Search"].exists)
         XCTAssertTrue(app.tabBars.buttons["Library"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Downloads"].exists)
 
         app.tabBars.buttons["Search"].tap()
         XCTAssertTrue(app.navigationBars["Search"].waitForExistence(timeout: 2))
@@ -25,8 +24,11 @@ final class FunstonUITests: XCTestCase {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: 2))
 
-        app.tabBars.buttons["Downloads"].tap()
-        XCTAssertTrue(app.navigationBars["Downloads"].waitForExistence(timeout: 2))
+        let filters = app.segmentedControls["libraryFilter"]
+        XCTAssertTrue(filters.waitForExistence(timeout: 2))
+        filters.buttons["Downloads"].tap()
+        XCTAssertTrue(app.navigationBars["Library"].exists)
+        XCTAssertTrue(app.buttons["Settings"].exists)
 
         app.tabBars.buttons["Explore"].tap()
         try app.performAccessibilityAudit { issue in
