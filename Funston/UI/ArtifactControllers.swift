@@ -310,13 +310,39 @@ struct ArtifactOverview: View {
                 HStack(spacing: 16) { actions }
                 VStack(alignment: .leading, spacing: 12) { actions }
             }
+            .labelStyle(.titleAndIcon)
             if restricted { Text("Internet Archive restricts access to this item. Open it on the website to see your options.").font(.callout).foregroundStyle(Color.funstonSecondaryText) }
         }
     }
 
+    private var primarySymbol: String {
+        switch summary.mediaType {
+        case .texts: "book.fill"
+        case .audio, .movies: "play.fill"
+        default: summary.mediaType.artworkSymbol
+        }
+    }
+
+    private func primaryLabel(_ title: String, symbol: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol).accessibilityHidden(true)
+            Text(title).multilineTextAlignment(.center)
+        }
+        .font(.body)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .accessibilityElement(children: .combine)
+    }
+
     @ViewBuilder private var actions: some View {
-        if let mediaActionTitle { Button(mediaActionTitle, systemImage: summary.mediaType == .movies ? "play.fill" : "book", action: openMedia).buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier(summary.mediaType == .movies ? "artifact.watch" : "artifact.read") }
-        else if playable { Button(playTitle, systemImage: playTitle == "Pause" ? "pause.fill" : "play.fill", action: play).buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier("artifact.play") }
+        if let mediaActionTitle {
+            Button(action: openMedia) { primaryLabel(mediaActionTitle, symbol: primarySymbol) }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                .accessibilityIdentifier(summary.mediaType == .movies ? "artifact.watch" : "artifact.read")
+        }
+        else if playable {
+            Button(action: play) { primaryLabel(playTitle, symbol: playTitle == "Pause" ? "pause.fill" : "play.fill") }
+                .buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier("artifact.play")
+        }
         Button(isSaved ? "Saved" : "Save", systemImage: isSaved ? "bookmark.fill" : "bookmark", action: save)
             .buttonStyle(.bordered).controlSize(.large).accessibilityIdentifier("artifact.save")
             .accessibilityLabel(saveTitle)

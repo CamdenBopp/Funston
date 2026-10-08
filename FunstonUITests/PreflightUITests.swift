@@ -47,6 +47,7 @@ final class PreflightUITests: XCTestCase {
             let read = app.buttons["artifact.read"]
             XCTAssertTrue(read.waitForExistence(timeout: 40))
             for _ in 0..<8 where !read.isHittable { app.swipeUp() }
+            capture(app, "Primary action \(category)")
             read.tap()
             let page = app.descendants(matching: .any)["reader.page"].firstMatch
             XCTAssertTrue(page.waitForExistence(timeout: 90))
