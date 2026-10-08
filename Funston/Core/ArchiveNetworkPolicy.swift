@@ -6,6 +6,8 @@ enum ArchiveNetworkPolicy {
     static let contact = "https://github.com/CamdenBopp/Funston/issues"
     static let userAgent = "Funston/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0") (iOS; +\(contact))"
     static let requestLimiter = ArtworkWorkLimiter(limit: 4)
+    // Long transfers use at most two slots, leaving room for metadata and artwork.
+    static let downloadLimiter = ArtworkWorkLimiter(limit: 2)
     static let cache = URLCache(memoryCapacity: 32 * 1_024 * 1_024, diskCapacity: 200 * 1_024 * 1_024)
     static let session = URLSession(configuration: configuration())
 

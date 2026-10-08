@@ -30,6 +30,65 @@ private actor ConcurrentPolicyTransport: ArchiveTransport {
 }
 
 final class ArchiveNetworkPolicyTests: XCTestCase {
+    @MainActor
+    func testDeviceDownloadsUseIdentifiedBackgroundConfiguration() {
+        let configuration = DownloadManager.backgroundConfiguration()
+        XCTAssertEqual(configuration.identifier, "com.camden.Funston.background-downloads")
+        XCTAssertTrue(configuration.sessionSendsLaunchEvents)
+        XCTAssertFalse(configuration.isDiscretionary)
+        XCTAssertTrue(configuration.waitsForConnectivity)
+        XCTAssertEqual(configuration.httpMaximumConnectionsPerHost, 2)
+        XCTAssertEqual(configuration.httpAdditionalHeaders?["User-Agent"] as? String, ArchiveNetworkPolicy.userAgent)
+    }
+
+    @MainActor
+    func testLongDownloadsLeaveCapacityForMetadataAndQueuedRemoval() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try SQLiteStore(url: directory.appending(path: "test.sqlite"))
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AuditHeldDownloadProtocol.self]
+        let manager = DownloadManager(store: store, mediaDirectory: directory, sessionConfiguration: configuration,
+                                      accessRepository: AuditDownloadRepository())
+        await manager.waitUntilReady()
+        let startsBefore = AuditHeldDownloadProtocol.starts.value
+        for index in 0..<5 {
+            await manager.start(identifier: "capacity-\(index)", artifactTitle: "Capacity", file: ArchiveFile(name: "held.mp3"))
+        }
+        let deadline = ContinuousClock.now + .seconds(2)
+        while AuditHeldDownloadProtocol.starts.value < startsBefore + 2 && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(AuditHeldDownloadProtocol.starts.value - startsBefore, 2)
+        XCTAssertEqual(manager.records.filter { $0.state == .queued }.count, 3)
+        let metadata = expectation(description: "Metadata completes while long downloads remain in flight")
+        let probe = Task {
+            _ = try await ArchiveHTTPClient(transport: PolicyTransport()).send(ArchiveNetworkPolicy.request(ArchiveURLs.metadata(identifier: "capacity")))
+            metadata.fulfill()
+        }
+        await fulfillment(of: [metadata], timeout: 1)
+        let queued = try XCTUnwrap(manager.records.first { $0.state == .queued })
+        try await manager.remove(queued)
+        try await manager.removeAllDownloads()
+        try await probe.value
+        let slots = expectation(description: "Download slots are returned after bulk cancellation")
+        let capacity = Task {
+            var acquired = 0
+            do {
+                for _ in 0..<2 { try await ArchiveNetworkPolicy.downloadLimiter.acquire(); acquired += 1 }
+                slots.fulfill()
+            } catch {}
+            for _ in 0..<acquired { await ArchiveNetworkPolicy.downloadLimiter.release() }
+        }
+        await fulfillment(of: [slots], timeout: 2)
+        capacity.cancel(); await capacity.value
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(AuditHeldDownloadProtocol.starts.value - startsBefore, 2, "Cancelled queued attempts must never start")
+        let persisted = try await store.downloads()
+        XCTAssertTrue(persisted.isEmpty)
+    }
+
     func testUserAgentIsPresentOnRequestsAndSessionConfiguration() async throws {
         let transport = PolicyTransport()
         _ = try await ArchiveHTTPClient(transport: transport).send(ArchiveNetworkPolicy.request(ArchiveURLs.metadata(identifier: "flatlandromanceo00abbouoft")))
@@ -98,4 +157,24 @@ final class ArchiveNetworkPolicyTests: XCTestCase {
         XCTAssertEqual(ArchiveHTTPResponse(data: Data(), headers: ["Expires": "Thu, 01 Jan 1970 00:00:10 GMT"]).cacheLifetime(defaultLifetime: 3600, now: Date(timeIntervalSince1970: 0)), 10)
         XCTAssertEqual(ArchiveHTTPResponse(data: Data()).cacheLifetime(defaultLifetime: 3600), 3600)
     }
+}
+
+private struct AuditDownloadRepository: ArchiveRepository {
+    func search(_ request: SearchRequest) async throws -> SearchPage { throw URLError(.unsupportedURL) }
+    func detail(identifier: String) async throws -> ArtifactDetail {
+        ArtifactDetail(summary: ArtifactSummary(identifier: identifier, title: "Capacity"), files: [ArchiveFile(name: "held.mp3")])
+    }
+}
+private final class AuditDownloadCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func increment() { lock.withLock { count += 1 } }
+}
+private final class AuditHeldDownloadProtocol: URLProtocol, @unchecked Sendable {
+    static let starts = AuditDownloadCounter()
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { Self.starts.increment() }
+    override func stopLoading() {}
 }
