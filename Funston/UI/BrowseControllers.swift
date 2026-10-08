@@ -5,6 +5,8 @@ import QuickLook
 @MainActor
 final class SearchController: FunstonListController, UISearchResultsUpdating, UISearchBarDelegate {
     private let repository: CachingArchiveRepository
+    private let settings: SettingsStore
+    private var lastAppliedHideUnsupportedMedia: Bool
     private let collection: ArchiveCollection?
     private let open: (ArtifactSummary) -> Void
     private let search = UISearchController(searchResultsController: nil)
@@ -25,11 +27,13 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
     private var requestKey: String?
 
     convenience init(environment: AppEnvironment, collection: ArchiveCollection? = nil, open: @escaping (ArtifactSummary) -> Void) {
-        self.init(repository: environment.repository, collection: collection, open: open)
+        self.init(repository: environment.repository, collection: collection, settings: environment.settings, open: open)
     }
 
-    init(repository: CachingArchiveRepository, collection: ArchiveCollection? = nil, open: @escaping (ArtifactSummary) -> Void) {
+    init(repository: CachingArchiveRepository, collection: ArchiveCollection? = nil, settings: SettingsStore = .shared, open: @escaping (ArtifactSummary) -> Void) {
         self.repository = repository; self.collection = collection; self.open = open
+        self.settings = settings
+        lastAppliedHideUnsupportedMedia = settings.hideUnsupportedMedia
         super.init(title: collection?.title ?? "Search")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -47,6 +51,15 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
         updateFilter()
         if collection != nil { submit(debounce: false) }
         else { showMessage("Search the Internet Archive") }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        guard lastAppliedHideUnsupportedMedia != settings.hideUnsupportedMedia else { return }
+        lastAppliedHideUnsupportedMedia = settings.hideUnsupportedMedia
+        // Retain the query and scope, but discard pages loaded under the old filter.
+        requestKey = nil
+        submit(debounce: false, force: true)
     }
 
     func updateSearchResults(for searchController: UISearchController) { submit(debounce: true) }

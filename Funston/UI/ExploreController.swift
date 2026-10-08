@@ -44,9 +44,12 @@ final class ExploreController: UICollectionViewController {
         case error(String, hasItems: Bool)
     }
     private var renderedStatuses: [String: Status] = [:]
+    private var lastAppliedHideUnsupportedMedia: Bool
+    private var pendingVisibilityReloads = Set<String>()
 
     init(environment: AppEnvironment, openCollection: @escaping (ArchiveCollection) -> Void, openArtifact: @escaping (ArtifactSummary) -> Void) {
         self.environment = environment
+        lastAppliedHideUnsupportedMedia = environment.settings.hideUnsupportedMedia
         repository = environment.repository
         self.openCollection = openCollection; self.openArtifact = openArtifact
         super.init(collectionViewLayout: UICollectionViewFlowLayout())
@@ -103,6 +106,14 @@ final class ExploreController: UICollectionViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        if lastAppliedHideUnsupportedMedia != environment.settings.hideUnsupportedMedia {
+            lastAppliedHideUnsupportedMedia = environment.settings.hideUnsupportedMedia
+            for identifier in Set(contents.keys).union(errors.keys).union(tasks.keys) {
+                // Let an existing load settle before replacing it; it must not clear a newer task.
+                if tasks[identifier] != nil { pendingVisibilityReloads.insert(identifier) }
+                else { load(identifier, force: true) }
+            }
+        }
         refreshContinueListening()
     }
 
@@ -222,6 +233,7 @@ final class ExploreController: UICollectionViewController {
             }
             self?.tasks[identifier] = nil
             self?.render()
+            if self?.pendingVisibilityReloads.remove(identifier) != nil { self?.load(identifier, force: true) }
         }
         if force { render() }
     }

@@ -1,6 +1,7 @@
 import AVFoundation
 import MediaPlayer
 import XCTest
+import UIKit
 @testable import Funston
 
 @MainActor
@@ -132,5 +133,59 @@ final class SettingsStoreTests: XCTestCase {
         defer { remote.deactivate() }
         XCTAssertEqual(MPRemoteCommandCenter.shared().skipBackwardCommand.preferredIntervals, [30])
         XCTAssertEqual(MPRemoteCommandCenter.shared().skipForwardCommand.preferredIntervals, [60])
+    }
+
+    func testContentVisibilityReloadsLoadedSearchAndExploreButKeepsLibrary() async throws {
+        let store = try SQLiteStore(url: URL(string: "file::memory:")!)
+        let settings = settings()
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let environment = AppEnvironment(store: store, mediaDirectory: directory, downloadSession: .ephemeral, settings: settings)
+        let searchData = Data(#"{"response":{"numFound":2,"docs":[{"identifier":"playable","title":"Playable","mediatype":"audio"},{"identifier":"unsupported","title":"Unsupported","mediatype":"audio"}]}}"#.utf8)
+        for scope in [MediaType.all, .audio] {
+            let request = SearchRequest(scope: scope, pageSize: scope == .all ? 40 : 6, collection: "oldtimeradio")
+            try await store.storeCache(key: CachingArchiveRepository.searchCacheKey(request), kind: "search", response: searchData, snapshot: nil, maxAge: 3600)
+        }
+        for (id, files) in [("playable", #"[{"name":"track.mp3"}]"#), ("unsupported", "[]")] {
+            let metadata = Data("{\"metadata\":{\"identifier\":\"\(id)\",\"title\":\"\(id)\",\"mediatype\":\"audio\"},\"files\":\(files)}".utf8)
+            try await store.storeCache(key: "metadata:" + id, kind: "metadata", response: metadata, snapshot: nil, maxAge: 3600)
+        }
+        let saved = ArtifactSummary(identifier: "unsupported", title: "Unsupported", mediaType: .audio)
+        try await environment.setSaved(saved, saved: true)
+        let search = SearchController(environment: environment, collection: ArchiveCollection.curated[0], open: { _ in })
+        search.loadViewIfNeeded()
+        let explore = ExploreController(environment: environment, openCollection: { _ in }, openArtifact: { _ in })
+        explore.loadViewIfNeeded()
+        explore.collectionView(explore.collectionView, willDisplay: UICollectionViewCell(), forItemAt: IndexPath(item: 0, section: 0))
+        let source = try XCTUnwrap(explore.collectionView.dataSource as? UICollectionViewDiffableDataSource<String, String>)
+        try await until {
+            search.rows.contains { $0.id == "artifact:unsupported" } && source.snapshot().itemIdentifiers.contains("oldtimeradio:unsupported")
+        }
+        settings.hideUnsupportedMedia = true
+        search.viewWillAppear(false)
+        explore.viewWillAppear(false)
+        try await until {
+            search.rows.contains { $0.id == "artifact:playable" } && !search.rows.contains { $0.id == "artifact:unsupported" } &&
+                source.snapshot().itemIdentifiers.contains("oldtimeradio:playable") && !source.snapshot().itemIdentifiers.contains("oldtimeradio:unsupported")
+        }
+        let library = LibraryController(environment: environment, open: { _ in })
+        library.loadViewIfNeeded()
+        library.viewWillAppear(false)
+        try await until { library.rows.contains { $0.title == "Unsupported" } }
+        settings.defaultPlaybackSpeed = 1.25
+        search.viewWillAppear(false)
+        explore.viewWillAppear(false)
+        XCTAssertTrue(search.rows.contains { $0.id == "artifact:playable" }, "Other settings must not reset results")
+        settings.hideUnsupportedMedia = false
+        search.viewWillAppear(false)
+        explore.viewWillAppear(false)
+        try await until {
+            search.rows.contains { $0.id == "artifact:unsupported" } && source.snapshot().itemIdentifiers.contains("oldtimeradio:unsupported")
+        }
+    }
+
+    private func until(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while !condition(), Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(condition(), file: file, line: line)
     }
 }
