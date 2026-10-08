@@ -335,7 +335,8 @@ final class ServiceReviewTests: XCTestCase {
         await manager.finished(identity: identity, result: .success(path))
         await manager.finished(identity: identity, result: .success(path))
         XCTAssertEqual(manager.records.first?.state, .completed)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: path.path))
+        let completedURL = try XCTUnwrap(manager.completedLocalURL(identifier: identity.identifier, fileName: identity.fileName))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: completedURL.path))
         let durable = try await store.downloads()
         XCTAssertEqual(durable.first?.state, .completed)
     }
@@ -355,7 +356,8 @@ final class ServiceReviewTests: XCTestCase {
         try Data([1, 2, 3]).write(to: path)
         await manager.finished(identity: identity, result: .success(path))
         XCTAssertEqual(manager.records.first?.state, .completed)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: path.path))
+        let completedURL = try XCTUnwrap(manager.completedLocalURL(identifier: identity.identifier, fileName: identity.fileName))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: completedURL.path))
         let durable = try await store.downloads()
         XCTAssertEqual(durable.first?.state, .completed)
         XCTAssertNil(durable.first?.errorMessage)
@@ -382,7 +384,7 @@ final class ServiceReviewTests: XCTestCase {
     func testCancelAndRemoveSurfacePersistenceFailureWithoutChangingState() async throws {
         let (_, directory, media) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let path = media.appending(path: "track.mp3")
+        let path = media.appending(path: "fixture--track.mp3")
         try Data([1, 2, 3]).write(to: path)
         let record = DownloadRecord(key: "key", identifier: "item", fileName: "track.mp3", title: "Track", expectedBytes: 3,
                                     localPath: path.path, state: .completed, receivedBytes: 3, totalBytes: 3, errorMessage: nil, updatedAt: .now)
@@ -493,7 +495,7 @@ final class ServiceReviewTests: XCTestCase {
         let (store, directory, media) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let key = DownloadManager.key(identifier: "item", fileName: "track.mp3")
-        let path = media.appending(path: "old-generation.mp3")
+        let path = media.appending(path: "fixture--old-generation.mp3")
         try Data([1, 2, 3]).write(to: path)
         let record = DownloadRecord(key: key, identifier: "item", fileName: "track.mp3", title: "Track", expectedBytes: 3,
                                     localPath: path.path, state: .completed, receivedBytes: 3, totalBytes: 3, errorMessage: nil, updatedAt: .now)
@@ -571,7 +573,7 @@ final class ServiceReviewTests: XCTestCase {
     func testOfflinePausedRestoreAndEndedSeekPreserveChosenPosition() async throws {
         let (store, directory, media) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let url = media.appending(path: "fixture.wav")
+        let url = media.appending(path: "fixture--fixture.wav")
         try writeSilentAudio(to: url)
         let record = DownloadRecord(key: DownloadManager.key(identifier: "restore-test", fileName: "track.wav"), identifier: "restore-test",
                                     fileName: "track.wav", title: "Restore", expectedBytes: nil, localPath: url.path, state: .completed,
@@ -853,7 +855,7 @@ final class ServiceReviewTests: XCTestCase {
     }
 
     private func localAudioFixture(store: SQLiteStore, media: URL) async throws -> DownloadRecord {
-        let url = media.appending(path: "session-test.wav")
+        let url = media.appending(path: "fixture--session-test.wav")
         try writeSilentAudio(to: url)
         let record = DownloadRecord(key: DownloadManager.key(identifier: "session-test", fileName: "track.wav"),
             identifier: "session-test", fileName: "track.wav", title: "Session test", expectedBytes: nil,

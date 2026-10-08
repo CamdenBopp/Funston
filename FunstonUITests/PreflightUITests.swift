@@ -5,36 +5,60 @@ final class PreflightUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
     func testMiniPlayerDismissUndoAndNewItem() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["--skip-playback-restoration"]
-        app.launch()
-        app.buttons["oldtimeradio"].tap()
-        let recording = app.cells["artifact:OTRR_Gunsmoke_Singles"]
-        XCTAssertTrue(recording.waitForExistence(timeout: 40))
-        recording.tap()
-        let play = app.buttons["artifact.play"]
-        XCTAssertTrue(play.waitForExistence(timeout: 40))
-        play.tap()
-        let mini = app.descendants(matching: .any)["compactPlayer.open"].firstMatch
-        XCTAssertTrue(mini.waitForExistence(timeout: 15))
-        let start = mini.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.2))
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 65)))
-        let undo = app.buttons["compactPlayer.undo"]
-        XCTAssertTrue(undo.waitForExistence(timeout: 3))
-        XCTAssertTrue(mini.waitForNonExistence(timeout: 3))
-        undo.tap()
-        XCTAssertTrue(mini.waitForExistence(timeout: 5))
-        XCTAssertEqual(app.buttons["compactPlayer.toggle"].label, "Play")
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 65)))
-        XCTAssertTrue(undo.waitForExistence(timeout: 3))
-        play.tap()
-        XCTAssertTrue(mini.waitForExistence(timeout: 5))
-        XCTAssertTrue(undo.waitForNonExistence(timeout: 3))
+        for category in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryXXXL", "UICTContentSizeCategoryAccessibilityXXXL"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["--skip-playback-restoration", "-UIPreferredContentSizeCategoryName", category]
+            app.launchEnvironment["FUNSTON_TEST_APPEARANCE"] = "Dark"
+            app.launch()
+            let radio = app.buttons["oldtimeradio"]
+            for _ in 0..<16 where !radio.isHittable { app.swipeUp() }
+            XCTAssertTrue(radio.isHittable)
+            radio.tap()
+            let recording = app.cells["artifact:OTRR_Gunsmoke_Singles"]
+            for _ in 0..<16 where !recording.waitForExistence(timeout: 1) { app.collectionViews.firstMatch.swipeUp() }
+            XCTAssertTrue(recording.waitForExistence(timeout: 40))
+            recording.tap()
+            let play = app.buttons["artifact.play"]
+            XCTAssertTrue(play.waitForExistence(timeout: 40))
+            for _ in 0..<8 where !play.isHittable { app.swipeUp() }
+            play.tap()
+            let mini = app.descendants(matching: .any)["compactPlayer.open"].firstMatch
+            XCTAssertTrue(mini.waitForExistence(timeout: 15))
+            let start = mini.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.2))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 65)))
+            let undo = app.buttons["compactPlayer.undo"]
+            XCTAssertTrue(undo.waitForExistence(timeout: 3))
+            XCTAssertTrue(mini.waitForNonExistence(timeout: 3))
+            capture(app, "Stopped toast \(category)")
+            undo.tap()
+            XCTAssertTrue(mini.waitForExistence(timeout: 5))
+            XCTAssertEqual(app.buttons["compactPlayer.toggle"].label, "Play")
+            capture(app, "Undo paused \(category)")
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 65)))
+            XCTAssertTrue(undo.waitForExistence(timeout: 3))
+            let another = app.buttons["recording.play.1"]
+            let collection = app.collectionViews.firstMatch
+            for _ in 0..<12 {
+                if another.exists && another.frame.midY > app.navigationBars.firstMatch.frame.maxY + 30 && another.frame.midY < app.frame.height * 0.6 { break }
+                let delta = another.exists ? min(150, max(-150, another.frame.midY - app.frame.height * 0.4)) : 150
+                let origin = collection.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5))
+                origin.press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: 0, dy: -delta)), withVelocity: .slow, thenHoldForDuration: 0.2)
+            }
+            XCTAssertTrue(another.exists)
+            XCTAssertLessThan(another.frame.midY, app.frame.height * 0.6)
+            XCTAssertGreaterThan(another.frame.midY, app.navigationBars.firstMatch.frame.maxY + 30)
+            another.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            XCTAssertTrue(mini.waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["compactPlayer.title"].label.contains("Ben Thompson"))
+            XCTAssertTrue(undo.waitForNonExistence(timeout: 3))
+            app.terminate()
+        }
     }
     func testPDFReaderFullScreenAtAllTextSizes() throws {
         for category in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryXXXL", "UICTContentSizeCategoryAccessibilityXXXL"] {
             let app = XCUIApplication()
             app.launchArguments = ["--skip-playback-restoration", "-UIPreferredContentSizeCategoryName", category]
+            app.launchEnvironment["FUNSTON_TEST_APPEARANCE"] = "Dark"
             app.launch()
             app.tabBars.buttons["Search"].tap()
             let field = app.searchFields["Search the Internet Archive"]
@@ -73,18 +97,21 @@ final class PreflightUITests: XCTestCase {
 
     func testExploreLayoutAtAllTextSizes() throws {
         for category in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryXXXL", "UICTContentSizeCategoryAccessibilityXXXL"] {
-            let app = XCUIApplication()
-            app.launchArguments = ["--skip-playback-restoration", "-UIPreferredContentSizeCategoryName", category]
-            app.launch()
-            let cover = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "explore.artifact.")).firstMatch
-            for _ in 0..<8 where !cover.waitForExistence(timeout: 3) { app.swipeUp() }
-            XCTAssertTrue(cover.waitForExistence(timeout: 30))
-            XCTAssertGreaterThanOrEqual(cover.frame.minX, 16)
-            XCTAssertLessThanOrEqual(cover.frame.maxX, app.frame.maxX - 16)
-            capture(app, "Explore \(category)")
-            for _ in 0..<12 { app.swipeUp() }
-            capture(app, "Explore bottom \(category)")
-            app.terminate()
+            for style in ["Light", "Dark"] {
+                let app = XCUIApplication()
+                app.launchArguments = ["--skip-playback-restoration", "-UIPreferredContentSizeCategoryName", category]
+                app.launchEnvironment["FUNSTON_TEST_APPEARANCE"] = style
+                app.launch()
+                let cover = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "explore.artifact.")).firstMatch
+                for _ in 0..<8 where !cover.waitForExistence(timeout: 3) { app.swipeUp() }
+                XCTAssertTrue(cover.waitForExistence(timeout: 30))
+                XCTAssertGreaterThanOrEqual(cover.frame.minX, 16)
+                XCTAssertLessThanOrEqual(cover.frame.maxX, app.frame.maxX - 16)
+                capture(app, "Explore \(style) \(category)")
+                for _ in 0..<12 { app.swipeUp() }
+                capture(app, "Explore bottom \(style) \(category)")
+                app.terminate()
+            }
         }
     }
 

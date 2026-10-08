@@ -9,7 +9,7 @@ final class PlaybackLifecyclePolishTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appending(path: "audio-lifecycle-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
-        let url = directory.appending(path: "track.wav")
+        let url = directory.appending(path: "fixture--track.wav")
         if corrupt { try Data("Invalid audio fixture".utf8).write(to: url) }
         else {
             let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 8_000, channels: 1))

@@ -93,13 +93,21 @@ struct ArchiveHTTPClient: Sendable {
 }
 
 extension ArchiveHTTPResponse {
-    func cacheLifetime(defaultLifetime: Double) -> Double? {
+    func cacheLifetime(defaultLifetime: Double, now: Date = .now) -> Double? {
         let control = headers.first { $0.key.lowercased() == "cache-control" }?.value.lowercased() ?? ""
         let directives = control.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         if directives.contains("no-store") { return nil }
-        if directives.contains("no-cache") { return 0 }
+        if directives.contains(where: { $0.hasPrefix("no-cache") }) { return nil }
+        let age = max(0, Double(headers.first { $0.key.lowercased() == "age" }?.value ?? "0") ?? 0)
         for directive in directives where directive.hasPrefix("max-age=") {
-            if let seconds = Double(directive.dropFirst(8).trimmingCharacters(in: CharacterSet(charactersIn: "\""))) { return max(0, seconds) }
+            if let seconds = Double(directive.dropFirst(8).trimmingCharacters(in: CharacterSet(charactersIn: "\""))), seconds.isFinite { return max(0, seconds - age) }
+        }
+        if let expires = headers.first(where: { $0.key.lowercased() == "expires" })?.value {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+            if let date = formatter.date(from: expires) { return max(0, date.timeIntervalSince(now)) }
         }
         return defaultLifetime
     }

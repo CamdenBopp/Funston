@@ -16,6 +16,7 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate, UI
     private var artworkTask: Task<Void, Never>?
     private var artworkIdentifier: String?
     private var reopenAfterAttach = false
+    private lazy var stopMenu = UIContextMenuInteraction(delegate: self)
     private var readerControlsHidden = false
     private var progressVisible = false
     private var undoToast: UIHostingController<StoppedListeningToast>?
@@ -60,7 +61,7 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate, UI
         container.popupBar.standardAppearance = appearance
         container.popupBar.accessibilityIdentifier = "compactPlayer.open"
         container.popupBar.addGestureRecognizer(dismissPan)
-        container.popupBar.addInteraction(UIContextMenuInteraction(delegate: self))
+        container.popupBar.addInteraction(stopMenu)
         container.popupBar.accessibilityCustomActions = [
             UIAccessibilityCustomAction(name: "Stop and close player", target: self, selector: #selector(stopListening))
         ]
@@ -107,7 +108,21 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate, UI
         toggle.accessibilityIdentifier = "compactPlayer.toggle"
         controller.popupItem.barButtonItems = [toggle]
         if isNew && !readerControlsHidden { container?.presentPopupBar(with: controller, animated: !UIAccessibility.isReduceMotionEnabled) }
+        if let bar = container?.popupBar {
+            bar.layoutIfNeeded()
+            installStopAction(in: bar, title: controller.popupItem.accessibilityLabel, value: phase.spokenValue)
+        }
         loadArtwork(identifier: context.artifact.identifier)
+    }
+
+    private func installStopAction(in view: UIView, title: String?, value: String) {
+        // LNPopupBar is a container; its title button is the VoiceOver target.
+        if view.isAccessibilityElement, view.accessibilityLabel == title {
+            view.accessibilityIdentifier = "compactPlayer.title"
+            view.accessibilityValue = value
+            view.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Stop and close player", target: self, selector: #selector(stopListening))]
+        }
+        for child in view.subviews { installStopAction(in: child, title: title, value: value) }
     }
 
     func popupPresentationController(_ popupPresentationController: UIViewController, willOpenPopupWithContentController popupContentController: UIViewController, animated: Bool) {

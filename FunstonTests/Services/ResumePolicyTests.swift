@@ -116,7 +116,11 @@ final class ResumePolicyTests: XCTestCase {
         let record = records[0]
         try await store.setPlaybackPosition(identifier: record.identifier, fileName: record.fileName, seconds: 20)
         let detail = queueDetail(names: ["first.wav", "second.wav", "third.wav"])
-        try await store.storeCache(key: "metadata:resume", kind: "metadata", response: Data(),
+        let response = try JSONSerialization.data(withJSONObject: [
+            "metadata": ["identifier": "resume", "title": "Archive collection", "mediatype": "audio"],
+            "files": detail.tracks.map { ["name": $0.id, "title": $0.rawTitle, "length": "60"] }
+        ])
+        try await store.storeCache(key: "metadata:resume", kind: "metadata", response: response,
             snapshot: JSONEncoder().encode(detail), maxAge: 86_400)
         let repository = CachingArchiveRepository(store: store)
         let player = AVPlayer()
@@ -224,7 +228,7 @@ final class ResumePolicyTests: XCTestCase {
         let store = try SQLiteStore(url: try XCTUnwrap(URL(string: "file::memory:")))
         var records: [DownloadRecord] = []
         for name in names {
-            let url = directory.appending(path: name)
+            let url = directory.appending(path: "fixture--" + name)
             let file = try AVAudioFile(forWriting: url, settings: format.settings)
             try file.write(from: buffer)
             let record = DownloadRecord(key: DownloadManager.key(identifier: "resume", fileName: name),

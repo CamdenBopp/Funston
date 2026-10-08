@@ -66,7 +66,7 @@ final class FunstonUITests: XCTestCase {
         capture(app, name: "01 Explore")
         app.buttons["oldtimeradio"].tap()
         let recording = app.collectionViews.cells["artifact:OTRR_Gunsmoke_Singles"]
-        XCTAssertTrue(recording.waitForExistence(timeout: 30))
+        XCTAssertTrue(revealRecordingCell(recording, in: app))
         capture(app, name: "02 Collection")
         recording.tap()
         let play = app.buttons["artifact.play"]
@@ -112,7 +112,7 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(app.buttons["oldtimeradio"].waitForExistence(timeout: 10))
         app.buttons["oldtimeradio"].tap()
         let recording = app.collectionViews.cells["artifact:OTRR_Gunsmoke_Singles"]
-        XCTAssertTrue(recording.waitForExistence(timeout: 30))
+        XCTAssertTrue(revealRecordingCell(recording, in: app))
         recording.tap()
         let play = app.buttons["artifact.play"]
         XCTAssertTrue(play.waitForExistence(timeout: 30))
@@ -178,7 +178,7 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(app.buttons["oldtimeradio"].waitForExistence(timeout: 10))
         app.buttons["oldtimeradio"].tap()
         let recording = app.collectionViews.cells["artifact:OTRR_Gunsmoke_Singles"]
-        XCTAssertTrue(recording.waitForExistence(timeout: 30))
+        XCTAssertTrue(revealRecordingCell(recording, in: app))
         recording.tap()
         let play = app.buttons["artifact.play"]
         XCTAssertTrue(play.waitForExistence(timeout: 30))
@@ -226,6 +226,7 @@ final class FunstonUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
+        for _ in 0..<20 where !app.buttons["oldtimeradio"].waitForExistence(timeout: 1) { app.swipeUp() }
         XCTAssertTrue(app.buttons["oldtimeradio"].waitForExistence(timeout: 10))
         let cover = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "explore.artifact.")).firstMatch
         // With listening history, Continue listening fills the first screen at this size.
@@ -372,16 +373,20 @@ final class FunstonUITests: XCTestCase {
         if !transport.exists { canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
         if transport.label == "Pause" { transport.tap() }
         XCTAssertEqual(transport.label, "Play")
-        let done = app.buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Close'")).firstMatch
+        let done = app.buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Close' OR identifier == 'Close Button'")).firstMatch
         if !done.exists { canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
         XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
-        done.tap()
+        let closePoint = done.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        closePoint.tap()
         XCTAssertTrue(file.waitForExistence(timeout: 5))
         file.tap()
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: canvas)], timeout: 45), .completed)
         if !transport.exists || !transport.isHittable { canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
         XCTAssertTrue(transport.waitForExistence(timeout: 5))
-        done.tap()
+        if transport.label == "Pause" { transport.tap() }
+        if !done.exists && !transport.exists { canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
     @MainActor
@@ -431,7 +436,7 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(target.waitForExistence(timeout: 5))
         XCTAssertTrue(target.isSelected, "The chosen audio track should read as selected")
         app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
-        let done = app.buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Close'")).firstMatch
+        let done = app.buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Close' OR identifier == 'Close Button'")).firstMatch
         // The controls fade while the film plays; a tap on the film brings them back.
         if !done.waitForExistence(timeout: 1) { app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).tap() }
         XCTAssertTrue(done.waitForExistence(timeout: 5))
@@ -521,8 +526,16 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(page.waitForExistence(timeout: 60))
         app.buttons["Next page"].tap()
         let label = page.label
-        app.buttons["Reading options"].tap()
-        app.buttons["Continuous Scroll"].tap()
+        if !(app.buttons["Reading options"].value as? String ?? "").contains("Continuous Scroll") {
+            app.buttons["Reading options"].tap()
+            let continuous = app.buttons["Continuous Scroll"]
+            for _ in 0..<4 where !continuous.isHittable {
+                let menuPoint = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.65))
+                menuPoint.press(forDuration: 0.05, thenDragTo: menuPoint.withOffset(CGVector(dx: 0, dy: -160)), withVelocity: .slow, thenHoldForDuration: 0.2)
+            }
+            XCTAssertTrue(continuous.waitForExistence(timeout: 3))
+            continuous.tap()
+        }
         XCTAssertEqual(page.label, label)
         capture(app, name: name + " Continuous reader")
         app.buttons["Reading options"].tap()
@@ -530,6 +543,15 @@ final class FunstonUITests: XCTestCase {
         XCTAssertEqual(page.label, label)
         capture(app, name: name + " Page reader")
         app.terminate()
+    }
+
+    @MainActor
+    private func revealRecordingCell(_ recording: XCUIElement, in app: XCUIApplication) -> Bool {
+        if recording.waitForExistence(timeout: 3) { return true }
+        let collection = app.collectionViews.firstMatch
+        guard collection.cells.firstMatch.waitForExistence(timeout: 40) else { return false }
+        for _ in 0..<12 where !recording.exists { collection.swipeUp(velocity: .slow) }
+        return recording.waitForExistence(timeout: 5)
     }
 
     @MainActor
@@ -591,6 +613,7 @@ extension FunstonUITests {
                 XCUIDevice.shared.appearance = appearance == "Dark" ? .dark : .light
                 let app = XCUIApplication()
                 app.launchArguments = ["--skip-playback-restoration", "-UIPreferredContentSizeCategoryName", category]
+                app.launchEnvironment["FUNSTON_TEST_APPEARANCE"] = appearance
                 app.launch()
                 let continuing = app.buttons["explore.continue.OTRR_Gunsmoke_Singles"]
                 if continuing.exists {

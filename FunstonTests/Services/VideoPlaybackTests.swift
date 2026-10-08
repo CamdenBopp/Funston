@@ -68,7 +68,7 @@ final class VideoPlaybackTests: XCTestCase {
 
     func testOfflineVideoRestoresPositionAndLeasesFileUntilStopped() async throws {
         let (store, directory, _) = try await fixture()
-        let url = directory.appending(path: "movie.mp4")
+        let url = directory.appending(path: "fixture--movie.mp4")
         try await movie(at: url)
         let record = record(url)
         try await store.upsertDownload(record)
@@ -147,7 +147,7 @@ final class VideoPlaybackTests: XCTestCase {
 
     func testCorruptVideoCanRetryAfterFileIsReplaced() async throws {
         let (store, directory, _) = try await fixture()
-        let url = directory.appending(path: "movie.mp4")
+        let url = directory.appending(path: "fixture--movie.mp4")
         try Data("Not a video".utf8).write(to: url)
         try await store.upsertDownload(record(url))
         let downloads = DownloadManager(store: store, mediaDirectory: directory, sessionConfiguration: .ephemeral)

@@ -206,7 +206,7 @@ final class ArtworkResponseLoader: NSObject, URLSessionDataDelegate, @unchecked 
             if response.expectedContentLength > Int64(maximumBytes) { error = URLError(.dataLengthExceedsMaximum) }
             else if response.mimeType?.lowercased().hasPrefix("image/") != true { error = URLError(.cannotDecodeContentData) }
             else { error = nil }
-        } else if let http = response as? HTTPURLResponse {
+        } else if let http = response as? HTTPURLResponse, http.statusCode == 429 || http.statusCode == 503 {
             error = ArchiveError.http(status: http.statusCode, retryAfter: http.value(forHTTPHeaderField: "Retry-After"))
         } else { error = URLError(.badServerResponse) }
         if let error {

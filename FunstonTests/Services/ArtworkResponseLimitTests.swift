@@ -63,7 +63,8 @@ final class ArtworkResponseLimitTests: XCTestCase {
                 URL(string: "https://bounded-artwork.invalid/\(scenario)")!, session: session)
             XCTFail("Expected early rejection for \(scenario)", file: file, line: line)
         } catch {
-            XCTAssertEqual((error as? URLError)?.code, code, file: file, line: line)
+            if scenario == "error" { XCTAssertEqual(error as? ArchiveError, .http(status: 503, retryAfter: nil), file: file, line: line) }
+            else { XCTAssertEqual((error as? URLError)?.code, code, file: file, line: line) }
         }
     }
 
@@ -106,7 +107,10 @@ final class ArtworkResponseLimitTests: XCTestCase {
             do {
                 _ = try await loader.load(url, session: session)
                 XCTFail("Header rejection must complete the continuation")
-            } catch { XCTAssertEqual((error as? URLError)?.code, code) }
+            } catch {
+                if status == 503 { XCTAssertEqual(error as? ArchiveError, .http(status: 503, retryAfter: nil)) }
+                else { XCTAssertEqual((error as? URLError)?.code, code) }
+            }
         }
     }
 
