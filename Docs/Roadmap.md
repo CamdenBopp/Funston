@@ -103,7 +103,8 @@ The plan lists this as deferred. It's the natural next step for the OCR engine c
 - **Release-build performance gates on the device (M).** The acceptance scenarios in [ImplementationPlan.md](ImplementationPlan.md), with signposts.
 - **CI (S).** Mac runners on a private repo cost ten times Linux minutes. Your call.
 - **`hev1`-tagged HEVC (S or M).** Labstream rewrites the tag after download because AVFoundation shows black video. Only do this if an Internet Archive file reproduces it.
-- **Deferred features.** CarPlay is probably the most valuable for audio. After that come App Intents and Siri, Spotlight, Wayback captures and SharePlay.
+- **CarPlay audio.** Implemented using the shared player and system audio templates; entitlement setup and head-unit verification remain. See [CarPlay.md](CarPlay.md).
+- **Deferred features.** App Intents and Siri, Spotlight, Wayback captures and SharePlay.
 
 ## Don't do
 

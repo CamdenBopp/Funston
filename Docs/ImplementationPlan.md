@@ -54,7 +54,7 @@ Library mutations become visible only after a successful database transaction. A
 
 ## Deferred work
 
-EPUB reading, document-wide OCR search, richer PDF annotations and video workflows, Wayback, radio mode, CarPlay, iCloud, App Intents, Spotlight, SharePlay, custom time browsing, custom rotors, rich provenance timelines, and personalized recommendations are later slices. The existing PDFKit reader, page-by-page on-device OCR view, and AVKit playback are part of the current app. OCR defaults to an automatic no-prompt route, while a remembered Reading Options preference and engine registry preserve user choice and future extensibility.
+EPUB reading, document-wide OCR search, richer PDF annotations and video workflows, Wayback, radio mode, iCloud, App Intents, Spotlight, SharePlay, custom time browsing, custom rotors, rich provenance timelines, and personalized recommendations are later slices. CarPlay audio browsing and playback are implemented; device entitlement setup and head-unit verification are described in [CarPlay.md](CarPlay.md). The existing PDFKit reader, page-by-page on-device OCR view, and AVKit playback are part of the current app. OCR defaults to an automatic no-prompt route, while a remembered Reading Options preference and engine registry preserve user choice and future extensibility.
 
 ## Acceptance gates
 
