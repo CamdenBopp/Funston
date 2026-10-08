@@ -28,8 +28,14 @@ enum MediaType: String, Codable, CaseIterable, Hashable, Sendable {
 
 struct ArtifactSummary: Identifiable, Codable, Hashable, Sendable {
     let identifier: String
-    let title: String
-    let creators: [String]
+    let rawTitle: String
+    let rawCreators: [String]
+    var title: String { MetadataFormatter.title(rawTitle) }
+    var creators: [String] { rawCreators.map(MetadataFormatter.creator) }
+    var creatorDescription: String { MetadataFormatter.creators(rawCreators) }
+    private enum CodingKeys: String, CodingKey {
+        case identifier, rawTitle = "title", rawCreators = "creators", date, mediaType, collections, artworkFileName, accessRestricted
+    }
     let date: String?
     let mediaType: MediaType
     let collections: [String]
@@ -44,8 +50,8 @@ struct ArtifactSummary: Identifiable, Codable, Hashable, Sendable {
     init(identifier: String, title: String, creators: [String] = [], date: String? = nil,
          mediaType: MediaType = .unknown, collections: [String] = [], artworkFileName: String? = nil, accessRestricted: Bool? = nil) {
         self.identifier = identifier
-        self.title = title
-        self.creators = creators
+        self.rawTitle = title
+        self.rawCreators = creators
         self.date = date
         self.mediaType = mediaType
         self.collections = collections
@@ -54,7 +60,7 @@ struct ArtifactSummary: Identifiable, Codable, Hashable, Sendable {
     }
 
     func resolvingArtwork(files: [ArchiveFile]) -> ArtifactSummary {
-        ArtifactSummary(identifier: identifier, title: title, creators: creators, date: date,
+        ArtifactSummary(identifier: identifier, title: rawTitle, creators: rawCreators, date: date,
                         mediaType: mediaType, collections: collections,
                         artworkFileName: ArtifactArtworkResolver.fileName(identifier: identifier, files: files), accessRestricted: accessRestricted)
     }
@@ -87,13 +93,15 @@ struct ArchiveFile: Identifiable, Codable, Hashable, Sendable {
 
 struct PlayableTrack: Identifiable, Codable, Hashable, Sendable {
     let id: String
-    let title: String
+    let rawTitle: String
+    var title: String { MetadataFormatter.title(rawTitle) }
+    private enum CodingKeys: String, CodingKey { case id, rawTitle = "title", candidates, duration }
     let candidates: [ArchiveFile]
     let duration: Double?
     var preferredFile: ArchiveFile? { candidates.first }
 
     init(id: String, title: String, candidates: [ArchiveFile], duration: Double? = nil) {
-        self.id = id; self.title = title; self.candidates = candidates; self.duration = MediaDuration.validated(duration)
+        self.id = id; self.rawTitle = title; self.candidates = candidates; self.duration = MediaDuration.validated(duration)
     }
 }
 
@@ -185,5 +193,49 @@ enum ArchiveMediaTitle {
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return words.isEmpty ? filename : words
+    }
+}
+
+/// Display-only cleanup. Models retain and encode the Archive's original values.
+enum MetadataFormatter {
+    private static let smallWords: Set<String> = ["a", "an", "the", "of", "and", "or", "in", "on", "to", "at", "by", "for", "from", "with", "as", "but", "nor", "per", "via"]
+    private static let intentionalNames = ["iphone": "iPhone", "mcgee": "McGee", "macarthur": "MacArthur"]
+
+    static func title(_ raw: String) -> String {
+        let cleaned = raw.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " +: *", with: ": ", options: .regularExpression)
+            .replacingOccurrences(of: "(?: +[/\\.])+$", with: "", options: .regularExpression)
+        guard cleaned.contains(where: { $0.isLetter }), cleaned == cleaned.lowercased() || cleaned == cleaned.uppercased() else { return cleaned }
+        var beginsPhrase = true
+        return cleaned.split(separator: " ").map { token in
+            let word = String(token)
+            let core = word.trimmingCharacters(in: .punctuationCharacters)
+            let lower = core.lowercased()
+            let replacement = intentionalNames[lower] ?? (smallWords.contains(lower) && !beginsPhrase ? lower : core.capitalized)
+            let result = core.isEmpty ? word : word.replacingOccurrences(of: core, with: replacement)
+            beginsPhrase = word.hasSuffix(":")
+            return result
+        }.joined(separator: " ")
+    }
+
+    static func creator(_ raw: String) -> String {
+        let cleaned = raw.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #",?\s*\(?(?:(?:b\.|d\.|fl\.)\s*\d{4}|\d{4}\s*[-–]\s*\d{0,4}|[-–]\d{4})\)?\.?$"#,
+                                  with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = cleaned.split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+        let organizationWords = ["group", "company", "society", "association", "department", "university", "committee", "library", "press", "institute", "church", "radio", "research", "united states", "inc.", "ltd."]
+        guard parts.count == 2, !parts.contains(where: { $0.isEmpty }),
+              !organizationWords.contains(where: { cleaned.lowercased().contains($0) }),
+              parts.allSatisfy({ part in part.allSatisfy { $0.isLetter || $0 == " " || $0 == "-" || $0 == "'" || $0 == "’" || $0 == "." } }) else { return cleaned }
+        return parts[1] + " " + parts[0]
+    }
+
+    static func creators(_ raw: [String]) -> String {
+        let names = raw.map(creator).filter { !$0.isEmpty }
+        guard names.count > 1, let last = names.last else { return names.first ?? "" }
+        return names.dropLast().joined(separator: ", ") + " & " + last
     }
 }

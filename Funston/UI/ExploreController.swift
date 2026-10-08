@@ -430,7 +430,7 @@ private final class ExploreArtifactCell: UICollectionViewCell {
     deinit { artworkTask?.cancel() }
 
     func configure(artifact: ArtifactSummary, open: @escaping () -> Void) {
-        let metadata = [artifact.creators.first, artifact.displayYear].compactMap { $0 }.joined(separator: " · ")
+        let metadata = [(artifact.creatorDescription.isEmpty ? nil : artifact.creatorDescription), artifact.displayYear].compactMap { $0 }.joined(separator: " · ")
         show(artifact, metadata: metadata, open: open)
         progressStack.isHidden = true
         button.accessibilityLabel = artifact.spokenSummary
@@ -442,12 +442,12 @@ private final class ExploreArtifactCell: UICollectionViewCell {
     /// (for items with several) or creator underneath, then time left.
     func configure(continuing item: ContinueListeningItem, open: @escaping () -> Void) {
         let artifact = item.summary
-        show(artifact, metadata: item.trackTitle ?? artifact.creators.first ?? "", open: open)
+        show(artifact, metadata: item.trackTitle.map(MetadataFormatter.title) ?? (artifact.creatorDescription.isEmpty ? nil : artifact.creatorDescription) ?? "", open: open)
         progressBar.progress = Float(item.fractionPlayed ?? 0)
         progressBar.isHidden = item.fractionPlayed == nil
         progressLabel.text = item.progressDescription
         progressStack.isHidden = false
-        button.accessibilityLabel = ([artifact.title, item.trackTitle, artifact.creators.first].compactMap { $0 }).joined(separator: ", ")
+        button.accessibilityLabel = ([artifact.title, item.trackTitle.map(MetadataFormatter.title), (artifact.creatorDescription.isEmpty ? nil : artifact.creatorDescription)].compactMap { $0 }).joined(separator: ", ")
         button.accessibilityValue = item.progressDescription
         button.accessibilityIdentifier = "explore.continue." + artifact.identifier
     }

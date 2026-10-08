@@ -271,7 +271,7 @@ struct DownloadRowProjection {
         return FunstonRow(
             id: record.key,
             title: DownloadPresentation.fileName(record.fileName),
-            subtitle: ["From \(record.title)", state, record.errorMessage].compactMap { $0 }.joined(separator: "\n")
+            subtitle: ["From \(MetadataFormatter.title(record.title))", state, record.errorMessage].compactMap { $0 }.joined(separator: "\n")
         )
     }
 }
@@ -316,7 +316,7 @@ final class DownloadDetailController: FunstonListController, QLPreviewController
         subscription = nil
     }
     private func render() {
-        var rows = [FunstonRow(id: "identity", title: DownloadPresentation.fileName(record.fileName), subtitle: "From \(record.title)", navigates: false),
+        var rows = [FunstonRow(id: "identity", title: DownloadPresentation.fileName(record.fileName), subtitle: "From \(MetadataFormatter.title(record.title))", navigates: false),
                     FunstonRow(id: "state", title: record.state == .completed ? "File available offline" : record.state.rawValue.capitalized, subtitle: record.errorMessage, navigates: false),
                     FunstonRow(id: "artifact", title: "Open Item")]
         if let mutation {

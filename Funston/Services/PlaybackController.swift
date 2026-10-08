@@ -854,8 +854,8 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
             MPNowPlayingInfoPropertyPlaybackRate: player.rate,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: playbackRate
         ]
-        if let creator = context.artifact.creators.first {
-            info[MPMediaItemPropertyArtist] = creator
+        if !context.artifact.creatorDescription.isEmpty {
+            info[MPMediaItemPropertyArtist] = context.artifact.creatorDescription
         }
         if let duration { info[MPMediaItemPropertyPlaybackDuration] = duration }
         if let nowPlayingArtwork { info[MPMediaItemPropertyArtwork] = nowPlayingArtwork }

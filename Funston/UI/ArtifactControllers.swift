@@ -185,7 +185,10 @@ final class ArtifactController: FunstonListController {
         case "metadata":
             guard let detail else { return }
             let controller = FunstonListController(title: "Information")
-            controller.apply(detail.metadata.keys.sorted().map { FunstonRow(id: $0, title: $0, subtitle: detail.metadata[$0]?.joined(separator: "\n"), navigates: false) })
+            controller.apply(detail.metadata.keys.sorted().map { key in FunstonRow(id: key, title: key, subtitle: detail.metadata[key].map { values in
+                key == "creator" || key == "author" ? MetadataFormatter.creators(values) :
+                key == "title" ? values.map(MetadataFormatter.title).joined(separator: "\n") : values.joined(separator: "\n")
+            }, navigates: false) })
             navigationController?.pushViewController(controller, animated: true)
         case "web": UIApplication.shared.open(ArchiveURLs.item(identifier: summary.identifier))
         default: break
@@ -303,7 +306,7 @@ struct ArtifactOverview: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text(summary.mediaType == .texts ? "Book" : summary.mediaType.title.uppercased()).font(.caption.weight(.semibold)).tracking(1.2).foregroundStyle(Color.funstonSecondaryText)
                 Text(summary.title).font(.title.weight(.semibold)).accessibilityAddTraits(.isHeader)
-                let identity = (summary.creators.prefix(2) + [summary.displayDate].compactMap { $0 }).joined(separator: " · ")
+                let identity = ([summary.creatorDescription.isEmpty ? nil : summary.creatorDescription, summary.displayDate].compactMap { $0 }).joined(separator: " · ")
                 if !identity.isEmpty { Text(identity).font(.subheadline).foregroundStyle(Color.funstonSecondaryText) }
             }
             ViewThatFits(in: .horizontal) {

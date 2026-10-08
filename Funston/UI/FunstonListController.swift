@@ -255,7 +255,7 @@ extension MediaType {
 
 extension FunstonRow {
     static func artifact(_ artifact: ArtifactSummary, prefix: String = "") -> FunstonRow {
-        let creator = artifact.creators.prefix(2).joined(separator: ", ")
+        let creator = artifact.creatorDescription
         let metadata = [artifact.displayDate, artifact.mediaType.title].compactMap { $0 }.joined(separator: " · ")
         return FunstonRow(id: prefix + artifact.identifier, title: artifact.title,
                           subtitle: [creator.isEmpty ? nil : creator, metadata].compactMap { $0 }.joined(separator: "\n"),
@@ -281,7 +281,7 @@ extension ArtifactSummary {
 
     /// What VoiceOver reads for a shelf tile: the same facts the tile shows, plus the media type.
     var spokenSummary: String {
-        ([title] + creators.prefix(2) + [displayYear, mediaType.title].compactMap { $0 }).joined(separator: ", ")
+        ([title, creatorDescription.isEmpty ? nil : creatorDescription, displayYear, mediaType.title].compactMap { $0 }).joined(separator: ", ")
     }
 }
 
