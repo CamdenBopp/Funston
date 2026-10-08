@@ -36,12 +36,20 @@ final class ExploreController: UICollectionViewController {
     private var continueByKey: [String: ContinueListeningItem] = [:]
     private var continueTask: Task<Void, Never>?
     private var subscriptions = Set<AnyCancellable>()
+    private let sizingCell = ExploreArtifactCell(frame: .zero)
+    private let sizingStatusCell = UICollectionViewCell(frame: .zero)
+    private var shelfHeights: [String: (width: CGFloat, category: UIContentSizeCategory, height: CGFloat)] = [:]
+    private enum Status: Equatable {
+        case loading, empty
+        case error(String, hasItems: Bool)
+    }
+    private var renderedStatuses: [String: Status] = [:]
 
     init(environment: AppEnvironment, openCollection: @escaping (ArchiveCollection) -> Void, openArtifact: @escaping (ArtifactSummary) -> Void) {
         self.environment = environment
         repository = environment.repository
         self.openCollection = openCollection; self.openArtifact = openArtifact
-        super.init(collectionViewLayout: Self.layout(accessibility: false))
+        super.init(collectionViewLayout: UICollectionViewFlowLayout())
         title = "Explore"
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -52,11 +60,13 @@ final class ExploreController: UICollectionViewController {
         collectionView.backgroundColor = .systemBackground
         collectionView.contentInsetAdjustmentBehavior = .always
         collectionView.contentInset.bottom = 32
-        // A cover's height is only known once its image loads; let the tile re-measure.
-        collectionView.selfSizingInvalidation = .enabledIncludingConstraints
-        collectionView.setCollectionViewLayout(Self.layout(accessibility: traitCollection.preferredContentSizeCategory.isAccessibilityCategory), animated: false)
+        // Only headers and the vertical accessibility layout self-size. Horizontal
+        // shelves get their final height before scrolling, including unseen tiles.
+        collectionView.selfSizingInvalidation = .enabled
+        collectionView.setCollectionViewLayout(makeLayout(), animated: false)
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (controller: ExploreController, _: UITraitCollection) in
-            controller.collectionView.setCollectionViewLayout(Self.layout(accessibility: controller.traitCollection.preferredContentSizeCategory.isAccessibilityCategory), animated: false)
+            controller.shelfHeights.removeAll()
+            controller.collectionView.setCollectionViewLayout(controller.makeLayout(), animated: false)
         }
         let artifactCell = UICollectionView.CellRegistration<ExploreArtifactCell, String> { [weak self] cell, _, id in
             guard let self, let artifact = self.artifacts[id] else { return }
@@ -68,23 +78,7 @@ final class ExploreController: UICollectionViewController {
         }
         let statusCell = UICollectionView.CellRegistration<UICollectionViewCell, String> { [weak self] cell, _, id in
             guard let self else { return }
-                let collectionID = String(id.dropFirst("status:".count))
-                let error = self.errors[collectionID]
-                cell.contentConfiguration = UIHostingConfiguration {
-                    VStack(alignment: .leading, spacing: 12) {
-                        if let error {
-                            Text(self.contents[collectionID]?.isEmpty == false ? "Could not refresh" : "Could not load items").font(.headline)
-                            Text(error).font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
-                            Button("Try Again") { [weak self] in self?.load(collectionID, force: true) }.frame(minHeight: 44)
-                        } else if self.contents[collectionID]?.isEmpty == true && self.tasks[collectionID] == nil {
-                            Text("No items to show").font(.headline)
-                            Text("Open the collection to browse it.").font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
-                        } else {
-                            ProgressView().accessibilityLabel("Loading")
-                            Text("Loading from Internet Archive…").font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
-                        }
-                    }.frame(maxWidth: .infinity, minHeight: 190, alignment: .leading)
-                }.margins(.all, 0)
+                cell.contentConfiguration = self.statusConfiguration(for: String(id.dropFirst("status:".count)))
                 cell.isAccessibilityElement = false
                 cell.accessibilityIdentifier = nil
         }
@@ -112,28 +106,85 @@ final class ExploreController: UICollectionViewController {
         refreshContinueListening()
     }
 
-    private static func layout(accessibility: Bool) -> UICollectionViewLayout {
-        UICollectionViewCompositionalLayout { _, environment in
-            let available = environment.container.effectiveContentSize.width - 2 * Metrics.sideInset
+    private func makeLayout() -> UICollectionViewLayout {
+        UICollectionViewCompositionalLayout { [weak self] index, environment in
+            let traits = self?.traitCollection ?? environment.traitCollection
+            let accessibility = traits.preferredContentSizeCategory.isAccessibilityCategory
+            let available = max(1, environment.container.effectiveContentSize.width - 2 * Metrics.sideInset)
             let count = accessibility || available < 300 ? 1 : max(2, Int((available + Metrics.tileSpacing) / 208))
             let width = (available - CGFloat(count - 1) * Metrics.tileSpacing) / CGFloat(count)
-            let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .absolute(width), heightDimension: .estimated(Metrics.estimatedTileHeight)))
-            let group = NSCollectionLayoutGroup.horizontal(layoutSize: .init(widthDimension: .absolute(available), heightDimension: .estimated(Metrics.estimatedTileHeight)), subitems: Array(repeating: item, count: count))
+            let height: NSCollectionLayoutDimension = accessibility ? .estimated(Metrics.estimatedTileHeight) : .absolute(self?.shelfHeight(section: index, width: width, traits: traits) ?? Metrics.estimatedTileHeight)
+            let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .absolute(width), heightDimension: height))
+            let group = NSCollectionLayoutGroup.horizontal(layoutSize: .init(widthDimension: .absolute(available), heightDimension: height), subitems: Array(repeating: item, count: count))
             group.interItemSpacing = .fixed(Metrics.tileSpacing)
             let section = NSCollectionLayoutSection(group: group)
             section.orthogonalScrollingBehavior = accessibility ? .none : .groupPaging
             section.interGroupSpacing = 2 * Metrics.sideInset
             section.contentInsets = .init(top: Metrics.shelfTop, leading: Metrics.sideInset, bottom: Metrics.shelfBottom, trailing: Metrics.sideInset)
-            section.visibleItemsInvalidationHandler = { items, offset, environment in
-                let right = offset.x + environment.container.effectiveContentSize.width - Metrics.sideInset
-                for item in items where item.representedElementCategory == .cell {
-                    // A neighboring page never exposes a few letters at the edge.
-                    item.alpha = item.frame.minX >= offset.x + Metrics.sideInset - 1 && item.frame.maxX <= right + 1 ? 1 : 0
-                }
-            }
+            // Let UIKit clip the scrolling viewport. Changing alpha at its edges
+            // makes outgoing and incoming tiles blink during every partial swipe.
             section.boundarySupplementaryItems = [NSCollectionLayoutBoundarySupplementaryItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(Metrics.estimatedHeaderHeight)), elementKind: UICollectionView.elementKindSectionHeader, alignment: .top)]
             return section
         }
+    }
+
+    private func shelfHeight(section: Int, width: CGFloat, traits: UITraitCollection) -> CGFloat {
+        guard let identifier = source?.sectionIdentifier(for: section) else { return Metrics.estimatedTileHeight }
+        let category = traits.preferredContentSizeCategory
+        if let cached = shelfHeights[identifier], cached.width == width, cached.category == category { return cached.height }
+        sizingCell.traitOverrides.preferredContentSizeCategory = category
+        sizingStatusCell.traitOverrides.preferredContentSizeCategory = category
+        var height: CGFloat = 1
+        for key in source.snapshot().itemIdentifiers(inSection: identifier) {
+            let cell: UICollectionViewCell
+            if let item = continueByKey[key] {
+                sizingCell.configure(continuing: item, open: {})
+                height = max(height, sizingCell.fittingHeight(width: width, traits: traits))
+                continue
+            } else if let artifact = artifacts[key] {
+                sizingCell.configure(artifact: artifact, open: {})
+                height = max(height, sizingCell.fittingHeight(width: width, traits: traits))
+                continue
+            } else {
+                sizingStatusCell.contentConfiguration = statusConfiguration(for: identifier, traits: traits)
+                cell = sizingStatusCell
+            }
+            height = max(height, cell.contentView.systemLayoutSizeFitting(
+                CGSize(width: width, height: 0), withHorizontalFittingPriority: .required,
+                verticalFittingPriority: .fittingSizeLevel).height)
+        }
+        height = ceil(height)
+        shelfHeights[identifier] = (width, category, height)
+        return height
+    }
+
+    private func statusConfiguration(for collectionID: String, traits: UITraitCollection? = nil) -> UIHostingConfiguration<some View, EmptyView> {
+        let status = status(for: collectionID)
+        let textSize = traits.flatMap { DynamicTypeSize($0.preferredContentSizeCategory) }
+        return UIHostingConfiguration {
+            VStack(alignment: .leading, spacing: 12) {
+                switch status {
+                case let .error(error, hasItems):
+                    Text(hasItems ? "Could not refresh" : "Could not load items").font(.headline)
+                    Text(error).font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
+                    Button("Try Again") { [weak self] in self?.load(collectionID, force: true) }.frame(minHeight: 44)
+                case .empty:
+                    Text("No items to show").font(.headline)
+                    Text("Open the collection to browse it.").font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
+                case .loading:
+                    ProgressView().accessibilityLabel("Loading")
+                    Text("Loading from Internet Archive…").font(.subheadline).foregroundStyle(Color.funstonSecondaryText)
+                }
+            }.frame(maxWidth: .infinity, minHeight: 190, alignment: .leading)
+                .transformEnvironment(\.dynamicTypeSize) { size in
+                    if let textSize { size = textSize }
+                }
+        }.margins(.all, 0)
+    }
+
+    private func status(for collectionID: String) -> Status {
+        if let error = errors[collectionID] { return .error(error, hasItems: contents[collectionID]?.isEmpty == false) }
+        return contents[collectionID]?.isEmpty == true && tasks[collectionID] == nil ? .empty : .loading
     }
 
     override func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
@@ -213,11 +264,21 @@ final class ExploreController: UICollectionViewController {
         }
         let previous = source.snapshot()
         let existing = Set(previous.itemIdentifiers)
-        snapshot.reconfigureItems(snapshot.itemIdentifiers.filter {
-            existing.contains($0) && (artifacts[$0] != nextArtifacts[$0] || continueByKey[$0] != nextContinue[$0] || $0.hasPrefix("status:"))
+        let nextStatuses = Dictionary(uniqueKeysWithValues: snapshot.itemIdentifiers.filter { $0.hasPrefix("status:") }.map {
+            ($0, status(for: String($0.dropFirst("status:".count))))
         })
+        let changed = snapshot.itemIdentifiers.filter {
+            existing.contains($0) && (artifacts[$0] != nextArtifacts[$0] || continueByKey[$0] != nextContinue[$0] || renderedStatuses[$0] != nextStatuses[$0])
+        }
+        guard previous.sectionIdentifiers != snapshot.sectionIdentifiers || previous.itemIdentifiers != snapshot.itemIdentifiers || !changed.isEmpty else {
+            updateVisibleHeaders()
+            return
+        }
+        snapshot.reconfigureItems(changed)
         artifacts = nextArtifacts
         continueByKey = nextContinue
+        renderedStatuses = nextStatuses
+        shelfHeights.removeAll()
         source.apply(snapshot, animatingDifferences: false) { [weak self] in
             guard let self else { return }
             if let anchor, !self.collectionView.isDragging, !self.collectionView.isDecelerating,
@@ -230,10 +291,14 @@ final class ExploreController: UICollectionViewController {
                     if abs(y - self.collectionView.contentOffset.y) > 0.5 { self.collectionView.setContentOffset(CGPoint(x: 0, y: y), animated: false) }
                 }
             }
-            for index in self.collectionView.indexPathsForVisibleSupplementaryElements(ofKind: UICollectionView.elementKindSectionHeader) {
-                guard let header = self.collectionView.supplementaryView(forElementKind: UICollectionView.elementKindSectionHeader, at: index) as? ExploreSectionHeader else { continue }
-                self.configure(header, section: index.section)
-            }
+            self.updateVisibleHeaders()
+        }
+    }
+
+    private func updateVisibleHeaders() {
+        for index in collectionView.indexPathsForVisibleSupplementaryElements(ofKind: UICollectionView.elementKindSectionHeader) {
+            guard let header = collectionView.supplementaryView(forElementKind: UICollectionView.elementKindSectionHeader, at: index) as? ExploreSectionHeader else { continue }
+            configure(header, section: index.section)
         }
     }
 
@@ -316,7 +381,7 @@ final class ExploreController: UICollectionViewController {
 }
 
 @MainActor
-private final class ExploreArtifactCell: UICollectionViewCell {
+final class ExploreArtifactCell: UICollectionViewCell {
     nonisolated static let maximumCoverHeight: CGFloat = 176
 
     private enum Metrics {
@@ -396,7 +461,7 @@ private final class ExploreArtifactCell: UICollectionViewCell {
             stack.leadingAnchor.constraint(equalTo: button.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: button.trailingAnchor),
             stack.topAnchor.constraint(equalTo: button.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: button.bottomAnchor, constant: -Metrics.bottomPadding),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: button.bottomAnchor, constant: -Metrics.bottomPadding),
             placeholderSurface.leadingAnchor.constraint(equalTo: imageSurface.leadingAnchor),
             placeholderSurface.trailingAnchor.constraint(equalTo: imageSurface.trailingAnchor),
             placeholderSurface.topAnchor.constraint(equalTo: imageSurface.topAnchor),
@@ -456,8 +521,23 @@ private final class ExploreArtifactCell: UICollectionViewCell {
         if window != nil { loadArtwork() }
     }
 
-    private func updateTextLayout() {
-        let large = traitCollection.preferredContentSizeCategory.isAccessibilityCategory
+    /// Detached sizing cells don't inherit the screen's traits. Supply them
+    /// explicitly so the measured fonts match the visible tiles at every size.
+    func fittingHeight(width: CGFloat, traits: UITraitCollection) -> CGFloat {
+        // A detached label would otherwise rescale an explicitly supplied font
+        // back to its own default traits while Auto Layout measures it.
+        for label in [titleLabel, metadataLabel, progressLabel] { label.adjustsFontForContentSizeCategory = false }
+        updateTextLayout(traits: traits)
+        return contentView.systemLayoutSizeFitting(CGSize(width: width, height: 0),
+            withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height
+    }
+
+    private func updateTextLayout(traits: UITraitCollection? = nil) {
+        let traits = traits ?? traitCollection
+        titleLabel.font = .preferredFont(forTextStyle: .headline, compatibleWith: traits)
+        metadataLabel.font = .preferredFont(forTextStyle: .subheadline, compatibleWith: traits)
+        progressLabel.font = .preferredFont(forTextStyle: .footnote, compatibleWith: traits)
+        let large = traits.preferredContentSizeCategory.isAccessibilityCategory
         titleLabel.numberOfLines = large ? 0 : 3
         metadataLabel.numberOfLines = large ? 0 : 2
         progressLabel.numberOfLines = large ? 0 : 1
@@ -474,7 +554,6 @@ private final class ExploreArtifactCell: UICollectionViewCell {
             if let image = result?.value, image.size.width > 0, image.size.height > 0 {
                 artwork.image = image; hasArtwork = true
                 placeholder.isHidden = true; placeholderSurface.isHidden = true
-
             }
         }
     }

@@ -396,3 +396,181 @@ private actor UIPresentationGateTransport: ArchiveTransport {
         pending = nil
     }
 }
+
+/// Exercise real compositional layouts, including unseen, longer titles.
+@MainActor
+final class ExploreScrollingTests: XCTestCase {
+    func testEveryShelfKeepsItsHeightAndTilesVisibleThroughPartialSwipes() async throws {
+        let mounted = try await MountedExplore(includeContinue: true)
+        defer { mounted.close() }
+        let collection = mounted.controller.collectionView!
+        for _ in 0..<100 where collection.numberOfSections < ArchiveCollection.curated.count + 1 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(collection.numberOfSections, ArchiveCollection.curated.count + 1)
+        for section in 0..<collection.numberOfSections {
+            collection.scrollToItem(at: IndexPath(item: 0, section: section), at: .top, animated: false)
+            try await mounted.waitForItems(section: section)
+            let first = IndexPath(item: 0, section: section)
+            let before = try XCTUnwrap(collection.layoutAttributesForItem(at: first)).frame
+            let followingHeading = section + 1 < collection.numberOfSections ? collection.layoutAttributesForSupplementaryElement(
+                ofKind: UICollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: section + 1))?.frame : nil
+            XCTAssertGreaterThan(before.height, 280, "Long titles on unseen pages must be measured before scrolling")
+            for item in 1..<6 {
+                let attributes = try XCTUnwrap(collection.layoutAttributesForItem(at: IndexPath(item: item, section: section)))
+                XCTAssertEqual(attributes.frame.height, before.height, accuracy: 0.5,
+                               "Unseen pages must use the shelf's final height")
+            }
+            let firstCell = try XCTUnwrap(collection.cellForItem(at: first))
+            let scroller = try XCTUnwrap(ancestors(of: firstCell).compactMap { $0 as? UIScrollView }.first { $0 !== collection })
+            for fraction in [0.15, 0.5, 1.0, 1.5, 2.0, 0.0] {
+                scroller.setContentOffset(CGPoint(x: fraction * collection.bounds.width, y: 0), animated: false)
+                collection.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(30))
+                XCTAssertEqual(try XCTUnwrap(collection.layoutAttributesForItem(at: first)).frame.height, before.height, accuracy: 0.5)
+                if let followingHeading {
+                    XCTAssertEqual(try XCTUnwrap(collection.layoutAttributesForSupplementaryElement(
+                        ofKind: UICollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: section + 1))).frame.minY,
+                        followingHeading.minY, accuracy: 0.5, "A horizontal swipe must not move the following shelf")
+                }
+                let visible = collection.visibleCells.filter {
+                    collection.indexPath(for: $0)?.section == section && scroller.convert($0.bounds, from: $0).intersects(scroller.bounds)
+                }
+                XCTAssertFalse(visible.isEmpty)
+                for cell in visible {
+                    XCTAssertEqual(cell.alpha, 1, "Partial tiles must stay visible throughout the swipe")
+                }
+            }
+        }
+    }
+
+    func testShelfRemeasuresForWidthAndTextSizeAndAccessibilityRemainsVertical() async throws {
+        let mounted = try await MountedExplore()
+        defer { mounted.close() }
+        let controller = mounted.controller
+        let collection = controller.collectionView!
+        try await mounted.waitForItems(section: 0)
+        let index = IndexPath(item: 0, section: 0)
+        let original = try XCTUnwrap(collection.layoutAttributesForItem(at: index)).frame
+        controller.traitOverrides.preferredContentSizeCategory = .extraExtraExtraLarge
+        try await Task.sleep(for: .milliseconds(80))
+        collection.layoutIfNeeded()
+        let larger = try XCTUnwrap(collection.layoutAttributesForItem(at: index)).frame
+        let probe = ExploreArtifactCell(frame: .zero)
+        probe.configure(artifact: ArtifactSummary(identifier: "test", title: String(repeating: "Long title ", count: 20), creators: ["Long author name and a second contributor"]), open: {})
+        XCTAssertGreaterThan(probe.fittingHeight(width: 167, traits: UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)),
+                             probe.fittingHeight(width: 167, traits: UITraitCollection(preferredContentSizeCategory: .large)))
+        XCTAssertGreaterThan(larger.height, original.height)
+        mounted.window.frame.size.width = 700
+        controller.view.frame = mounted.window.bounds
+        collection.collectionViewLayout.invalidateLayout()
+        collection.layoutIfNeeded()
+        let wider = try XCTUnwrap(collection.layoutAttributesForItem(at: index)).frame
+        XCTAssertNotEqual(wider.width, larger.width)
+        XCTAssertLessThanOrEqual(wider.height, larger.height)
+        controller.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
+        try await Task.sleep(for: .milliseconds(80))
+        collection.layoutIfNeeded()
+        let second = try XCTUnwrap(collection.layoutAttributesForItem(at: IndexPath(item: 1, section: 0))).frame
+        let first = try XCTUnwrap(collection.layoutAttributesForItem(at: index)).frame
+        XCTAssertEqual(second.minX, first.minX, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(second.minY, first.maxY)
+        XCTAssertGreaterThan(try XCTUnwrap(collection.layoutAttributesForItem(at: IndexPath(item: 2, section: 0))).frame.height, original.height)
+    }
+
+    func testCoverIntrinsicSizeCannotChangeTileHeight() throws {
+        let cell = ExploreArtifactCell(frame: .zero)
+        cell.configure(artifact: ArtifactSummary(identifier: "fixture", title: "A title with several words", creators: ["An author"]), open: {})
+        func height() -> CGFloat {
+            cell.contentView.systemLayoutSizeFitting(CGSize(width: 175, height: 0),
+                withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height
+        }
+        let initial = height()
+        let cover = try XCTUnwrap(descendants(of: cell).compactMap { $0 as? UIImageView }.first { $0.contentMode == .scaleAspectFit && $0.tintColor != .tertiaryLabel })
+        for size in [CGSize(width: 800, height: 100), CGSize(width: 100, height: 800)] {
+            cover.image = UIGraphicsImageRenderer(size: size).image { _ in UIColor.red.setFill(); UIRectFill(CGRect(origin: .zero, size: size)) }
+            XCTAssertEqual(height(), initial, accuracy: 0.5)
+        }
+    }
+
+    private func ancestors(of view: UIView) -> [UIView] {
+        guard let parent = view.superview else { return [] }
+        return [parent] + ancestors(of: parent)
+    }
+    private func descendants(of view: UIView) -> [UIView] {
+        view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+
+    @MainActor
+    private final class MountedExplore {
+        let directory: URL
+        let window: UIWindow
+        let controller: ExploreController
+        let previousKeyWindow: UIWindow?
+
+        init(includeContinue: Bool = false) async throws {
+            directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let store = try SQLiteStore(url: XCTUnwrap(URL(string: "file::memory:")))
+            if includeContinue {
+                for index in (0..<6).reversed() {
+                    let identifier = "scroll-fixture-continue-\(index)"
+                    let response = try JSONSerialization.data(withJSONObject: [
+                        "metadata": ["identifier": identifier, "title": index < 2 ? "Short" : String(repeating: "A long recording title ", count: 5), "mediatype": "audio"],
+                        "files": [
+                            ["name": "a.mp3", "format": "VBR MP3", "length": "1800", "title": index < 2 ? "Short track" : "A long episode name that wraps onto multiple lines"],
+                            ["name": "b.mp3", "format": "VBR MP3", "length": "1800"]
+                        ]
+                    ])
+                    try await store.storeCache(key: "metadata:\(identifier)", kind: "metadata", response: response, snapshot: nil, maxAge: 900)
+                    try await store.setPlaybackPosition(identifier: identifier, fileName: "a.mp3", seconds: 60)
+                }
+            }
+            for collection in ArchiveCollection.curated {
+                let scope: MediaType = collection.identifier == "texts" ? .texts : collection.identifier == "prelinger" ? .movies : .audio
+                let request = SearchRequest(scope: scope, pageSize: 6, collection: collection.identifier)
+                let items = (0..<6).map { index in
+                    ArtifactSummary(identifier: "scroll-fixture-\(collection.identifier)-\(index)",
+                        title: index < 2 ? "Short" : String(repeating: "An unusually long title with many words ", count: 5),
+                        creators: index < 2 ? [] : ["An author with a long name and a second contributor"], mediaType: scope)
+                }
+                let page = SearchPage(items: items, total: 6, page: 1, pageSize: 6)
+                let response = try JSONSerialization.data(withJSONObject: ["response": ["numFound": 6, "docs": items.map {
+                    ["identifier": $0.identifier, "title": $0.title, "creator": $0.creators, "mediatype": scope.rawValue] as [String: Any]
+                }]])
+                try await store.storeCache(key: CachingArchiveRepository.searchCacheKey(request), kind: "search",
+                    response: response, snapshot: JSONEncoder().encode(page), maxAge: 900)
+            }
+            let environment = AppEnvironment(store: store, mediaDirectory: directory, downloadSession: .ephemeral)
+            controller = ExploreController(environment: environment, openCollection: { _ in }, openArtifact: { _ in })
+            let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive })
+            previousKeyWindow = scene.windows.first { $0.isKeyWindow }
+            window = UIWindow(windowScene: scene)
+            window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+            window.windowLevel = UIWindow.Level(rawValue: UIWindow.Level.normal.rawValue + 1)
+            window.rootViewController = controller
+            window.makeKeyAndVisible()
+            controller.view.layoutIfNeeded()
+            for section in ArchiveCollection.curated.indices {
+                XCTAssertGreaterThanOrEqual(try XCTUnwrap(controller.collectionView.layoutAttributesForItem(at: IndexPath(item: 0, section: section))).frame.height, 190,
+                    "Loading cells need their full measured height")
+            }
+        }
+
+        func waitForItems(section: Int) async throws {
+            for _ in 0..<100 {
+                controller.collectionView.layoutIfNeeded()
+                if controller.collectionView.numberOfItems(inSection: section) == 6 { return }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTFail("Cached shelf did not load")
+        }
+
+        func close() {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousKeyWindow?.makeKey()
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+}
