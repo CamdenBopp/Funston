@@ -34,6 +34,12 @@ struct PlaybackBookmark: Sendable {
     let identifier: String
     let fileName: String
     let seconds: Double
+    let isExplicitlyStopped: Bool
+
+    init(identifier: String, fileName: String, seconds: Double, isExplicitlyStopped: Bool = false) {
+        self.identifier = identifier; self.fileName = fileName; self.seconds = seconds
+        self.isExplicitlyStopped = isExplicitlyStopped
+    }
 }
 
 struct StoredCacheEntry: Sendable {
@@ -135,17 +141,20 @@ actor SQLiteStore {
     /// Only cached Archive responses; library, downloads and progress are preserved.
     func clearCache() throws { try execute("DELETE FROM cache_entries") }
 
-    func setPlaybackPosition(identifier: String, fileName: String, seconds: Double) throws {
+    func setPlaybackPosition(identifier: String, fileName: String, seconds: Double, explicitlyStopped: Bool? = nil) throws {
         try execute(
             """
-            INSERT INTO playback_positions(identifier, file_name, seconds, updated_at)
-            VALUES(?, ?, ?, ?)
+            INSERT INTO playback_positions(identifier, file_name, seconds, updated_at, explicitly_stopped)
+            VALUES(?, ?, ?, ?, COALESCE(?, 0))
             ON CONFLICT(identifier, file_name) DO UPDATE SET
-              seconds=excluded.seconds, updated_at=excluded.updated_at
+              seconds=excluded.seconds, updated_at=excluded.updated_at,
+              explicitly_stopped=COALESCE(?, playback_positions.explicitly_stopped)
             """,
             bindings: [
                 .text(identifier), .text(fileName), .double(max(0, seconds)),
-                .double(Date.now.timeIntervalSince1970)
+                .double(Date.now.timeIntervalSince1970),
+                explicitlyStopped.map { .int64($0 ? 1 : 0) } ?? .null,
+                explicitlyStopped.map { .int64($0 ? 1 : 0) } ?? .null
             ]
         )
     }
@@ -174,14 +183,23 @@ actor SQLiteStore {
         ) { sqlite3_column_double($0, 0) }
     }
 
+    func playbackBookmark(identifier: String, fileName: String) throws -> PlaybackBookmark? {
+        try queryOne("SELECT seconds, explicitly_stopped FROM playback_positions WHERE identifier=? AND file_name=?",
+                     bindings: [.text(identifier), .text(fileName)]) {
+            PlaybackBookmark(identifier: identifier, fileName: fileName, seconds: sqlite3_column_double($0, 0),
+                             isExplicitlyStopped: sqlite3_column_int($0, 1) != 0)
+        }
+    }
+
     /// Saved positions, most recently updated first.
     func recentPlaybackPositions(limit: Int) throws -> [PlaybackBookmark] {
         try query(
-            "SELECT identifier, file_name, seconds FROM playback_positions ORDER BY updated_at DESC LIMIT ?",
+            "SELECT identifier, file_name, seconds, explicitly_stopped FROM playback_positions ORDER BY updated_at DESC LIMIT ?",
             bindings: [.int64(Int64(max(0, limit)))]
         ) {
             guard let identifier = Self.text($0, column: 0), let fileName = Self.text($0, column: 1) else { return nil }
-            return PlaybackBookmark(identifier: identifier, fileName: fileName, seconds: sqlite3_column_double($0, 2))
+            return PlaybackBookmark(identifier: identifier, fileName: fileName, seconds: sqlite3_column_double($0, 2),
+                                    isExplicitlyStopped: sqlite3_column_int($0, 3) != 0)
         }.compactMap { $0 }
     }
 
@@ -194,7 +212,7 @@ actor SQLiteStore {
         if played { try markRecordingPlayed(identifier: identifier, fileName: fileName) }
         else {
             try execute("DELETE FROM played_recordings WHERE identifier=? AND file_name=?", bindings: [.text(identifier), .text(fileName)])
-            try setPlaybackPosition(identifier: identifier, fileName: fileName, seconds: 0)
+            try setPlaybackPosition(identifier: identifier, fileName: fileName, seconds: 0, explicitlyStopped: false)
         }
     }
 
@@ -536,7 +554,9 @@ actor SQLiteStore {
           'creators', json('[]'), 'mediaType', 'unknown', 'collections', json('[]')) AS BLOB),
           MAX(updated_at), 'viaDownload'
         FROM downloads GROUP BY identifier;
-        """
+        """,
+        // 7: an explicit Stop preserves even a short or nearly finished bookmark.
+        "ALTER TABLE playback_positions ADD COLUMN explicitly_stopped INTEGER NOT NULL DEFAULT 0;"
     ]
 
     static var schemaVersion: Int { migrations.count }

@@ -65,6 +65,7 @@ final class LibraryMembershipTests: XCTestCase {
         defer { sqlite3_close(handle) }
         let prepare = """
         ALTER TABLE saved_artifacts DROP COLUMN save_reason;
+        ALTER TABLE playback_positions DROP COLUMN explicitly_stopped;
         PRAGMA user_version=5;
         CREATE TRIGGER interrupt_import BEFORE INSERT ON saved_artifacts WHEN NEW.identifier='download'
         BEGIN SELECT RAISE(ABORT, 'simulated interruption'); END;

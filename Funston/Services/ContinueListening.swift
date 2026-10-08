@@ -57,7 +57,8 @@ enum ContinueListening {
             // rows for other tracks of the same item are history.
             guard seen.insert(bookmark.identifier).inserted else { continue }
             // Skip before any lookup when no duration could make it resumable.
-            guard PlaybackController.restoredPosition(bookmark.seconds, duration: .nan) > 0 else { continue }
+            guard MediaDuration.validated(bookmark.seconds) != nil,
+                  bookmark.isExplicitlyStopped || PlaybackController.restoredPosition(bookmark.seconds, duration: .nan) > 0 else { continue }
             if Task.isCancelled { return items }
             do {
                 let detail = try await detail(bookmark.identifier)
@@ -67,7 +68,7 @@ enum ContinueListening {
                 let track = detail.tracks[index]
                 let file = track.candidates.first { $0.name == bookmark.fileName }
                 let duration = MediaDuration.validated(track.duration ?? file?.duration)
-                guard PlaybackController.restoredPosition(bookmark.seconds, duration: duration ?? .nan) > 0 else { continue }
+                guard bookmark.isExplicitlyStopped || PlaybackController.restoredPosition(bookmark.seconds, duration: duration ?? .nan) > 0 else { continue }
                 items.append(ContinueListeningItem(summary: detail.summary, tracks: detail.tracks, trackIndex: index,
                                                    fileName: bookmark.fileName, position: bookmark.seconds,
                                                    duration: duration, download: nil))

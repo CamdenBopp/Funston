@@ -77,6 +77,34 @@ final class ResumePolicyTests: XCTestCase {
         XCTAssertNotNil(playback.context)
     }
 
+    func testExplicitStopKeepsShelfAtEdgesAndClearsStartupSelection() async throws {
+        for seconds in [0.0, 3.0, 55.0] {
+            let (store, downloads, records) = try await audioFixture(seconds: 60, names: ["stopped.wav"])
+            let player = AVPlayer()
+            let playback = PlaybackController(store: store, downloads: downloads, player: player,
+                audioSessionActivator: {}, audioSessionDeactivator: {},
+                artworkLoader: { _ in throw URLError(.cancelled) })
+            playback.playDownloaded(records[0], autoplay: false)
+            try await until { playback.phase == .paused }
+            _ = await player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+            let stopped = try XCTUnwrap(playback.stopListening())
+            _ = try await playback.savedRecordingProgress(identifier: records[0].identifier)
+            let active = try await store.lastPlayback()
+            XCTAssertNil(active, "An explicit Stop must not restore the mini-player at startup")
+            let bookmarks = try await store.recentPlaybackPositions(limit: 10)
+            let detail = ArtifactDetail(summary: stopped.artifact, tracks: stopped.tracks.map {
+                PlayableTrack(id: $0.id, title: $0.title, candidates: $0.candidates, duration: 60)
+            })
+            let shelf = await ContinueListening.items(bookmarks: bookmarks, detail: { _ in detail }, download: { _, _ in nil })
+            XCTAssertEqual(shelf.count, 1, "Explicitly stopped at \(seconds)s")
+            XCTAssertEqual(shelf.first?.position ?? -1, seconds, accuracy: 0.05)
+            // Starting it from Continue listening must keep the exact stopped position too.
+            playback.playDownloaded(records[0], autoplay: false)
+            try await until { playback.phase == .paused }
+            XCTAssertEqual(player.currentTime().seconds, seconds, accuracy: 0.05)
+        }
+    }
+
     /// Replacing the player's item jumps time to zero, which fires the periodic
     /// save. If that save lands while the bookmark is being restored, the restore
     /// reads zero and the listener loses their place. Switching from one

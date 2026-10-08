@@ -1,4 +1,5 @@
 import XCTest
+import SQLite3
 @testable import Funston
 
 final class ContinueListeningTests: XCTestCase {
@@ -54,6 +55,42 @@ final class ContinueListeningTests: XCTestCase {
         XCTAssertEqual(show?.trackTitle, "Track ep2.mp3")
         XCTAssertEqual(show?.progressDescription, "12 minutes left")
         XCTAssertEqual(show?.fractionPlayed ?? 0, 0.6, accuracy: 0.001)
+    }
+
+    func testExplicitStopMarkerSurvivesReopenAndClearsWhenListeningResumes() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "test.sqlite")
+        let first = try SQLiteStore(url: url)
+        try await first.setPlaybackPosition(identifier: "item", fileName: "track.mp3", seconds: 3, explicitlyStopped: true)
+        let reopened = try SQLiteStore(url: url)
+        let bookmark = try await reopened.playbackBookmark(identifier: "item", fileName: "track.mp3")
+        XCTAssertTrue(bookmark?.isExplicitlyStopped == true)
+        try await reopened.setPlaybackPosition(identifier: "item", fileName: "track.mp3", seconds: 3)
+        let paused = try await reopened.recentPlaybackPositions(limit: 1)
+        XCTAssertTrue(paused.first?.isExplicitlyStopped == true)
+        try await reopened.setPlaybackPosition(identifier: "item", fileName: "track.mp3", seconds: 4, explicitlyStopped: false)
+        let resumed = try await reopened.recentPlaybackPositions(limit: 1)
+        XCTAssertFalse(resumed.first?.isExplicitlyStopped == true)
+    }
+
+    func testSchemaSixMigrationRetainsNormalBookmarks() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "test.sqlite")
+        let current = try SQLiteStore(url: url)
+        try await current.setPlaybackPosition(identifier: "existing", fileName: "track.mp3", seconds: 30)
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &handle), SQLITE_OK)
+        defer { sqlite3_close(handle) }
+        XCTAssertEqual(sqlite3_exec(handle, "ALTER TABLE playback_positions DROP COLUMN explicitly_stopped; PRAGMA user_version=6;", nil, nil, nil), SQLITE_OK)
+        let migrated = try SQLiteStore(url: url)
+        let bookmark = try await migrated.playbackBookmark(identifier: "existing", fileName: "track.mp3")
+        XCTAssertEqual(bookmark?.seconds, 30)
+        XCTAssertFalse(bookmark?.isExplicitlyStopped == true)
+        XCTAssertEqual(try SQLiteStore.userVersion(handle), SQLiteStore.schemaVersion)
     }
 
     func testShelfShowsAtMostTenItems() async {

@@ -450,6 +450,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     func stopListening() -> PlaybackContext? {
         guard videoOwnership == nil, let stopped = context else { return nil }
         pause()
+        persist(seconds: player.currentTime().seconds, explicitlyStopped: true)
         sleepTimer.turnOff()
         generation &+= 1
         downloadQueueTask?.cancel()
@@ -631,13 +632,15 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
                     // bookmark writes finish. Restore the latest committed intent.
                     await self.persistenceTail?.value
                     guard self.generation == expectedGeneration, self.player.currentItem === item else { return }
-                    let saved = (try? await self.store.playbackPosition(
+                    let bookmark = try? await self.store.playbackBookmark(
                         identifier: identifier,
                         fileName: fileName
-                    )) ?? 0
+                    )
                     guard self.generation == expectedGeneration, self.player.currentItem === item else { return }
+                    let saved = bookmark?.seconds ?? 0
                     let itemDuration = item.duration.seconds
-                    let position = self.exactResumeGeneration == expectedGeneration ? max(0, saved)
+                    let resumeExactly = self.exactResumeGeneration == expectedGeneration || bookmark?.isExplicitlyStopped == true
+                    let position = resumeExactly ? max(0, resumeOverride ?? saved)
                         : Self.restoredPosition(resumeOverride ?? saved, duration: itemDuration)
                     if position > 0, self.positionRevision == revision {
                         _ = await self.player.seek(
@@ -774,7 +777,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         persist(seconds: player.currentTime().seconds)
     }
 
-    private func persist(seconds: Double) {
+    private func persist(seconds: Double, explicitlyStopped: Bool = false) {
         guard let context, seconds.isFinite else { return }
         let bookmark = PlaybackBookmark(
             identifier: context.artifact.identifier,
@@ -782,6 +785,8 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
             seconds: phase == .ended ? 0 : max(0, seconds)
         )
         let completed = phase == .ended
+        // Paused restores keep explicit intent until listening resumes or finishes.
+        let stoppedMarker: Bool? = explicitlyStopped ? true : (wantsToPlay || completed ? false : nil)
         let deletePlayedDownload = completed && settings.autoDeletePlayedDownloads
         let previous = persistenceTail
         persistenceTail = Task {
@@ -790,9 +795,9 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
             try? await store.setPlaybackPosition(
                 identifier: bookmark.identifier,
                 fileName: bookmark.fileName,
-                seconds: bookmark.seconds
+                seconds: bookmark.seconds, explicitlyStopped: stoppedMarker
             )
-            try? await store.setLastPlayback(bookmark)
+            try? await store.setLastPlayback(explicitlyStopped ? nil : bookmark)
             if deletePlayedDownload {
                 for record in downloads.records where record.identifier == bookmark.identifier &&
                     context.track.candidates.contains(where: { $0.name == record.fileName }) {
