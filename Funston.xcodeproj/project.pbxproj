@@ -13,6 +13,7 @@
 		0C50B41EAB14FF045250AFD0 /* SQLiteStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7B0F9C8906315750BF847F3 /* SQLiteStoreTests.swift */; };
 		10CF2268ED17B270EB147450 /* OriginalVideoRenderDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AE060CFC6E546D1AE4848E5 /* OriginalVideoRenderDeviceTests.swift */; };
 		1194CE52844AAFB3377DB4F0 /* ArtworkResponseLimitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74936F3127256B6C79C16AE3 /* ArtworkResponseLimitTests.swift */; };
+		1253D4AF7060608F5FBDFF19 /* PreflightUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E130900F5B4EE452F908EAC /* PreflightUITests.swift */; };
 		12567D6189ACD7041167D8F7 /* CachingArchiveRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63B2F9D20233F0D328D27C37 /* CachingArchiveRepository.swift */; };
 		15A6DA24023C06BEF04F7119 /* FunstonAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60547F1D814C05A757DCE7B9 /* FunstonAppearance.swift */; };
 		16C24E58516427E2CD03AD39 /* FunstonUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AAFDC5C7C54DF226D11A47 /* FunstonUITests.swift */; };
@@ -146,6 +147,7 @@
 		74936F3127256B6C79C16AE3 /* ArtworkResponseLimitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkResponseLimitTests.swift; sourceTree = "<group>"; };
 		7540836E849C6DFD78F2033B /* OriginalVideoLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoLiveTests.swift; sourceTree = "<group>"; };
 		7DBCF6D4893AA8269341A32F /* DownloadRelocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadRelocationTests.swift; sourceTree = "<group>"; };
+		7E130900F5B4EE452F908EAC /* PreflightUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreflightUITests.swift; sourceTree = "<group>"; };
 		8184368EFE3E38AB32EB6C7F /* MediaPlayer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaPlayer.framework; path = System/Library/Frameworks/MediaPlayer.framework; sourceTree = SDKROOT; };
 		81DC90056E59A1CB9040BE47 /* LNPopupController */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LNPopupController; path = Vendor/LNPopupController; sourceTree = SOURCE_ROOT; };
 		81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFScreenRenderingExperiment.swift; sourceTree = "<group>"; };
@@ -387,6 +389,7 @@
 			isa = PBXGroup;
 			children = (
 				99AAFDC5C7C54DF226D11A47 /* FunstonUITests.swift */,
+				7E130900F5B4EE452F908EAC /* PreflightUITests.swift */,
 			);
 			path = FunstonUITests;
 			sourceTree = "<group>";
@@ -571,6 +574,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				16C24E58516427E2CD03AD39 /* FunstonUITests.swift in Sources */,
+				1253D4AF7060608F5FBDFF19 /* PreflightUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

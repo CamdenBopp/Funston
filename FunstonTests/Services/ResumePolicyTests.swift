@@ -1,4 +1,5 @@
 import AVFoundation
+import MediaPlayer
 import XCTest
 @testable import Funston
 
@@ -40,6 +41,40 @@ final class ResumePolicyTests: XCTestCase {
         XCTAssertEqual(PlaybackController.restoredPosition(.nan, duration: hour), 0)
         XCTAssertEqual(PlaybackController.restoredPosition(-30, duration: hour), 0)
         XCTAssertEqual(PlaybackController.restoredPosition(.infinity, duration: hour), 0)
+    }
+
+    func testStopListeningClearsPlayerAndRetainsResumePosition() async throws {
+        let (store, downloads, records) = try await audioFixture(seconds: 60, names: ["first.wav"])
+        let available = await downloads.completedRecord(identifier: records[0].identifier, fileName: records[0].fileName)
+        let record = try XCTUnwrap(available)
+        let player = AVPlayer()
+        let playback = PlaybackController(store: store, downloads: downloads, player: player,
+            audioSessionActivator: {}, audioSessionDeactivator: {},
+            artworkLoader: { _ in throw URLError(.cancelled) })
+        playback.playDownloaded(record, autoplay: false)
+        try await until { playback.phase == .paused }
+        let sought = await player.seek(to: CMTime(seconds: 12, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        XCTAssertTrue(sought)
+        playback.sleepTimer.stopAtEndOfRecording()
+
+        let stopped = try XCTUnwrap(playback.stopListening())
+
+        XCTAssertNil(playback.context)
+        XCTAssertNil(player.currentItem)
+        XCTAssertEqual(playback.phase, .idle)
+        XCTAssertFalse(playback.wantsToPlay)
+        XCTAssertEqual(playback.sleepTimer.setting, .off)
+        XCTAssertNil(MPNowPlayingInfoCenter.default().nowPlayingInfo)
+        XCTAssertFalse(MPRemoteCommandCenter.shared().playCommand.isEnabled)
+        playback.undoStopListening(stopped)
+        try await until { playback.phase == .paused }
+        XCTAssertEqual(player.currentTime().seconds, 12, accuracy: 0.05)
+        XCTAssertFalse(playback.wantsToPlay)
+        XCTAssertNotNil(MPNowPlayingInfoCenter.default().nowPlayingInfo)
+        XCTAssertTrue(MPRemoteCommandCenter.shared().playCommand.isEnabled)
+        playback.stopListening()
+        playback.playDownloaded(record, autoplay: false)
+        XCTAssertNotNil(playback.context)
     }
 
     /// Replacing the player's item jumps time to zero, which fires the periodic

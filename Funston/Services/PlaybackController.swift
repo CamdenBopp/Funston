@@ -179,6 +179,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         configureRemoteCommands()
         configureAudioNotifications()
         sleepTimer.attach(to: self)
+        updateNowPlaying()
         timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.updateTransportPhase() }
         }
@@ -417,6 +418,41 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         saveCurrentPosition()
         updateNowPlaying()
         deactivateAudioSession()
+    }
+
+    /// End this listening session while retaining its resume bookmark.
+    @discardableResult
+    func stopListening() -> PlaybackContext? {
+        guard videoOwnership == nil, let stopped = context else { return nil }
+        pause()
+        sleepTimer.turnOff()
+        generation &+= 1
+        downloadQueueTask?.cancel()
+        downloadQueueTask = nil
+        artworkTask?.cancel()
+        artworkTask = nil
+        artworkURL = nil
+        nowPlayingArtwork = nil
+        readyGeneration = nil
+        restoringPosition = false
+        statusObservation = nil
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = nil
+        context = nil
+        player.replaceCurrentItem(with: nil)
+        if let localLease { downloads.releaseLocalURL(localLease) }
+        localLease = nil
+        elapsed = 0
+        duration = nil
+        phase = .idle
+        updateNowPlaying()
+        return stopped
+    }
+
+    func undoStopListening(_ stopped: PlaybackContext) {
+        guard context == nil else { return }
+        load(artifact: stopped.artifact, tracks: stopped.tracks, trackIndex: stopped.trackIndex,
+             autoplay: false, preferredFileName: stopped.file.name)
     }
 
     private func deactivateAudioSession() {
@@ -802,6 +838,8 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
 
     private func updateNowPlaying() {
         guard videoOwnership == nil else { return }
+        let center = MPRemoteCommandCenter.shared()
+        for (command, _) in remoteCommandTokens { command.isEnabled = context != nil }
         guard let context else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             return
@@ -822,7 +860,6 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         info[MPNowPlayingInfoPropertyPlaybackQueueCount] = context.tracks.count
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         let skipButtons = Self.prefersSkipButtons(duration: duration)
-        let center = MPRemoteCommandCenter.shared()
         center.skipForwardCommand.isEnabled = skipButtons
         center.skipBackwardCommand.isEnabled = skipButtons
     }
