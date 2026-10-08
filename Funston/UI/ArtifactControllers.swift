@@ -466,6 +466,7 @@ final class TracksController: SearchableArtifactContentsController {
     private let detail: ArtifactDetail
     private let recordingProgress: RecordingProgressState
     private var playbackSubscription: AnyCancellable?
+    private var currentRowID: String?
     init(environment: AppEnvironment, detail: ArtifactDetail) {
         self.environment = environment; self.detail = detail
         recordingProgress = RecordingProgressState(playback: environment.playback, identifier: detail.summary.identifier)
@@ -480,28 +481,30 @@ final class TracksController: SearchableArtifactContentsController {
     override func viewDidLoad() {
         super.viewDidLoad()
         let current = UIBarButtonItem(title: "Current", image: UIImage(systemName: "scope"), primaryAction: UIAction { [weak self] _ in
-            guard let self, let context = environment.playback.context,
-                  context.artifact.identifier == detail.summary.identifier,
-                  let index = detail.tracks.firstIndex(where: { $0.candidates.contains { $0.name == context.file.name } }) else { return }
+            guard let self, let currentRowID else { return }
             clearSearch()
             collectionView.layoutIfNeeded()
-            scrollToRow(id: String(index))
+            scrollToRow(id: currentRowID)
         })
         current.accessibilityLabel = "Jump to now playing"
         current.accessibilityIdentifier = "recordings.current"
         navigationItem.rightBarButtonItem = current
         playbackSubscription = environment.playback.$context.sink { [weak self] context in
             guard let self else { return }
-            Task { @MainActor [weak self] in self?.updateJumpButton() }
+            let index = context.flatMap { context in
+                guard context.artifact.identifier == detail.summary.identifier else { return nil as Int? }
+                return detail.tracks.firstIndex { $0.candidates.contains { $0.name == context.file.name } }
+            }
+            currentRowID = index.map(String.init)
+            updateJumpButton()
         }
     }
     override func scrollViewDidScroll(_ scrollView: UIScrollView) { updateJumpButton() }
     private func updateJumpButton() {
-        guard let context = environment.playback.context, context.artifact.identifier == detail.summary.identifier,
-              let index = detail.tracks.firstIndex(where: { $0.candidates.contains { $0.name == context.file.name } }) else {
-            navigationItem.rightBarButtonItem?.isEnabled = false; return
+        let enabled = currentRowID.map { !isRowVisible(id: $0) } ?? false
+        if navigationItem.rightBarButtonItem?.isEnabled != enabled {
+            navigationItem.rightBarButtonItem?.isEnabled = enabled
         }
-        navigationItem.rightBarButtonItem?.isEnabled = !isRowVisible(id: String(index))
     }
     override func swipeActions(for row: FunstonRow) -> UISwipeActionsConfiguration? {
         guard let index = Int(row.id), detail.tracks.indices.contains(index) else { return nil }
@@ -532,7 +535,7 @@ private func collectionDisplayName(_ identifier: String) -> String {
 private func configureRecordingCell(_ cell: UICollectionViewListCell, detail: ArtifactDetail, index: Int, environment: AppEnvironment, progress: RecordingProgressState, willPlay: @escaping () -> Void = {}, information: @escaping () -> Void) {
     cell.isAccessibilityElement = false; cell.accessories = []
     cell.contentConfiguration = UIHostingConfiguration {
-        RecordingRow(track: detail.tracks[index], artifactID: detail.summary.identifier, playback: environment.playback, progress: progress, number: index + 1, count: detail.tracks.count, available: detail.access == .available,
+        RecordingRow(track: detail.tracks[index], progress: progress, number: index + 1, count: detail.tracks.count, available: detail.access == .available,
                      play: {
                          willPlay()
                          if environment.playback.context?.artifact.identifier == detail.summary.identifier,
@@ -548,8 +551,6 @@ private func configureRecordingCell(_ cell: UICollectionViewListCell, detail: Ar
 
 private struct RecordingRow: View {
     let track: PlayableTrack
-    let artifactID: String
-    @ObservedObject var playback: PlaybackController
     @ObservedObject var progress: RecordingProgressState
     let number: Int
     let count: Int
@@ -559,7 +560,7 @@ private struct RecordingRow: View {
     let information: () -> Void
     @ScaledMetric(relativeTo: .caption) private var numberWidth = 32
     private var current: Bool {
-        playback.context?.artifact.identifier == artifactID && track.candidates.contains { $0.name == playback.context?.file.name }
+        progress.isCurrent(track)
     }
     var body: some View {
         let saved = progress.value(for: track)

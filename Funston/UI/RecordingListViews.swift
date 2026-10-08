@@ -42,6 +42,24 @@ enum RecordingListeningState: Equatable {
     }
 }
 
+/// The parts of live playback that can change a recording row's presentation.
+struct RecordingPlaybackPresentation: Equatable {
+    let fileName: String?
+    let preparing: Bool
+    let listeningText: String?
+
+    init(context: PlaybackContext?, phase: PlaybackPhase, elapsed: Double, identifier: String) {
+        guard let context, context.artifact.identifier == identifier else {
+            fileName = nil; preparing = false; listeningText = nil
+            return
+        }
+        fileName = context.file.name
+        preparing = phase == .preparing
+        let progress = RecordingProgress(seconds: elapsed, isPlayed: phase == .ended)
+        listeningText = preparing ? nil : RecordingListeningState.state(progress: progress, duration: context.track.duration).text(duration: context.track.duration)
+    }
+}
+
 @MainActor
 final class RecordingProgressState: ObservableObject {
     @Published private(set) var progress: [String: RecordingProgress] = [:]
@@ -55,9 +73,24 @@ final class RecordingProgressState: ObservableObject {
         let changes = playback.$context.map { $0?.track.id }.removeDuplicates().map { _ in () }
         let settled = playback.$phase.removeDuplicates().filter { $0 == .paused || $0 == .ended }.map { _ in () }
         changes.merge(with: settled).receive(on: RunLoop.main).sink { [weak self] in self?.refresh() }.store(in: &subscriptions)
+        // Rows show a listening state and rounded minutes, not the player clock.
+        // Ignore timer ticks that leave that presentation unchanged.
+        playback.$context.combineLatest(playback.$phase, playback.$elapsed)
+            .map { context, phase, elapsed in
+                RecordingPlaybackPresentation(context: context, phase: phase, elapsed: elapsed, identifier: identifier)
+            }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &subscriptions)
         refresh()
     }
     deinit { task?.cancel() }
+
+    func isCurrent(_ track: PlayableTrack) -> Bool {
+        guard let context = playback.context, context.artifact.identifier == identifier else { return false }
+        return track.candidates.contains { $0.name == context.file.name }
+    }
 
     func value(for track: PlayableTrack) -> RecordingProgress {
         let values = track.candidates.compactMap { progress[$0.name] }

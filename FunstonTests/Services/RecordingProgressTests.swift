@@ -2,6 +2,22 @@ import XCTest
 @testable import Funston
 
 final class RecordingProgressTests: XCTestCase {
+    func testLiveRowPresentationIgnoresClockTicksButTracksListeningChanges() {
+        let file = ArchiveFile(name: "episode.mp3")
+        let track = PlayableTrack(id: "episode", title: "Episode", candidates: [file], duration: 1800)
+        let context = PlaybackContext(artifact: ArtifactSummary(identifier: "radio", title: "Radio"), tracks: [track], trackIndex: 0, file: file)
+        func presentation(_ seconds: Double, phase: PlaybackPhase = .playing, identifier: String = "radio") -> RecordingPlaybackPresentation {
+            RecordingPlaybackPresentation(context: context, phase: phase, elapsed: seconds, identifier: identifier)
+        }
+        XCTAssertEqual(presentation(600), presentation(601))
+        XCTAssertNotEqual(presentation(600), presentation(631))
+        XCTAssertNotEqual(presentation(4), presentation(5))
+        XCTAssertNotEqual(presentation(1709), presentation(1710))
+        XCTAssertNotEqual(presentation(600), presentation(600, phase: .ended))
+        XCTAssertNotEqual(presentation(600), presentation(600, phase: .preparing))
+        XCTAssertEqual(presentation(600, identifier: "other"), presentation(631, identifier: "other"))
+    }
+
     @MainActor
     func testPlaybackSpeedPersistenceAndCollectionOverrides() throws {
         let suite = "SpeedTests." + UUID().uuidString
