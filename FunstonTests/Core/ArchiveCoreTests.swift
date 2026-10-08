@@ -56,6 +56,10 @@ final class ArchiveCoreTests: XCTestCase {
         let repository = NetworkArchiveRepository(transport: StubTransport(response: ArchiveHTTPResponse(data: raw)))
         let manager = DownloadManager(store: store, mediaDirectory: directory, sessionConfiguration: .ephemeral, accessRepository: repository)
         await manager.start(identifier: "restricted", artifactTitle: "Book", file: ArchiveFile(name: "book.pdf"))
+        let deadline = ContinuousClock.now + .seconds(2)
+        while manager.records.first?.state == .queued && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         XCTAssertEqual(manager.records.first?.state, .failed)
         XCTAssertFalse(FileManager.default.fileExists(atPath: manager.records.first?.localPath ?? ""))
     }

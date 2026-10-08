@@ -94,6 +94,7 @@
 		CF8F7256F8008AF7345B3CA4 /* ArtifactMediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FC31D2391A678F056CDEB5 /* ArtifactMediaController.swift */; };
 		DD6E6429D23A191C8DF02C3A /* FunstonPlayerPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F42D64BFE13F26B5291D02C /* FunstonPlayerPresentation.swift */; };
 		E633434FD2E77B2A043461CF /* ArchiveNetworkPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC02795EA9F4683C9F28A761 /* ArchiveNetworkPolicyTests.swift */; };
+		E936E3311F040652D1DF1F46 /* DownloadPermitCancellationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C12FBD9697D8A4836AD47AE /* DownloadPermitCancellationTests.swift */; };
 		F133CEE06D6390C2F74AB9A6 /* OriginalVideoTrackMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 892AA9E3E0B1E928B9A42438 /* OriginalVideoTrackMemory.swift */; };
 		F30D5650C3CB4BE3C874A25F /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 09D88D22F618DAE5A39639D0 /* libsqlite3.tbd */; };
 		F5B8A7086BC9A4D26B859DC0 /* PlaybackLifecyclePolishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 233DB5EE909DC936BDB88C04 /* PlaybackLifecyclePolishTests.swift */; };
@@ -176,6 +177,7 @@
 		85F2CAC5EFC1BA2141AA0D81 /* ArchiveNetworkPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNetworkPolicy.swift; sourceTree = "<group>"; };
 		892AA9E3E0B1E928B9A42438 /* OriginalVideoTrackMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoTrackMemory.swift; sourceTree = "<group>"; };
 		8BD14C4E10199D7E42AE586C /* 73-magazine-1981-12-page6.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "73-magazine-1981-12-page6.jpg"; sourceTree = "<group>"; };
+		8C12FBD9697D8A4836AD47AE /* DownloadPermitCancellationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadPermitCancellationTests.swift; sourceTree = "<group>"; };
 		8E7631BBAB981E4F1A0DD839 /* OriginalVideoControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoControlsView.swift; sourceTree = "<group>"; };
 		9059921AE97E122328AC8EC5 /* PlayerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViews.swift; sourceTree = "<group>"; };
 		90E76B9A4F6B4D55BA45EEFE /* ArchiveNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNormalizer.swift; sourceTree = "<group>"; };
@@ -315,6 +317,7 @@
 				3257AE33B2FBA5578BD487B2 /* CarPlayTests.swift */,
 				A31252B3F929B645C52A91F9 /* CodecCapabilityDeviceTests.swift */,
 				C0E76AA1D77FB87D8EB6F6DF /* ContinueListeningTests.swift */,
+				8C12FBD9697D8A4836AD47AE /* DownloadPermitCancellationTests.swift */,
 				7DBCF6D4893AA8269341A32F /* DownloadRelocationTests.swift */,
 				72CAD4E4C8526BEB670CFA90 /* DownloadResumeLiveTests.swift */,
 				E2501B0F7382B02A34BEB127 /* LibraryMembershipTests.swift */,
@@ -695,6 +698,7 @@
 				FC4F11E2513C406928945EF2 /* CarPlayTests.swift in Sources */,
 				4E7886C99627066D41A780CD /* CodecCapabilityDeviceTests.swift in Sources */,
 				78D6EC89CF7E2986318E3681 /* ContinueListeningTests.swift in Sources */,
+				E936E3311F040652D1DF1F46 /* DownloadPermitCancellationTests.swift in Sources */,
 				315F272717BD431394C0726A /* DownloadRelocationTests.swift in Sources */,
 				FEE2684258F2F3D53007D641 /* DownloadResumeLiveTests.swift in Sources */,
 				C9045F96F8D56D43BFC8DF56 /* FunstonUIPresentationTests.swift in Sources */,

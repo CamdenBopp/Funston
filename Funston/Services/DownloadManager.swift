@@ -55,7 +55,10 @@ private final class DownloadSessionDelegate: NSObject, URLSessionDownloadDelegat
     }
     private func releaseRequestPermit(_ taskID: Int) {
         permitLock.lock(); let held = requestPermits.remove(taskID) != nil; permitLock.unlock()
-        if held { Task { await ArchiveNetworkPolicy.requestLimiter.release() } }
+        if held { Task {
+            await ArchiveNetworkPolicy.requestLimiter.release()
+            await ArchiveNetworkPolicy.downloadLimiter.release()
+        } }
     }
     init(mediaDirectory: URL) { self.mediaDirectory = mediaDirectory }
 
@@ -148,6 +151,7 @@ final class DownloadManager: NSObject, ObservableObject {
     private var networkAttempts: [String: Int] = [:]
     private let accessRepository: any ArchiveRepository
     private var operationTail: Task<Void, Never>?
+    private var permitWaits: [String: Task<Void, Never>] = [:]
     private var backgroundCompletionHandler: (() -> Void)?
     private var backgroundEventsDrained = false
     private var pendingRemovals = Set<String>()
@@ -169,21 +173,29 @@ final class DownloadManager: NSObject, ObservableObject {
             // Background continuation must be verified on a physical device.
             configuration = .default
             #else
-            configuration = .background(withIdentifier: "com.camden.Funston.background-downloads")
+            configuration = Self.backgroundConfiguration()
             #endif
         }
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+        queue.name = "Funston download delegate"
+        session = URLSession(configuration: Self.configureSession(configuration), delegate: delegate, delegateQueue: queue)
+        super.init()
+        delegate.owner = self
+        operationTail = Task { [weak self] in await self?.loadAndReconcile() }
+    }
+
+    static func backgroundConfiguration() -> URLSessionConfiguration {
+        configureSession(.background(withIdentifier: "com.camden.Funston.background-downloads"))
+    }
+
+    private static func configureSession(_ configuration: URLSessionConfiguration) -> URLSessionConfiguration {
         if configuration.identifier != nil { configuration.sessionSendsLaunchEvents = true }
         configuration.isDiscretionary = false
         configuration.waitsForConnectivity = true
         configuration.httpMaximumConnectionsPerHost = 2
         configuration.httpAdditionalHeaders = ["User-Agent": ArchiveNetworkPolicy.userAgent]
-        let queue = OperationQueue()
-        queue.maxConcurrentOperationCount = 1
-        queue.name = "Funston download delegate"
-        session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: queue)
-        super.init()
-        delegate.owner = self
-        operationTail = Task { [weak self] in await self?.loadAndReconcile() }
+        return configuration
     }
 
     private func serialize(_ operation: @escaping @MainActor () async -> Void) async {
@@ -219,9 +231,6 @@ final class DownloadManager: NSObject, ObservableObject {
                                     state: .queued, receivedBytes: 0, totalBytes: file.size, errorMessage: nil, updatedAt: .now)
         var task: URLSessionDownloadTask?
         do {
-            let detail = try await accessRepository.detail(identifier: identifier)
-            guard detail.access == .available, !detail.summary.isAccessRestricted,
-                  detail.files.contains(where: { $0.name == file.name && !$0.isPrivate }) else { throw ArchiveError.missingItem }
             // Retry continues from the bytes a failed attempt left behind. The blob is
             // used once: if it's stale, that attempt fails and a fresh one starts next time.
             let resumeData = await consumeResumeData(key: key)
@@ -233,18 +242,79 @@ final class DownloadManager: NSObject, ObservableObject {
                 ?? session.downloadTask(with: request)
             task = created
             created.taskDescription = identity.taskDescription
-            record.state = .downloading
-            try await store.upsertDownload(record)
-            upsertInMemory(record)
-            try await ArchiveNetworkPolicy.requestLimiter.acquire()
-            delegate.holdRequestPermit(created.taskIdentifier)
-            created.resume()
+            validateAndWaitForPermit(task: created, identity: identity)
         } catch {
             task?.cancel()
             record.state = .failed; record.errorMessage = error.localizedDescription
             await persistRecoverably(record)
             upsertInMemory(record)
         }
+    }
+    /// Metadata and capacity waits stay outside the mutation queue so Stop/Delete can always run.
+    private func validateAndWaitForPermit(task: URLSessionDownloadTask, identity: DownloadTaskIdentity) {
+        let path = identity.destination(in: mediaDirectory).path
+        let repository = accessRepository
+        permitWaits[path] = Task { [weak self] in
+            var acquired = false
+            var downloadAcquired = false
+            do {
+                let detail = try await repository.detail(identifier: identity.identifier)
+                try Task.checkCancellation()
+                guard detail.access == .available, !detail.summary.isAccessRestricted,
+                      detail.files.contains(where: { $0.name == identity.fileName && !$0.isPrivate }) else { throw ArchiveError.missingItem }
+                try await ArchiveNetworkPolicy.downloadLimiter.acquire()
+                downloadAcquired = true
+                try await ArchiveNetworkPolicy.requestLimiter.acquire()
+                acquired = true
+                try Task.checkCancellation()
+                guard let self else {
+                    task.cancel()
+                    await ArchiveNetworkPolicy.requestLimiter.release()
+                    await ArchiveNetworkPolicy.downloadLimiter.release()
+                    return
+                }
+                var resumed = false
+                await serialize { [self] in
+                    guard permitWaits.removeValue(forKey: path) != nil,
+                          var record = records.first(where: { identity.matches($0, directory: mediaDirectory) && [.queued, .downloading].contains($0.state) }) else {
+                        task.cancel()
+                        return
+                    }
+                    record.state = .downloading
+                    do {
+                        try await store.upsertDownload(record)
+                        upsertInMemory(record)
+                        delegate.holdRequestPermit(task.taskIdentifier)
+                        task.resume()
+                        resumed = true
+                    } catch {
+                        task.cancel()
+                        record.state = .failed; record.errorMessage = error.localizedDescription
+                        await persistRecoverably(record)
+                        upsertInMemory(record)
+                    }
+                }
+                if !resumed {
+                    await ArchiveNetworkPolicy.requestLimiter.release()
+                    await ArchiveNetworkPolicy.downloadLimiter.release()
+                }
+            } catch {
+                task.cancel()
+                if acquired { await ArchiveNetworkPolicy.requestLimiter.release() }
+                if downloadAcquired { await ArchiveNetworkPolicy.downloadLimiter.release() }
+                guard let self else { return }
+                await serialize { [self] in
+                    guard permitWaits.removeValue(forKey: path) != nil,
+                          var record = records.first(where: { identity.matches($0, directory: mediaDirectory) && [.queued, .downloading].contains($0.state) }) else { return }
+                    record.state = .failed; record.errorMessage = error.localizedDescription
+                    await persistRecoverably(record)
+                    upsertInMemory(record)
+                }
+            }
+        }
+    }
+    private func cancelPermitWait(for record: DownloadRecord) {
+        permitWaits.removeValue(forKey: record.localPath)?.cancel()
     }
     func retry(_ record: DownloadRecord, file: ArchiveFile) async {
         await start(identifier: record.identifier, artifactTitle: record.title, file: file)
@@ -261,6 +331,7 @@ final class DownloadManager: NSObject, ObservableObject {
             current.state = .cancelled; current.errorMessage = nil; current.updatedAt = .now
             try await store.upsertDownload(current)
             upsertInMemory(current)
+            cancelPermitWait(for: current)
             for task in await session.allTasks {
                 if DownloadTaskIdentity(taskDescription: task.taskDescription)?.matches(current, directory: mediaDirectory) == true { task.cancel() }
             }
@@ -271,6 +342,7 @@ final class DownloadManager: NSObject, ObservableObject {
             guard let current = records.first(where: { $0.key == record.key && $0.localPath == record.localPath }) else { return }
             try await store.deleteDownload(key: current.key)
             records.removeAll { $0.key == current.key }
+            cancelPermitWait(for: current)
             for task in await session.allTasks {
                 if DownloadTaskIdentity(taskDescription: task.taskDescription)?.matches(current, directory: mediaDirectory) == true { task.cancel() }
             }
@@ -282,6 +354,7 @@ final class DownloadManager: NSObject, ObservableObject {
             for record in records {
                 try await store.deleteDownload(key: record.key)
                 records.removeAll { $0.key == record.key }
+                cancelPermitWait(for: record)
                 for task in await session.allTasks {
                     if DownloadTaskIdentity(taskDescription: task.taskDescription)?.matches(record, directory: mediaDirectory) == true { task.cancel() }
                 }
@@ -460,7 +533,8 @@ final class DownloadManager: NSObject, ObservableObject {
                 || (record.state == .missing && relocated != nil)), validFile {
                 record.state = .completed; record.errorMessage = nil; active.forEach { $0.cancel() }
             } else if [.queued, .downloading].contains(record.state), !active.isEmpty {
-                record.state = .downloading; active.dropFirst().forEach { $0.cancel() }; active.first?.resume()
+                active.dropFirst().forEach { $0.cancel() }
+                if permitWaits[record.localPath] == nil { record.state = .downloading; active.first?.resume() }
             } else if [.queued, .downloading, .completed].contains(record.state) {
                 record.state = record.state == .completed ? .missing : .failed
                 record.errorMessage = "The download is unavailable on this device. Try again."

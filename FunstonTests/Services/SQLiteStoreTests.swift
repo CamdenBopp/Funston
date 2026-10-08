@@ -467,7 +467,7 @@ final class ServiceReviewTests: XCTestCase {
         let consumed = await store.downloadResumeData(key: key)
         XCTAssertNil(consumed, "Resume data is single-use")
         let deadline = ContinuousClock.now + .seconds(10)
-        while manager.records.first(where: { $0.key == key })?.state == .downloading, ContinuousClock.now < deadline {
+        while manager.records.first(where: { $0.key == key }).map({ [.queued, .downloading].contains($0.state) }) == true, ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(50))
         }
         XCTAssertEqual(manager.records.first(where: { $0.key == key })?.state, .failed)
