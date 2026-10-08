@@ -25,7 +25,7 @@ final class PDFTextLayoutTests: XCTestCase {
     func testVisionEngineReadsMagazineColumnsInOrder() async throws {
         let options = XCTExpectedFailure.Options()
         options.isStrict = false
-        options.issueMatcher = { $0.type == .assertionFailure }
+        options.issueMatcher = { $0.type == .assertionFailure && $0.compactDescription.contains("Lines out of order") }
         XCTExpectFailure("73 Magazine: multi-column reading order breaks around bullets and the schematic.", options: options)
         let text = try await recognize(augustPage40, with: PDFTextEngineID.appleVision)
         let score = try Self.score(text, against: augustPage40)
@@ -45,7 +45,10 @@ final class PDFTextLayoutTests: XCTestCase {
     func testVisionEngineReadsWholeParagraphs() async throws {
         let options = XCTExpectedFailure.Options()
         options.isStrict = false
-        options.issueMatcher = { $0.type == .assertionFailure }
+        options.issueMatcher = {
+            $0.type == .assertionFailure && ($0.compactDescription.contains("The schedule box interrupts")
+                || $0.compactDescription.contains("The bullet item isn't one paragraph"))
+        }
         XCTExpectFailure("73 Magazine: sidebar and bullet layouts split continuous paragraphs.", options: options)
         let paragraphs = try await recognize(decemberPage6, with: PDFTextEngineID.appleVision).components(separatedBy: "\n\n")
         let opening = "touch with those being regulated, the FCC has established advisory committees, made up of people in the regulated industries, to work with them on needed regulations."
@@ -66,7 +69,10 @@ final class PDFTextLayoutTests: XCTestCase {
     func testDocumentReaderReadsMagazineColumnsInOrder() async throws {
         let options = XCTExpectedFailure.Options()
         options.isStrict = false
-        options.issueMatcher = { $0.type == .assertionFailure }
+        options.issueMatcher = {
+            $0.type == .assertionFailure && ($0.compactDescription.contains("Lines out of order")
+                || $0.compactDescription.contains("Justified lines were left in pieces"))
+        }
         XCTExpectFailure("73 Magazine: multi-column reading order and justified paragraph fragments.", options: options)
         guard #available(iOS 26.0, *) else { throw XCTSkip("The document reader needs iOS 26") }
         let text = try await recognize(augustPage40, with: PDFTextEngineID.appleDocuments)
