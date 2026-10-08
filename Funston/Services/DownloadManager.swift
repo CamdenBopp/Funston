@@ -201,6 +201,11 @@ final class DownloadManager: NSObject, ObservableObject {
     }
     func waitUntilReady() async { await operationTail?.value }
 
+    /// Settings and Files can remove downloaded media while the app is suspended.
+    func refreshAvailability() async {
+        await serialize { [self] in await loadAndReconcile() }
+    }
+
     func start(identifier: String, artifactTitle: String, file: ArchiveFile) async {
         await serialize { [self] in await startSerialized(identifier: identifier, artifactTitle: artifactTitle, file: file) }
     }

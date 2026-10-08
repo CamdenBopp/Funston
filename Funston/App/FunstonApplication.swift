@@ -1,6 +1,7 @@
 import UIKit
 import Combine
 import AppIntents
+import CarPlay
 
 actor LibraryPersistence {
     let store: SQLiteStore
@@ -138,8 +139,18 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        if connectingSceneSession.role == .carTemplateApplication {
+            return Self.carPlayConfiguration()
+        }
         let configuration = UISceneConfiguration(name: "Funston", sessionRole: connectingSceneSession.role)
         configuration.delegateClass = SceneDelegate.self
+        return configuration
+    }
+
+    static func carPlayConfiguration() -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: "CarPlay", sessionRole: .carTemplateApplication)
+        configuration.sceneClass = CPTemplateApplicationScene.self
+        configuration.delegateClass = CarPlaySceneDelegate.self
         return configuration
     }
 

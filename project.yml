@@ -45,6 +45,7 @@ targets:
       - sdk: libsqlite3.tbd
       - sdk: AVFoundation.framework
       - sdk: MediaPlayer.framework
+      - sdk: CarPlay.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.camden.Funston
@@ -53,7 +54,7 @@ targets:
         INFOPLIST_FILE: Funston/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: Funston
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.reference
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
+        CODE_SIGN_ENTITLEMENTS: Funston/Funston.entitlements
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         SUPPORTS_MACCATALYST: false
