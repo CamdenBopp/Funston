@@ -18,6 +18,17 @@ final class AppIntentTests: XCTestCase {
             do { _ = try await intent.perform(); XCTFail("Invalid speed must fail") }
             catch { XCTAssertEqual(error as? FunstonIntentError, .invalidSpeed) }
             XCTAssertEqual(environment.playback.playbackRate, 1.5)
+            let collection = "intent-speed-" + UUID().uuidString
+            let context = try XCTUnwrap(environment.playback.context)
+            let scoped = ArtifactSummary(identifier: context.artifact.identifier, title: context.artifact.title,
+                                         mediaType: .audio, collections: [collection])
+            environment.playback.load(artifact: scoped, tracks: context.tracks, trackIndex: 0, autoplay: false)
+            environment.playback.setPlaybackSpeed(1.25, forCollection: true)
+            defer { environment.playback.useGlobalPlaybackSpeed() }
+            intent.speed = 2
+            _ = try await intent.perform()
+            XCTAssertEqual(environment.playback.playbackRate, 2, "The shortcut must update an active collection override")
+            XCTAssertTrue(environment.playback.hasCollectionSpeedOverride)
         }
     }
 

@@ -237,13 +237,13 @@ struct FunstonShortcuts: AppShortcutsProvider {
 
 struct SetFunstonPlaybackSpeedIntent: AudioPlaybackIntent {
     static let title: LocalizedStringResource = "Set Playback Speed"
-    static let description = IntentDescription("Set Funston’s global listening speed, preserving pitch.")
+    static let description = IntentDescription("Set Funston’s listening speed, preserving pitch.")
     @Parameter(title: "Speed", default: 1, inclusiveRange: (0.5, 3)) var speed: Double
     static var parameterSummary: some ParameterSummary { Summary("Set playback speed to \(\.$speed) times") }
     @MainActor func perform() async throws -> some IntentResult {
         let environment = try await FunstonIntentRuntime.environment()
         guard speed.isFinite, (0.5...3).contains(speed) else { throw FunstonIntentError.invalidSpeed }
-        environment.playback.setPlaybackSpeed(speed)
+        environment.playback.setPlaybackSpeed(speed, forCollection: environment.playback.hasCollectionSpeedOverride)
         return .result()
     }
 }
