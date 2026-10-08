@@ -1,0 +1,76 @@
+Funston pre-TestFlight pass — 8 October 2026
+
+The seven numbered changes were committed in the requested order. AVPlayer remains the transport. Subsequent commits integrate the requested Playback Speed, Settings, and Library work and the incoming scroll fixes.
+
+1. Mini-player dismissal
+Changed: downward swipe pauses and persists the exact position, removes the active item, clears Now Playing and disables remote commands. The player animates away. A 4-second Stopped [title] toast provides paused Undo at the saved position; VoiceOver extends it to 10 seconds and receives an announcement. The title's VoiceOver Actions rotor and long-press menu expose Stop and close player. Continue listening retains progress; starting another recording shows the mini-player.
+Files: Services/PlaybackController.swift; UI/FunstonPlayerPresentation.swift; Services/ResumePolicyTests.swift, ContinueListeningTests.swift; Services/ContinueListening.swift, SQLiteStore.swift; UITests/PreflightUITests.swift; project registration.
+Tests: dismissal persistence, cleared Now Playing/remote commands, exact 3-second Undo, paused restoration, subsequent item presentation, explicit short/near-end stopped bookmarks and cleared persisted selection; UI journey at default, XXXL and AX5.
+Skipped: no behavior omitted. Physical rotor activation, touch swipe, announcement/Undo focus timing, and lock-screen/Control Center cleanup still need a device check.
+Commits: 35520ef, 7f74823, 0e2f992 (schema 7 explicit Stop marker and cleared active selection).
+
+2. Reader full-screen mode
+Changed: one eligible page tap toggles navigation, tabs, mini-player and page indicator. Links and selected-text interactions retain their behavior. Content expands within safe areas; leaving restores controls; each reader opens with controls visible. VoiceOver blocks tap-driven hiding and provides explicit Hide/Show controls and Magic Tap handlers. The page stays adjustable when the indicator is hidden, and toggling posts layoutChanged.
+Files: UI/ArtifactMediaController.swift, EPUBReaderController.swift, PDFLineAccessibility.swift, FunstonRootController.swift, FunstonPlayerPresentation.swift; UI/PDFReadingStateTests.swift; UITests/PreflightUITests.swift.
+Tests: session state/accessibility policy and reader journey at default, XXXL and AX5. Actual simulator VoiceOver changed page 6 to 7 with controls visible, then 7 to 8 while hidden. Public Hide-controls and Magic Tap handlers were invoked with VoiceOver running and returned success. These handler checks are distinct from physical two-finger gesture verification.
+Skipped: physical Magic Tap and link/selected-text gesture checks remain manual.
+Commit: 03088e4.
+
+3. Primary action icons
+Changed: primary action uses a centered icon-and-text group: book.fill for reading and play.fill for playback, with a type-appropriate fallback. Icons share the text's scalable body font and do not add duplicate spoken labels.
+Files: UI/ArtifactControllers.swift; UITests/PreflightUITests.swift.
+Tests: existing narrow-width/accessibility header layout tests plus default, XXXL and AX5 UI screenshots.
+Skipped: none.
+Commit: e9c84ab.
+
+4. Metadata normalization
+Changed: shared MetadataFormatter normalizes display titles and creators across detail/list/search/player/Now Playing/Shortcuts surfaces. Removes life dates, reverses unambiguous personal names, joins multiple creators, cleans catalog punctuation, and applies title case only to uniformly lower/uppercase input. Mixed-case names remain intact. Raw title/creator values and identifiers remain available and are encoded unchanged.
+Files: Core/ArchiveModels.swift; UI/ArtifactControllers.swift, ExploreController.swift, FunstonListController.swift, BrowseControllers.swift; Services/PlaybackController.swift; Core/MetadataFormatterTests.swift; project registration.
+Tests: 21 real Archive examples, organizations, dates, multiple creators, all-caps/catalog titles, deliberate mixed case, whitespace/punctuation and raw-value Codable round trips.
+Skipped: none.
+Commit: 3955bfd.
+
+5. Explore visual bugs
+Changed: artwork aspect-fits inside a uniform rounded rectangle; shelf groups and insets contain complete card text. Opaque tab-bar backing and bottom content inset prevent unreadable content underneath. The curved edge in Johnny Dollar's source cover is part of the source artwork; the full cover is now preserved. The incoming flicker fix stabilizes shelf heights before scrolling and avoids repeated status reconfiguration.
+Files: UI/ExploreController.swift, FunstonRootController.swift; UI/FunstonUIPresentationTests.swift; UITests/PreflightUITests.swift.
+Tests: three real compositional-layout scrolling/sizing regressions; default, XXXL and AX5 Explore journey in both appearances.
+Skipped: no artwork redrawing; the original source cover is retained.
+Commits: 3b166ff, f446b59.
+
+6. Networking etiquette
+Changed: Archive requests identify Funston's bundle version and contact. Edit ArchiveNetworkPolicy.contact to change the contact URL. A shared 32 MB memory/200 MB disk URLCache follows server headers; metadata and collection snapshots use one-hour defaults. Explicit Cache-Control/Age/Expires restrictions take precedence. Retry policy uses exponential backoff with jitter, up to three total attempts, for 429/503/timeouts; honors Retry-After and avoids other 4xx retries. Archive metadata, artwork and download work shares a four-request limiter; long downloads are capped at two so browsing retains capacity. Metadata validation and permit waits stay outside the mutation queue, so Cancel/Remove/Remove All remain responsive. Restored queued transfers revalidate access before resuming after a cold launch. Physical devices retain the background URLSession with launch events and connectivity waiting. Search/Explore retain useful stale content and show accessible retry/error states during outages.
+Files: Core/ArchiveNetworkPolicy.swift, ArchiveNetworking.swift; Services/CachingArchiveRepository.swift, ArtworkPipeline.swift, DownloadManager.swift, PlaybackController.swift, VideoPlaybackSession.swift; UI/ArtifactOriginalVideoController.swift; Core/ArchiveNetworkPolicyTests.swift, ArchiveCoreTests.swift; Services/ArtworkResponseLimitTests.swift, DownloadPermitCancellationTests.swift; project registration.
+Tests: User-Agent, retry schedule/jitter boundaries, numeric/date Retry-After, three-attempt ceiling, no 404 retry, cache directives/Age/Expires and concurrency ceiling; five saturation/cancellation/security tests and two real suspended-task recovery tests; background configuration and browsing-reservation tests. Existing async download assertions now wait through queued validation. Prior response-size tests retained.
+Skipped: no transport replacement. Native AVPlayer continues owning media streaming.
+Commits: 05c76d7, e56c139, 26f6556, d3bd976, b7a0132 (cold queued recovery).
+
+7. Magazine OCR tests
+Current status: three known layout tests still fail their original expectations. Vision August magazine columns reach 92.59% reading-order continuity (95% required); Document Reader reaches 91.36% and fragments justified lines; Vision paragraphs split a sidebar sentence and a bullet. Each is annotated with non-strict XCTExpectFailure matched only to the known reading-order/fragment/sidebar/bullet assertions and a one-line layout reason. Other OCR tests pass.
+Files: UI/PDFTextLayoutTests.swift.
+Tests: reran all 16 OCR layout tests and the full unit suite; exactly three expected-failure tests remain.
+Skipped: column splitting deliberately deferred as requested.
+Commits: 00c117c, 9af8655 (narrowed issue matching).
+
+Additional requested work
+Playback Speed: equal-width four-chip row, two-by-two at accessibility sizes, selected accent/white styling and trait, symmetric 48-point +/- controls, one adjustable speed element, full dividers, measured detent and visible grabber. Files: UI/PlayerViews.swift; UITests/FunstonUITests.swift. Four-scenario UI matrix passed; XXXL screenshots reviewed; real VoiceOver increment/decrement changed 1 to 1.1 and back. Commit d916292.
+Settings: full-screen grouped Form from Library's Settings gear, shared SettingsStore, behavior wiring for audio/video/MKV/downloads/PDF/EPUB, storage/bulk removal confirmation/cache clearing, About/Shortcuts help, and supported-media filtering. Standard Form controls support VoiceOver and Dynamic Type. Six appearance/text-size journeys and default/AX5 VoiceOver traversal passed. Native AVKit retains platform skip buttons; app audio/MKV controls and remote commands use the configured intervals.
+Library: All/Saved/Downloads native segments; All includes saved items and items with download records; one item row summarizes individual file states. File management remains reachable after membership removal. Durable explicit/viaDownload intent, transactional idempotent migration, cancellation-safe removal, progress accessibility values, and terminal announcements. Six membership/migration/UI unit tests and real VoiceOver filter order/activation passed. Downloads tab removed. Settings and Library integrated in commit 4bda876; the content-filter refresh (72493a2) updates already loaded discovery screens after the setting changes.
+CarPlay: merged native audio scene/delegate, Listen/Library/Downloads/Explore templates and recording queue using the existing player, downloads and bookmarks. Registered scene manifest/framework/audio entitlement. Five unit tests passed for scene configuration, audio-only Library, available completed downloads, shared queue selection, and disconnect cancellation. Commit ade4b3b. CarPlay connection, head-unit accessibility and provisioning with the audio entitlement remain physical-device checks. Files: CarPlay/CarPlayController.swift, CarPlaySceneDelegate.swift; App/FunstonApplication.swift; Services/DownloadManager.swift; Funston.entitlements, Info.plist, project.yml/project.pbxproj; Services/CarPlayTests.swift.
+Incoming episode scroll fix committed separately as 3bb48cb. Existing unrelated Files/search work was preserved in the shared checkout and excluded from these feature commits.
+
+Verification
+Latest full unit suite: 247 total — 239 passed, 3 expected OCR failures, 5 intentional skips, 0 unexpected failures. Result: output/library-merge/full-unit-final-7.xcresult.
+Five existing opt-in skips: live download resume; original MKV live playback; MKV and TS renderer/device tests; Whole Earth Catalog rendering performance. Their required IA_NETWORK_TESTS / IA_RENDER_TESTS / IA_TS_RENDER_TESTS / IA_PDF_PERFORMANCE flags were not enabled for this pass.
+UI regression: 21 cases accounted for — 20 passed, 1 existing opt-in original-MKV skip (IA_MKV_UI_TESTS was not enabled). The complete run at /tmp/FunstonFinalCompleteUI.xcresult passed 18 cases; two older test-navigation failures were corrected and both passed at /tmp/FunstonFinalCorrectedJourneys.xcresult. Those corrections scroll a long native AX5 menu from a visible point and reveal a collection row before tapping it. No unresolved UI failure remains. The new mini-player, reader full-screen, Explore, speed and Settings matrices passed in the complete run.
+Independent audit: full 245-test unit snapshot and three-size mini journey passed, with an unsigned Release generic-iOS device build. Results/logs: output/audit/full-unit-final.xcresult, mini-player-ui.xcresult, device-release-build.log. The final two cold-recovery tests are covered by the latest 247-test suite above. An unsigned build checks compilation; distribution signing and actual background-daemon continuation remain device work.
+Screenshots: Docs/PreflightScreenshots contains genuine default dark captures for Explore, primary action, stopped toast/paused Undo, reader hidden/visible, Settings, Library, and Playback Speed. Speed light/dark default/AX5 are included. Settings includes default/XXXL/AX5 in both appearances. Explicit DEBUG-only test appearance injection keeps screenshots deterministic; release behavior follows system appearance.
+
+Physical-device checklist
+• Mini-player downward swipe; VoiceOver Stop rotor activation; announcement/Undo focus and 10-second duration; lock-screen and Control Center removal.
+• Reader VoiceOver two-finger double tap; focus after hiding/showing; page-turn touch adjustments while hidden; link and selected-text taps; EPUB interactions.
+• Playback Speed VoiceOver vertical touch swipes and +/- boundary states.
+• Library rotor removal actions, focus after last-file deletion, active/background transfer cancellation, and bulk-remove confirmation.
+• Settings VoiceOver touch navigation, Siri phrases, cellular policy, terminated-app/background-daemon continuation and queued recovery, and completed-download auto-delete while a local media lease is held.
+• CarPlay head-unit connection, reconnect/disconnect, controls/Now Playing, and audio-entitlement provisioning for TestFlight.
+• Check iPad split-view and physical device sizes not covered by the iPhone 17 Pro simulator matrix.
+
