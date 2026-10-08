@@ -49,6 +49,11 @@ final class FunstonRootController: UIViewController {
         }.store(in: &subscriptions)
     }
 
+    func setReaderControlsHidden(_ hidden: Bool) {
+        tabs.setTabBarHidden(hidden, animated: !UIAccessibility.isReduceMotionEnabled)
+        playerPresentation.setReaderControlsHidden(hidden)
+    }
+
     private func configureLayout() {
         let expanded = traitCollection.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass == .regular
         guard embedded == nil || expanded != (split != nil) else { return }

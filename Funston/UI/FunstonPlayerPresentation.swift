@@ -16,6 +16,7 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate, UI
     private var artworkTask: Task<Void, Never>?
     private var artworkIdentifier: String?
     private var reopenAfterAttach = false
+    private var readerControlsHidden = false
     private var progressVisible = false
     private var undoToast: UIHostingController<StoppedListeningToast>?
     private var undoExpiry: Task<Void, Never>?
@@ -63,10 +64,17 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate, UI
         container.popupBar.accessibilityCustomActions = [
             UIAccessibilityCustomAction(name: "Stop and close player", target: self, selector: #selector(stopListening))
         ]
-        if let content {
+        if let content, !readerControlsHidden {
             container.presentPopupBar(with: content, openPopup: reopenAfterAttach, animated: false)
         }
         reopenAfterAttach = false
+    }
+
+    func setReaderControlsHidden(_ hidden: Bool) {
+        guard hidden != readerControlsHidden else { return }
+        readerControlsHidden = hidden
+        if hidden { container?.dismissPopupBar(animated: !UIAccessibility.isReduceMotionEnabled) }
+        else if let content { container?.presentPopupBar(with: content, animated: !UIAccessibility.isReduceMotionEnabled) }
     }
 
     func update(context: PlaybackContext?, phase: PlaybackPhase, wantsToPlay: Bool) {
@@ -98,7 +106,7 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate, UI
         toggle.accessibilityLabel = isPlaying ? "Pause" : "Play"
         toggle.accessibilityIdentifier = "compactPlayer.toggle"
         controller.popupItem.barButtonItems = [toggle]
-        if isNew { container?.presentPopupBar(with: controller, animated: !UIAccessibility.isReduceMotionEnabled) }
+        if isNew && !readerControlsHidden { container?.presentPopupBar(with: controller, animated: !UIAccessibility.isReduceMotionEnabled) }
         loadArtwork(identifier: context.artifact.identifier)
     }
 

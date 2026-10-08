@@ -141,7 +141,7 @@ private final class ArtifactMediaFilePicker: FunstonListController {
 /// Documents use the same validated, durable transfers and file leases as audio.
 /// Leaving the reader preserves the download; Cancel is an explicit transfer action.
 @MainActor
-private final class ArtifactPDFController: UIViewController {
+final class ArtifactPDFController: UIViewController, UIGestureRecognizerDelegate {
     private let summary: ArtifactSummary
     private let file: ArchiveFile
     private let downloads: DownloadManager
@@ -150,6 +150,10 @@ private final class ArtifactPDFController: UIViewController {
     private let textEnginePreference: PDFTextEnginePreference
     private let pdfView = PDFLineAccessibleView()
     private let pageLabel = AdjustablePageLabel()
+    private lazy var readerControls = ReaderControls(reader: self, pageView: pdfView)
+    private var pageControls: UIStackView?
+    private var visibleBottom: NSLayoutConstraint?
+    private var hiddenBottom: NSLayoutConstraint?
     private let previous = UIButton(type: .system)
     private let nextPageButton = UIButton(type: .system)
     private var subscriptions = Set<AnyCancellable>()
@@ -200,6 +204,22 @@ private final class ArtifactPDFController: UIViewController {
         pdfView.isFindInteractionEnabled = true
         pdfView.accessibilityIdentifier = "reader.document"
         pdfView.isAccessibilityElement = false
+        pdfView.readerPageElement = readerControls.page
+        readerControls.page.adjust = { [weak self] amount in self?.pageLabel.adjustPage?(amount) }
+        readerControls.changed = { [weak self] hidden in
+            guard let self else { return }
+            visibleBottom?.isActive = !hidden
+            hiddenBottom?.isActive = hidden
+            pageControls?.accessibilityElementsHidden = hidden
+            UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.2) {
+                self.pageControls?.alpha = hidden ? 0 : 1
+                self.view.layoutIfNeeded()
+            }
+        }
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tappedPage))
+        tap.cancelsTouchesInView = false
+        tap.delegate = self
+        pdfView.addGestureRecognizer(tap)
         pdfView.visiblePagesDidChange = { [weak self] in self?.prefetchTextForVoiceOver() }
         pdfView.backgroundColor = .secondarySystemBackground
         pdfView.translatesAutoresizingMaskIntoConstraints = false
@@ -227,12 +247,15 @@ private final class ArtifactPDFController: UIViewController {
         let controls = UIStackView(arrangedSubviews: [previous, pageLabel, nextPageButton])
         controls.axis = .horizontal; controls.spacing = 12; controls.alignment = .center
         controls.translatesAutoresizingMaskIntoConstraints = false
+        pageControls = controls
+        visibleBottom = pdfView.bottomAnchor.constraint(equalTo: controls.topAnchor, constant: -8)
+        hiddenBottom = pdfView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         view.addSubview(controls)
         NSLayoutConstraint.activate([
             pdfView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             pdfView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             pdfView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            pdfView.bottomAnchor.constraint(equalTo: controls.topAnchor, constant: -8),
+            visibleBottom!,
             controls.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             controls.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             controls.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
@@ -267,6 +290,23 @@ private final class ArtifactPDFController: UIViewController {
             installDocumentActions()
             prefetchTextForVoiceOver()
         }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        readerControls.restore()
+    }
+
+    override func accessibilityPerformMagicTap() -> Bool { readerControls.toggle(); return true }
+
+    @objc private func tappedPage() { readerControls.tapped() }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard pdfView.document != nil, pdfView.currentSelection == nil,
+              !pdfView.findInteraction.isFindNavigatorVisible,
+              let page = pdfView.page(for: touch.location(in: pdfView), nearest: false) else { return false }
+        let point = pdfView.convert(touch.location(in: pdfView), to: page)
+        return !page.annotations.contains { $0.type == "Link" && $0.bounds.contains(point) }
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -387,6 +427,7 @@ private final class ArtifactPDFController: UIViewController {
         guard index != NSNotFound, index != displayedPage else { return }
         displayedPage = index
         pageLabel.text = "Page \(index + 1) of \(document.pageCount)"
+        readerControls.page.accessibilityLabel = pageLabel.text
         previous.isEnabled = pdfView.canGoToPreviousPage
         nextPageButton.isEnabled = pdfView.canGoToNextPage
         progress.record(page: index)

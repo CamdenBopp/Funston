@@ -5,6 +5,26 @@ import UIKit
 
 @MainActor
 final class PDFReadingStateTests: XCTestCase {
+    func testReaderControlsRequireExplicitActionWithVoiceOverAndResetOnExit() {
+        let reader = UIViewController()
+        let controls = ReaderControls(reader: reader, pageView: reader.view)
+        controls.tapped(voiceOverRunning: true)
+        XCTAssertFalse(controls.isHidden)
+        controls.tapped(voiceOverRunning: false)
+        XCTAssertTrue(controls.isHidden)
+        XCTAssertEqual(controls.page.accessibilityCustomActions?.first?.name, "Show controls")
+        XCTAssertTrue(controls.page.accessibilityPerformMagicTap())
+        XCTAssertFalse(controls.isHidden)
+        controls.toggle()
+        var page = 1
+        controls.page.adjust = { page += $0 }
+        controls.page.accessibilityIncrement()
+        XCTAssertEqual(page, 2)
+        controls.restore()
+        XCTAssertFalse(controls.isHidden)
+        XCTAssertEqual(controls.page.accessibilityCustomActions?.first?.name, "Hide controls")
+    }
+
     func testRecognitionPreferenceIsRememberedPerBook() throws {
         let suite = "BookEngineTests." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

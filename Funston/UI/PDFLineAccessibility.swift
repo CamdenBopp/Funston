@@ -5,6 +5,7 @@ import UIKit
 /// its page accessibility container is replaced by the chosen recognition result.
 @MainActor
 final class PDFLineAccessibleView: PDFView {
+    var readerPageElement: ReaderPageElement?
     var visiblePagesDidChange: (() -> Void)?
     private var linesByPage: [Int: [PDFRecognizedLineElement]] = [:]
     private var resultsByPage: [Int: PDFPageTextResult] = [:]
@@ -85,17 +86,28 @@ final class PDFLineAccessibleView: PDFView {
     }
 
     override var accessibilityElements: [Any]? {
-        get { recognizedElements.map { $0 as [Any] } ?? super.accessibilityElements }
+        get {
+            let elements = recognizedElements.map { $0 as [Any] } ?? super.accessibilityElements
+            guard let readerPageElement else { return elements }
+            return [readerPageElement] + (elements ?? subviews)
+        }
         set { super.accessibilityElements = newValue }
     }
     override func accessibilityElementCount() -> Int {
-        recognizedElements?.count ?? super.accessibilityElementCount()
+        if readerPageElement != nil { return accessibilityElements?.count ?? 0 }
+        return recognizedElements?.count ?? super.accessibilityElementCount()
     }
     override func accessibilityElement(at index: Int) -> Any? {
+        if readerPageElement != nil, let elements = accessibilityElements {
+            return elements.indices.contains(index) ? elements[index] : nil
+        }
         guard let elements = recognizedElements else { return super.accessibilityElement(at: index) }
         return elements.indices.contains(index) ? elements[index] : nil
     }
     override func index(ofAccessibilityElement element: Any) -> Int {
+        if readerPageElement != nil, let elements = accessibilityElements {
+            return elements.firstIndex { $0 as AnyObject === element as AnyObject } ?? NSNotFound
+        }
         guard let elements = recognizedElements else { return super.index(ofAccessibilityElement: element) }
         return elements.firstIndex { $0 === element as AnyObject } ?? NSNotFound
     }
@@ -154,5 +166,67 @@ final class PDFRecognizedLineElement: UIAccessibilityElement {
         super.accessibilityElementDidBecomeFocused()
         guard let pageView, let page, !pageView.bounds.contains(accessibilityFrameInContainerSpace) else { return }
         pageView.go(to: source.pageRect(for: normalizedBounds), on: page)
+    }
+}
+
+/// Session-only reader chrome state, shared by PDF and EPUB readers.
+@MainActor
+final class ReaderControls: NSObject {
+    private weak var reader: UIViewController?
+    private(set) var isHidden = false
+    var changed: ((Bool) -> Void)?
+    let page: ReaderPageElement
+
+    init(reader: UIViewController, pageView: UIView) {
+        self.reader = reader
+        page = ReaderPageElement(accessibilityContainer: pageView)
+        super.init()
+        page.accessibilityLabel = "Reading page"
+        page.accessibilityIdentifier = "reader.page"
+        page.accessibilityTraits = .adjustable
+        page.toggle = { [weak self] in self?.toggle(); return true }
+        updateAction()
+    }
+
+    func tapped(voiceOverRunning: Bool = UIAccessibility.isVoiceOverRunning) {
+        guard !voiceOverRunning else { return }
+        toggle()
+    }
+
+    func toggle() { setHidden(!isHidden) }
+    func restore() { setHidden(false) }
+
+    private func setHidden(_ hidden: Bool) {
+        guard hidden != isHidden, let reader else { return }
+        isHidden = hidden
+        reader.navigationController?.setNavigationBarHidden(hidden, animated: !UIAccessibility.isReduceMotionEnabled)
+        var ancestor: UIViewController? = reader
+        while let current = ancestor {
+            if let root = current as? FunstonRootController { root.setReaderControlsHidden(hidden); break }
+            ancestor = current.parent
+        }
+        changed?(hidden)
+        updateAction()
+        UIAccessibility.post(notification: .layoutChanged, argument: page)
+    }
+
+    private func updateAction() {
+        page.accessibilityValue = isHidden ? "Controls hidden" : "Controls visible"
+        page.accessibilityCustomActions = [UIAccessibilityCustomAction(name: isHidden ? "Show controls" : "Hide controls") { [weak self] _ in
+            self?.toggle(); return true
+        }]
+    }
+}
+
+@MainActor
+final class ReaderPageElement: UIAccessibilityElement {
+    var toggle: (() -> Bool)?
+    var adjust: ((Int) -> Void)?
+    override func accessibilityIncrement() { adjust?(1) }
+    override func accessibilityDecrement() { adjust?(-1) }
+    override func accessibilityPerformMagicTap() -> Bool { toggle?() ?? false }
+    override var accessibilityFrameInContainerSpace: CGRect {
+        get { (accessibilityContainer as? UIView)?.bounds ?? .zero }
+        set { super.accessibilityFrameInContainerSpace = newValue }
     }
 }

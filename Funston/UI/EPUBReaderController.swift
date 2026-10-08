@@ -30,6 +30,7 @@ final class EPUBReaderController: UIViewController, EPUBNavigatorDelegate {
     private var navigator: EPUBNavigatorViewController?
     private var tableOfContents: [Link] = []
     private var lastLocator: Locator?
+    private lazy var readerControls = ReaderControls(reader: self, pageView: view)
 
     init(summary: ArtifactSummary, file: ArchiveFile, downloads: DownloadManager, store: SQLiteStore) {
         self.summary = summary; self.file = file; self.downloads = downloads; self.store = store
@@ -74,6 +75,16 @@ final class EPUBReaderController: UIViewController, EPUBNavigatorDelegate {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         saveNow()
+        readerControls.restore()
+    }
+
+    override func accessibilityPerformMagicTap() -> Bool { readerControls.toggle(); return true }
+
+    nonisolated func navigator(_ navigator: Navigator, didTapAt point: CGPoint) {
+        MainActor.assumeIsolated {
+            guard self.navigator?.currentSelection == nil else { return }
+            readerControls.tapped()
+        }
     }
 
     override func didMove(toParent parent: UIViewController?) {
@@ -161,9 +172,13 @@ final class EPUBReaderController: UIViewController, EPUBNavigatorDelegate {
                 navigator.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 navigator.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                 navigator.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-                navigator.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+                navigator.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
             ])
             navigator.didMove(toParent: self)
+            readerControls.page.adjust = { [weak navigator] amount in
+                Task { if amount > 0 { _ = await navigator?.goForward() } else { _ = await navigator?.goBackward() } }
+            }
+            view.accessibilityElements = [readerControls.page, navigator.view!]
             // An EPUB's contents come from its own navigation document, already in the manifest.
             tableOfContents = publication.manifest.tableOfContents
             installContentsButton()
