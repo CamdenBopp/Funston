@@ -84,6 +84,70 @@ final class DownloadPermitCancellationTests: XCTestCase {
         XCTAssertEqual(PermitProbeProtocol.starts.value, startsBefore)
     }
 
+    func testColdRecoveryNeverResumesQueuedPrivateFile() async throws {
+        try await verifyRestoredQueuedValidation(privateFile: true)
+    }
+    func testColdRecoveryResumesQueuedPublicFileOnlyAfterValidation() async throws {
+        try await verifyRestoredQueuedValidation(privateFile: false)
+    }
+
+    private func verifyRestoredQueuedValidation(privateFile: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try SQLiteStore(url: directory.appending(path: "test.sqlite"))
+        let identity = DownloadTaskIdentity(key: DownloadManager.key(identifier: "permit-item", fileName: "queued.mp3"),
+            identifier: "permit-item", fileName: "queued.mp3", expectedBytes: 3)
+        let record = DownloadRecord(key: identity.key, identifier: identity.identifier, fileName: identity.fileName,
+            title: "Queued recording", expectedBytes: 3, localPath: identity.destination(in: directory).path,
+            state: .queued, receivedBytes: 0, totalBytes: 3, errorMessage: nil, updatedAt: .now)
+        try await store.upsertDownload(record)
+        let repository = HeldPermitMetadataRepository()
+        defer { Task { await repository.complete() } }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PermitProbeProtocol.self]
+        let startsBefore = PermitProbeProtocol.starts.value
+        let taskHolder = RestoredPermitTaskHolder()
+        let manager = DownloadManager(store: store, mediaDirectory: directory, sessionConfiguration: configuration,
+            accessRepository: repository, prepareRestoredSession: { session in
+                // This real suspended task represents a background daemon task restored on launch.
+                let task = session.downloadTask(with: ArchiveNetworkPolicy.request(ArchiveURLs.download(identifier: identity.identifier, fileName: identity.fileName)))
+                task.taskDescription = identity.taskDescription
+                taskHolder.hold(task)
+                return [task]
+            })
+        await manager.waitUntilReady()
+        XCTAssertEqual(taskHolder.state, .suspended)
+        let validationDeadline = ContinuousClock.now + .seconds(1)
+        while !(await repository.requested), ContinuousClock.now < validationDeadline { try await Task.sleep(for: .milliseconds(10)) }
+        let requested = await repository.requested
+        XCTAssertTrue(requested)
+        XCTAssertEqual(manager.records.first?.state, .queued)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(PermitProbeProtocol.starts.value, startsBefore, "A cold-restored queued task must stay suspended during validation")
+        await repository.complete(isPrivate: privateFile)
+        let deadline = ContinuousClock.now + .seconds(2)
+        while manager.records.first?.state != .failed && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        // The public transfer's protocol deliberately fails once it receives the request.
+        XCTAssertEqual(manager.records.first?.state, .failed)
+        XCTAssertEqual(PermitProbeProtocol.starts.value, startsBefore + (privateFile ? 0 : 1))
+        let available = expectation(description: "Recovered attempts release every owned permit")
+        let probe = Task {
+            var downloads = 0
+            var requests = 0
+            do {
+                for _ in 0..<2 { try await ArchiveNetworkPolicy.downloadLimiter.acquire(); downloads += 1 }
+                for _ in 0..<4 { try await ArchiveNetworkPolicy.requestLimiter.acquire(); requests += 1 }
+                available.fulfill()
+            } catch {}
+            for _ in 0..<requests { await ArchiveNetworkPolicy.requestLimiter.release() }
+            for _ in 0..<downloads { await ArchiveNetworkPolicy.downloadLimiter.release() }
+        }
+        await fulfillment(of: [available], timeout: 1)
+        probe.cancel()
+        await probe.value
+    }
+
     private func verifyCancellation(_ mutation: Mutation) async throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -183,10 +247,17 @@ private actor HeldPermitMetadataRepository: ArchiveRepository {
             requested = true
         }
     }
-    func complete() {
-        continuation?.resume(returning: ArtifactDetail(summary: ArtifactSummary(identifier: "permit-item", title: "Queued recording"), files: [ArchiveFile(name: "queued.mp3", size: 3)]))
+    func complete(isPrivate: Bool = false) {
+        continuation?.resume(returning: ArtifactDetail(summary: ArtifactSummary(identifier: "permit-item", title: "Queued recording"), files: [ArchiveFile(name: "queued.mp3", size: 3, isPrivate: isPrivate)]))
         continuation = nil
     }
+}
+
+private final class RestoredPermitTaskHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionTask?
+    func hold(_ task: URLSessionTask) { lock.withLock { self.task = task } }
+    var state: URLSessionTask.State? { lock.withLock { task?.state } }
 }
 
 private final class PermitStartCounter: @unchecked Sendable {

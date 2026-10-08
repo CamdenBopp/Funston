@@ -152,13 +152,14 @@ final class DownloadManager: NSObject, ObservableObject {
     private let accessRepository: any ArchiveRepository
     private var operationTail: Task<Void, Never>?
     private var permitWaits: [String: Task<Void, Never>] = [:]
+    private var restoredSessionTasks: [URLSessionTask] = []
     private var backgroundCompletionHandler: (() -> Void)?
     private var backgroundEventsDrained = false
     private var pendingRemovals = Set<String>()
     private var leases: [String: Int] = [:]
     private let settings: SettingsStore
 
-    init(store: any DownloadPersistence, mediaDirectory: URL, sessionConfiguration: URLSessionConfiguration? = nil, accessRepository: any ArchiveRepository = NetworkArchiveRepository(), settings: SettingsStore = .shared) {
+    init(store: any DownloadPersistence, mediaDirectory: URL, sessionConfiguration: URLSessionConfiguration? = nil, accessRepository: any ArchiveRepository = NetworkArchiveRepository(), settings: SettingsStore = .shared, prepareRestoredSession: (@Sendable (URLSession) -> [URLSessionTask])? = nil) {
         self.store = store; self.mediaDirectory = mediaDirectory
         self.settings = settings
         self.accessRepository = accessRepository
@@ -182,6 +183,8 @@ final class DownloadManager: NSObject, ObservableObject {
         session = URLSession(configuration: Self.configureSession(configuration), delegate: delegate, delegateQueue: queue)
         super.init()
         delegate.owner = self
+        // Tests can recreate daemon-owned suspended tasks before launch reconciliation.
+        restoredSessionTasks = prepareRestoredSession?(session) ?? []
         operationTail = Task { [weak self] in await self?.loadAndReconcile() }
     }
 
@@ -513,7 +516,10 @@ final class DownloadManager: NSObject, ObservableObject {
             loadError = error.localizedDescription
             return
         }
-        let tasks = await session.allTasks
+        var tasks = await session.allTasks
+        let knownTaskIDs = Set(tasks.map(\.taskIdentifier))
+        tasks += restoredSessionTasks.filter { !knownTaskIDs.contains($0.taskIdentifier) }
+        restoredSessionTasks = []
         var reconciled: [DownloadRecord] = []
         for var record in stored {
             // App container roots can change across reinstalls/restores/updates.
@@ -534,7 +540,20 @@ final class DownloadManager: NSObject, ObservableObject {
                 record.state = .completed; record.errorMessage = nil; active.forEach { $0.cancel() }
             } else if [.queued, .downloading].contains(record.state), !active.isEmpty {
                 active.dropFirst().forEach { $0.cancel() }
-                if permitWaits[record.localPath] == nil { record.state = .downloading; active.first?.resume() }
+                if permitWaits[record.localPath] == nil {
+                    if record.state == .queued,
+                       let task = active.first as? URLSessionDownloadTask,
+                       let identity = DownloadTaskIdentity(taskDescription: task.taskDescription) {
+                        // A queued intent may have been persisted before public-file validation.
+                        if task.state == .running { task.suspend() }
+                        validateAndWaitForPermit(task: task, identity: identity)
+                    } else if record.state == .downloading {
+                        active.first?.resume()
+                    } else {
+                        record.state = .failed; record.errorMessage = "The download could not be restored. Try again."
+                        active.first?.cancel()
+                    }
+                }
             } else if [.queued, .downloading, .completed].contains(record.state) {
                 record.state = record.state == .completed ? .missing : .failed
                 record.errorMessage = "The download is unavailable on this device. Try again."
