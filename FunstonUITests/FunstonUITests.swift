@@ -578,3 +578,69 @@ final class FunstonUITests: XCTestCase {
         add(attachment)
     }
 }
+
+extension FunstonUITests {
+    @MainActor
+    func testPlaybackSpeedSheetLayoutMatrix() throws {
+        let originalAppearance = XCUIDevice.shared.appearance
+        defer { XCUIDevice.shared.appearance = originalAppearance }
+        for category in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryAccessibilityXXXL"] {
+            for appearance in ["Light", "Dark"] {
+                XCUIDevice.shared.appearance = appearance == "Dark" ? .dark : .light
+                let app = XCUIApplication()
+                app.launchArguments = ["--skip-playback-restoration", "-UIPreferredContentSizeCategoryName", category]
+                app.launch()
+                let continuing = app.buttons["explore.continue.OTRR_Gunsmoke_Singles"]
+                if continuing.exists {
+                    continuing.tap()
+                } else {
+                    let radio = app.buttons["oldtimeradio"]
+                    for _ in 0..<12 where !radio.isHittable { app.swipeUp() }
+                    XCTAssertTrue(radio.isHittable)
+                    radio.tap()
+                    let recording = app.cells["artifact:OTRR_Gunsmoke_Singles"]
+                    for _ in 0..<12 where !recording.waitForExistence(timeout: 3) { app.swipeUp() }
+                    XCTAssertTrue(recording.waitForExistence(timeout: 10))
+                    recording.tap()
+                    let play = app.buttons["artifact.play"]
+                    XCTAssertTrue(play.waitForExistence(timeout: 40))
+                    for _ in 0..<8 where !play.isHittable { app.swipeUp() }
+                    play.tap()
+                }
+                let mini = app.descendants(matching: .any)["compactPlayer.open"].firstMatch
+                XCTAssertTrue(mini.waitForExistence(timeout: 15))
+                mini.tap()
+                let speed = app.buttons["player.speed"]
+                XCTAssertTrue(speed.waitForExistence(timeout: 8))
+                for _ in 0..<8 where !speed.isHittable { app.swipeUp() }
+                speed.tap()
+                let stepper = app.descendants(matching: .any)["player.speed.adjustable"].firstMatch
+                XCTAssertTrue(stepper.waitForExistence(timeout: 5))
+                let presets = ["1 times", "1.25 times", "1.5 times", "2 times"].map { app.buttons[$0] }
+                for preset in presets {
+                    XCTAssertTrue(preset.isHittable)
+                    XCTAssertGreaterThanOrEqual(preset.frame.height, 44)
+                    XCTAssertEqual(preset.frame.width, presets[0].frame.width, accuracy: 1)
+                }
+                if category == "UICTContentSizeCategoryL" {
+                    for preset in presets { XCTAssertEqual(preset.frame.minY, presets[0].frame.minY, accuracy: 1) }
+                } else {
+                    XCTAssertEqual(presets[0].frame.minY, presets[1].frame.minY, accuracy: 1)
+                    XCTAssertEqual(presets[2].frame.minY, presets[3].frame.minY, accuracy: 1)
+                    XCTAssertGreaterThan(presets[2].frame.minY, presets[0].frame.maxY)
+                }
+                presets[2].tap()
+                XCTAssertTrue(presets[2].isSelected)
+                XCTAssertFalse(presets[0].isSelected)
+                XCTAssertEqual(stepper.label, "Playback speed")
+                XCTAssertEqual(stepper.value as? String, "1.5 times")
+                XCTAssertGreaterThanOrEqual(stepper.frame.height, 44)
+                XCTAssertTrue(app.buttons["Done"].isHittable)
+                capture(app, name: "Playback Speed \(appearance) \(category == "UICTContentSizeCategoryL" ? "Default" : "AX5")")
+                presets[0].tap()
+                app.buttons["Done"].tap()
+                app.terminate()
+            }
+        }
+    }
+}

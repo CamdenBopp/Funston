@@ -454,28 +454,40 @@ struct PlaybackSpeedSheet: View {
     @ObservedObject var playback: PlaybackController
     @Environment(\.dismiss) private var dismiss
     @State private var collectionOverride = false
+    @State private var contentHeight: CGFloat = 220
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         NavigationStack {
-            Form {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: typeSize.isAccessibilitySize ? 1 : 2)) {
-                    ForEach([1.0, 1.25, 1.5, 2.0], id: \.self) { speed in
-                        Button("\(speed.formatted())×") { set(speed) }
-                            .buttonStyle(.bordered)
-                            .accessibilityLabel("\(speed.formatted()) times")
-                            .accessibilityAddTraits(playback.playbackRate == speed ? .isSelected : [])
+            ScrollView {
+                VStack(spacing: 20) {
+                    ViewThatFits(in: .horizontal) {
+                        if !typeSize.isAccessibilitySize {
+                            HStack(spacing: 8) {
+                                ForEach([1.0, 1.25, 1.5, 2.0], id: \.self) { speed in
+                                    preset(speed)
+                                }
+                            }
+                        }
+                        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                            GridRow { preset(1); preset(1.25) }
+                            GridRow { preset(1.5); preset(2) }
+                        }
                     }
-                }
-                HStack {
-                    Button { set(playback.playbackRate - 0.1) } label: { Image(systemName: "minus") }
-                        .disabled(playback.playbackRate <= 0.5)
-                    Spacer()
-                    Text("\(playback.playbackRate.formatted())×").monospacedDigit()
-                    Spacer()
-                    Button { set(playback.playbackRate + 0.1) } label: { Image(systemName: "plus") }
-                        .disabled(playback.playbackRate >= 3)
-                }.buttonStyle(.bordered)
+                    Divider()
+                    HStack(spacing: 16) {
+                        adjustment(symbol: "minus", label: "Decrease playback speed",
+                                   disabled: playback.playbackRate <= 0.5) {
+                            set(playback.playbackRate - 0.1)
+                        }
+                        Text("\(playback.playbackRate.formatted())×")
+                            .font(.title3.weight(.semibold)).monospacedDigit()
+                            .frame(maxWidth: .infinity)
+                        adjustment(symbol: "plus", label: "Increase playback speed",
+                                   disabled: playback.playbackRate >= 3) {
+                            set(playback.playbackRate + 0.1)
+                        }
+                    }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Playback speed")
                     .accessibilityValue("\(playback.playbackRate.formatted()) times")
@@ -487,18 +499,62 @@ struct PlaybackSpeedSheet: View {
                         @unknown default: break
                         }
                     }
-                if let collection = playback.context?.artifact.collections.first {
-                    Toggle("Remember speed for this collection", isOn: $collectionOverride)
-                        .accessibilityHint(collection)
-                        .onChange(of: collectionOverride) { _, enabled in
-                            if enabled { playback.setPlaybackSpeed(playback.playbackRate, forCollection: true) }
-                            else { playback.useGlobalPlaybackSpeed() }
-                        }
+                    if let collection = playback.context?.artifact.collections.first {
+                        Divider()
+                        Toggle("Remember speed for this collection", isOn: $collectionOverride)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityHint(collection)
+                            .onChange(of: collectionOverride) { _, enabled in
+                                if enabled { playback.setPlaybackSpeed(playback.playbackRate, forCollection: true) }
+                                else { playback.useGlobalPlaybackSpeed() }
+                            }
+                    }
                 }
-            }.navigationTitle("Playback Speed").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-        }.onAppear { collectionOverride = playback.hasCollectionSpeedOverride }
+                .padding(20)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+                .padding(20)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Playback Speed").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.height(contentHeight + 64)])
+        .presentationDragIndicator(.visible)
+        .onAppear { collectionOverride = playback.hasCollectionSpeedOverride }
     }
+
+    private func preset(_ speed: Double) -> some View {
+        let selected = playback.playbackRate == speed
+        return Button { set(speed) } label: {
+            Text("\(speed.formatted())×")
+                .font(.body.weight(.semibold))
+                .fixedSize(horizontal: true, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .padding(.vertical, 4)
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .background(selected ? Color.accentColor : Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(speed.formatted()) times")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func adjustment(symbol: String, label: String, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.body.weight(.semibold))
+                .frame(width: 48, height: 48)
+                .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .opacity(disabled ? 0.4 : 1)
+        .disabled(disabled)
+        .accessibilityLabel(label)
+    }
+
     private func set(_ speed: Double) { playback.setPlaybackSpeed(speed, forCollection: collectionOverride) }
 }
 
