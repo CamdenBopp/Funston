@@ -79,7 +79,7 @@ private final class DownloadSessionDelegate: NSObject, URLSessionDownloadDelegat
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let identity = DownloadTaskIdentity(taskDescription: downloadTask.taskDescription) else { return }
         if let response = downloadTask.response as? HTTPURLResponse,
-           response.statusCode == 429 || response.statusCode == 503 {
+           ArchiveRetryPolicy.isRetryableHTTPStatus(response.statusCode) {
             let error = ArchiveError.http(status: response.statusCode, retryAfter: response.value(forHTTPHeaderField: "Retry-After"))
             append { await $0.transientFailure(identity: identity, error: error, resumeData: nil) }
             return

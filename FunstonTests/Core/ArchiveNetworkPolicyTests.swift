@@ -135,6 +135,62 @@ final class ArchiveNetworkPolicyTests: XCTestCase {
         }
     }
 
+    func testMediaServerFailuresRetryThenReturnTheSuccessfulResponse() async throws {
+        for status in [500, 502, 504] {
+            let payload = Data("available recording metadata".utf8)
+            let transport = PolicyTransport([ArchiveHTTPResponse(data: Data(), statusCode: status, headers: ["Retry-After": "4"]),
+                                             ArchiveHTTPResponse(data: payload)])
+            let sleeps = RetrySleeps()
+            let response = try await ArchiveHTTPClient(transport: transport, retrySleep: { await sleeps.record($0) })
+                .send(ArchiveNetworkPolicy.request(ArchiveURLs.metadata(identifier: "OTRR_Gunsmoke_Singles")))
+            XCTAssertEqual(response.data, payload)
+            let requests = await transport.requests
+            let delays = await sleeps.values
+            XCTAssertEqual(requests.count, 2)
+            XCTAssertEqual(delays, [4])
+        }
+    }
+
+    func testUnavailableServerStopsAfterThreeAttemptsAndOtherClientErrorsNeverRetry() async throws {
+        for status in [400, 401, 403, 404, 410, 500, 502, 504] {
+            let transport = PolicyTransport([ArchiveHTTPResponse(data: Data(), statusCode: status)])
+            let sleeps = RetrySleeps()
+            do {
+                _ = try await ArchiveHTTPClient(transport: transport, retrySleep: { await sleeps.record($0) })
+                    .send(ArchiveNetworkPolicy.request(ArchiveURLs.metadata(identifier: "test")))
+                XCTFail("Expected server failure")
+            } catch { XCTAssertEqual(error as? ArchiveError, .http(status: status, retryAfter: nil)) }
+            let requests = await transport.requests
+            let delays = await sleeps.values
+            XCTAssertEqual(requests.count, status >= 500 ? 3 : 1)
+            XCTAssertEqual(delays.count, status >= 500 ? 2 : 0)
+        }
+    }
+
+    @MainActor
+    func testDownloadPipelineRecoversFromHTTP500WithoutManualRetry() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try SQLiteStore(url: directory.appending(path: "retry.sqlite"))
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CDNRetryDownloadProtocol.self]
+        CDNRetryDownloadProtocol.state.reset()
+        let manager = DownloadManager(store: store, mediaDirectory: directory, sessionConfiguration: configuration,
+                                      accessRepository: CDNRetryDownloadRepository())
+        await manager.waitUntilReady()
+        await manager.start(identifier: "cdn-retry-item", artifactTitle: "Retry fixture", file: ArchiveFile(name: "recording.mp3", size: 3))
+        let deadline = ContinuousClock.now + .seconds(6)
+        while manager.records.first?.state != .completed && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let record = try XCTUnwrap(manager.records.first)
+        XCTAssertEqual(record.state, .completed, record.errorMessage ?? "Automatic recovery did not complete")
+        XCTAssertEqual(CDNRetryDownloadProtocol.state.count, 2)
+        if record.state == .completed { XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: record.localPath)), Data("mp3".utf8)) }
+        try await manager.removeAllDownloads()
+    }
+
     func testConcurrentArchiveRequestsAreLimitedToFour() async throws {
         let transport = ConcurrentPolicyTransport()
         let client = ArchiveHTTPClient(transport: transport)
@@ -176,5 +232,37 @@ private final class AuditHeldDownloadProtocol: URLProtocol, @unchecked Sendable 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() { Self.starts.increment() }
+    override func stopLoading() {}
+}
+
+private struct CDNRetryDownloadRepository: ArchiveRepository {
+    func search(_ request: SearchRequest) async throws -> SearchPage { throw URLError(.unsupportedURL) }
+    func detail(identifier: String) async throws -> ArtifactDetail {
+        ArtifactDetail(summary: ArtifactSummary(identifier: identifier, title: "Retry fixture"),
+                       files: [ArchiveFile(name: "recording.mp3", size: 3)])
+    }
+}
+private final class CDNRetryDownloadState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var starts = 0
+    var count: Int { lock.withLock { starts } }
+    func reset() { lock.withLock { starts = 0 } }
+    func next() -> Int { lock.withLock { starts += 1; return starts } }
+}
+private final class CDNRetryDownloadProtocol: URLProtocol, @unchecked Sendable {
+    static let state = CDNRetryDownloadState()
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.path == "/download/cdn-retry-item/recording.mp3"
+    }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let status = Self.state.next() == 1 ? 500 : 200
+        let data = Data((status == 500 ? "server unavailable" : "mp3").utf8)
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1",
+                                       headerFields: ["Content-Length": String(data.count), "Content-Type": "audio/mpeg"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
     override func stopLoading() {}
 }

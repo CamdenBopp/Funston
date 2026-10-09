@@ -158,9 +158,9 @@ final class DownloadPermitCancellationTests: XCTestCase {
         let manager = DownloadManager(store: store, mediaDirectory: directory, sessionConfiguration: configuration,
                                       accessRepository: PermitFixtureRepository())
         await manager.waitUntilReady()
-        let limiter = ArchiveNetworkPolicy.requestLimiter
-        for _ in 0..<4 { try await limiter.acquire() }
-        var heldPermits = 4
+        let limiter = ArchiveNetworkPolicy.downloadLimiter
+        for _ in 0..<2 { try await limiter.acquire() }
+        var heldPermits = 2
         defer {
             let count = heldPermits
             Task { for _ in 0..<count { await limiter.release() } }
@@ -177,7 +177,7 @@ final class DownloadPermitCancellationTests: XCTestCase {
         // Reconciliation must not resume a suspended transfer that is waiting for capacity.
         let reconciled = expectation(description: "Availability refresh remains responsive")
         let refresh = Task { await manager.refreshAvailability(); reconciled.fulfill() }
-        let removed = expectation(description: "Cancellation finishes while all four slots remain held")
+        let removed = expectation(description: "Cancellation finishes while both download slots remain held")
         let removal = Task {
             switch mutation {
             case .remove: try await manager.remove(record)
@@ -194,11 +194,11 @@ final class DownloadPermitCancellationTests: XCTestCase {
         await refresh.value
         try await removal.value
         // Probe every slot: a cancellation racing permit acquisition must return it.
-        let capacity = expectation(description: "All four permits remain available")
+        let capacity = expectation(description: "Both download permits remain available")
         let probe = Task {
             var acquired = 0
             do {
-                for _ in 0..<4 { try await limiter.acquire(); acquired += 1 }
+                for _ in 0..<2 { try await limiter.acquire(); acquired += 1 }
                 capacity.fulfill()
             } catch {}
             for _ in 0..<acquired { await limiter.release() }

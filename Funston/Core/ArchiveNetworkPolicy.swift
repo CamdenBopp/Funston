@@ -33,10 +33,14 @@ enum ArchiveNetworkPolicy {
 
 enum ArchiveRetryPolicy {
     static let maximumAttempts = 3
+    // Archive media redirects sometimes reach a server returning a transient 5xx.
+    static func isRetryableHTTPStatus(_ status: Int) -> Bool {
+        [429, 500, 502, 503, 504].contains(status)
+    }
     static func delay(after error: any Error, attempt: Int, jitter: Double = Double.random(in: 0.75...1.25), now: Date = .now) -> Double? {
         let retryAfter: String?
         if let error = error as? ArchiveError, case .http(let status, let header) = error,
-           status == 429 || status == 503 { retryAfter = header }
+           isRetryableHTTPStatus(status) { retryAfter = header }
         else if (error as? URLError)?.code == .timedOut { retryAfter = nil }
         else { return nil }
         let backoff = pow(2, Double(attempt - 1)) * jitter
