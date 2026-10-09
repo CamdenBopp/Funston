@@ -165,7 +165,19 @@ final class PDFRecognizedLineElement: UIAccessibilityElement {
     override func accessibilityElementDidBecomeFocused() {
         super.accessibilityElementDidBecomeFocused()
         guard let pageView, let page, !pageView.bounds.contains(accessibilityFrameInContainerSpace) else { return }
-        pageView.go(to: source.pageRect(for: normalizedBounds), on: page)
+        let rect = source.pageRect(for: normalizedBounds)
+        // PDFKit's go(to:) can fit the page again on iOS 27. Move only the
+        // scroll position when VoiceOver reveals a line at the reader's zoom.
+        var ancestor = pageView.documentView?.superview
+        while let view = ancestor {
+            if let scroll = view as? UIScrollView {
+                let rectInView = pageView.convert(rect, from: page)
+                scroll.scrollRectToVisible(pageView.convert(rectInView, to: scroll), animated: false)
+                return
+            }
+            ancestor = view.superview
+        }
+        pageView.go(to: rect, on: page)
     }
 }
 
