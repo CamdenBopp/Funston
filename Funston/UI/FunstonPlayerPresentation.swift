@@ -10,6 +10,11 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate, UI
     /// 0.29 the grey subtitle needs for 4.5:1 takes at least 0.58 of the
     /// background color composited on top.
     private static let legibilityBackingOpacity: CGFloat = 0.6
+    /// On iOS 26 the backing is a tint inside the glass rather than a flat wash
+    /// over it, so the bar keeps its lensing and the page shows through. 0.5 is
+    /// the lowest tint that keeps the grey subtitle at 4.5:1 over a white page
+    /// in dark mode: measured 4.99:1 at 0.5 and 3.94:1 at 0.4.
+    private static let glassTintOpacity: CGFloat = 0.5
     private let environment: AppEnvironment
     private weak var container: UIViewController?
     private var content: UIHostingController<FullPlayer>?
@@ -56,7 +61,14 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate, UI
         let appearance = LNPopupBarAppearance()
         appearance.marqueeScrollEnabled = false
         appearance.subtitleTextAttributes = AttributeContainer().foregroundColor(UIColor.funstonSecondaryLabel)
-        appearance.floatingBackgroundColor = UIColor.systemBackground.withAlphaComponent(Self.legibilityBackingOpacity)
+        if #available(iOS 26.0, *) {
+            let glass = UIGlassEffect(style: .regular)
+            glass.isInteractive = true
+            glass.tintColor = UIColor.systemBackground.withAlphaComponent(Self.glassTintOpacity)
+            appearance.floatingBackgroundEffect = glass
+        } else {
+            appearance.floatingBackgroundColor = UIColor.systemBackground.withAlphaComponent(Self.legibilityBackingOpacity)
+        }
         container.popupBar.inheritsAppearanceFromDockingView = false
         container.popupBar.standardAppearance = appearance
         container.popupBar.accessibilityIdentifier = "compactPlayer.open"
