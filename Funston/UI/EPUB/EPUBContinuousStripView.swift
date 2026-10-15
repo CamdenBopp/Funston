@@ -31,6 +31,10 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
     static let tileRadius = 1
     /// How far a paragraph may sit from the top before focusing it scrolls it there.
     static let focusTopInset: CGFloat = EPUBPageView.margin
+    /// A paragraph counts as visible when more than this much of it is below the top edge:
+    /// after a jump the paragraph before the target ends inside the top inset, a sliver
+    /// VoiceOver should not land on.
+    static let visibleThreshold: CGFloat = focusTopInset
 
     weak var stripDelegate: EPUBContinuousStripDelegate?
     /// Posts to VoiceOver; tests substitute a recorder.
@@ -155,16 +159,16 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
         }
     }
 
-    /// VoiceOver's list starts at the first paragraph whose bottom is below the top edge.
+    /// VoiceOver's list starts at the first paragraph that reaches more than a sliver below the top edge.
     private func updateElementList() {
-        let top = contentOffset.y
-        let start = orderedElements.firstIndex { $0.frame.maxY > top } ?? max(0, orderedElements.count - 1)
+        let edge = contentOffset.y + Self.visibleThreshold
+        let start = orderedElements.firstIndex { $0.frame.maxY > edge } ?? max(0, orderedElements.count - 1)
         guard start != listStart, !orderedElements.isEmpty else { return }
         listStart = start
         accessibilityElements = Array(orderedElements[start...])
     }
 
-    var firstVisibleElement: UIView? { orderedElements.first { $0.frame.maxY > contentOffset.y } }
+    var firstVisibleElement: UIView? { orderedElements.first { $0.frame.maxY > contentOffset.y + Self.visibleThreshold } }
 
     /// VoiceOver moved onto a paragraph: bring it into view if it is not.
     func paragraphDidReceiveFocus(_ view: UIView) {

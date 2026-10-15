@@ -188,11 +188,29 @@ final class EPUBStripViewTests: XCTestCase {
         let elements = try XCTUnwrap(strip.accessibilityElements as? [UIView])
         let first = try XCTUnwrap(elements.first as? EPUBParagraphView)
         XCTAssertEqual(column(of: first)?.spineIndex, 0)
-        XCTAssertGreaterThan(first.frame.maxY, strip.contentOffset.y, "The first listed paragraph reaches below the top edge")
+        let edge = strip.contentOffset.y + EPUBContinuousStripView.visibleThreshold
+        XCTAssertGreaterThan(first.frame.maxY, edge, "The first listed paragraph reaches below the top edge")
         let before = try XCTUnwrap(first.previousParagraph)
-        XCTAssertLessThanOrEqual(before.frame.maxY, strip.contentOffset.y, "The paragraph before it ends above the top edge")
-        XCTAssertTrue(elements.allSatisfy { $0.frame.maxY > strip.contentOffset.y }, "Nothing above the top edge is in the list")
+        XCTAssertLessThanOrEqual(before.frame.maxY, edge, "The paragraph before it ends at or above the top edge")
+        XCTAssertTrue(elements.allSatisfy { $0.frame.maxY > edge }, "Nothing above the top edge is in the list")
         XCTAssertTrue(elements.contains { column(of: $0)?.spineIndex == 2 }, "The list runs on into the following chapters")
+    }
+
+    func testContinuousStripListSkipsAParagraphOnlyASliverOfWhichIsVisible() throws {
+        let session = try session()
+        let strip = continuousStrip()
+        strip.load(try chapters(session, spines: [0, 1, 2]), showing: 0, in: 0)
+        let chapter = try XCTUnwrap(session.chapter(0)).text
+        let block = 10
+        // A jump puts the target's first line one top inset below the edge; the paragraph
+        // before it ends inside that inset, with a few points still showing.
+        strip.scroll(toOffset: chapter.blocks[block].range.location, in: 0)
+        let first = try XCTUnwrap(strip.accessibilityElements?.first as? EPUBParagraphView)
+        let before = try XCTUnwrap(first.previousParagraph)
+        XCTAssertGreaterThan(before.frame.maxY, strip.contentOffset.y, "The previous paragraph's tail is still on screen")
+        XCTAssertLessThanOrEqual(before.frame.maxY, strip.contentOffset.y + EPUBContinuousStripView.visibleThreshold)
+        XCTAssertEqual(first.blockIndex, block, "Entering from the controls lands on the paragraph jumped to, not the tail above it")
+        XCTAssertTrue(strip.firstVisibleElement === first)
     }
 
     func testFocusingAParagraphBelowTheViewBringsItIntoView() throws {
