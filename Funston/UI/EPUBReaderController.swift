@@ -656,6 +656,10 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
             actions.append(UIAction(title: "Notes") { [weak self] _ in self?.go(to: .target(notes), recordingDeparture: true) })
         }
         actions.append(UIAction(title: "Go to Location…") { [weak self] _ in self?.askForLocation() })
+        actions.append(UIDeferredMenuElement.uncached { [weak self] completion in
+            let count = self?.session?.diagnostics.items.count ?? 0
+            completion([UIAction(title: count == 0 ? "Problems with this book" : "Problems with this book (\(count))") { [weak self] _ in self?.showProblems() }])
+        })
         actions.append(UIAction(title: "Back") { [weak self] _ in
             guard let self, session.goBack() != nil else { return }
             showPlacement()
@@ -675,6 +679,12 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         }
         let sheet = UINavigationController(rootViewController: list)
         present(sheet, animated: true)
+    }
+
+    /// The debug problems list of Spec 19.1: every diagnostic the book has produced so far.
+    private func showProblems() {
+        guard let session else { return }
+        present(UINavigationController(rootViewController: EPUBProblemsController(diagnostics: session.diagnostics)), animated: true)
     }
 
     private func askForLocation() {
