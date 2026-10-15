@@ -20,19 +20,15 @@ protocol EPUBPageViewDelegate: AnyObject {
     /// "Page p of q" for the chapter, after a turn.
     func pageViewPageDescription(_ view: EPUBPageView) -> String
     func pageView(_ view: EPUBPageView, activateLinkAt offset: Int) -> Bool
-    /// The link under an offset, for custom actions: its text, target and whether it is a note.
-    func pageView(_ view: EPUBPageView, linkAt offset: Int) -> (label: String, isNote: Bool)?
-    /// A link activated from a block of the continuous surface.
-    func surface(_ view: EPUBContinuousView, activateLinkAt offset: Int) -> Bool
 }
 
-/// Draws one page of a chapter layout (Spec 11.3) and is its accessibility
-/// surface (Spec 14): under the page model the view is one element that
-/// implements UIAccessibilityReadingContent over the line table and
-/// UITextInput over rendered offsets; under the block model it exposes one
-/// element per block.
+/// Draws one page of a chapter layout (Spec 11.3). In the pager it is the
+/// page model's accessibility surface (Spec 14): one element that implements
+/// UIAccessibilityReadingContent over the line table and UITextInput over
+/// rendered offsets. In the strips it only draws; the strip owns the
+/// paragraph elements.
 @MainActor
-final class EPUBPageView: UIView, EPUBTextPage {
+final class EPUBPageView: UIView {
     /// The text block sits this far inside the view on every side.
     static let margin: CGFloat = 20
 
@@ -41,11 +37,8 @@ final class EPUBPageView: UIView, EPUBTextPage {
     private(set) var spineIndex = 0
     private(set) var chapter: EPUBChapterText?
     weak var delegate: EPUBPageViewDelegate?
-    var accessibilityModel: EPUBAccessibilityModel = .preferred { didSet { if oldValue != accessibilityModel { refreshAccessibility() } } }
     var chapterTitle: String?
     var isRightToLeft = false
-    /// The per-paragraph model's text elements, in reading order.
-    private(set) var paragraphViews: [UIView] = []
     static let caretWidth: CGFloat = 2
     /// The reading-content and text-input element under the page model (UIKit treats
     /// any UITextInput view as one text element, so it cannot be the page view itself).
@@ -65,7 +58,7 @@ final class EPUBPageView: UIView, EPUBTextPage {
     }
 
     /// The element VoiceOver should land on for this page.
-    var focusElement: Any { accessibilityModel == .blocks ? (paragraphViews.first ?? self) : textSurface }
+    var focusElement: Any { textSurface }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func show(_ layout: EPUBLayoutSession?, page: Int, spineIndex: Int, chapter: EPUBChapterText?, title: String?) {
@@ -120,82 +113,25 @@ final class EPUBPageView: UIView, EPUBTextPage {
         setNeedsDisplay()
     }
 
-    // MARK: - Accessibility: the element model
+    // MARK: - Accessibility: the page element
 
     private func refreshAccessibility() {
         if isTile {
-            paragraphViews.forEach { $0.removeFromSuperview() }
-            paragraphViews = []
             textSurface.isHidden = true
             accessibilityElementsHidden = true
             return
         }
-        EPUBAccessibilityLog.shared.record("page view model=\(accessibilityModel.rawValue) page=\(pageIndex) chapterLoaded=\(chapter != nil)")
+        EPUBAccessibilityLog.shared.record("page view page=\(pageIndex) chapterLoaded=\(chapter != nil)")
         isAccessibilityElement = false
         accessibilityContainerType = .semanticGroup
         accessibilityLabel = chapterTitle
-        switch accessibilityModel {
-        case .page:
-            textSurface.isHidden = false
-            textSurface.refresh(title: chapterTitle)
-            accessibilityElements = [textSurface]
-        case .blocks:
-            textSurface.isHidden = true
-            makeParagraphViews()
-            accessibilityElements = paragraphViews
-        }
+        textSurface.isHidden = false
+        textSurface.refresh(title: chapterTitle)
+        accessibilityElements = [textSurface]
     }
-
-    /// One text element per block with text on this page (empty blocks never appear),
-    /// linked in reading order, the page's last one turning the page after VoiceOver reads it.
-    private func makeParagraphViews() {
-        paragraphViews.forEach { $0.removeFromSuperview() }
-        paragraphViews = []
-        guard let chapter, let pageRange else { return }
-        var views: [UIView] = []
-        for (index, block) in chapter.blocks.enumerated() {
-            let visible = NSIntersectionRange(block.range, pageRange)
-            guard visible.length > 0, !chapter.text(in: visible).allSatisfy(\.isWhitespace) else { continue }
-            views.append(block.kind == .image ? EPUBFigureView(page: self, blockIndex: index, range: visible, block: block)
-                                              : EPUBParagraphView(page: self, blockIndex: index, range: visible, block: block))
-        }
-        let paragraphs = views.compactMap { $0 as? EPUBParagraphView }
-        for (position, paragraph) in paragraphs.enumerated() {
-            paragraph.previousParagraph = position > 0 ? paragraphs[position - 1] : nil
-            paragraph.nextParagraph = position + 1 < paragraphs.count ? paragraphs[position + 1] : nil
-        }
-        (views.last as? EPUBParagraphView)?.turnsPage = true
-        (views.last as? EPUBFigureView)?.turnsPage = true
-        views.forEach(addSubview)
-        paragraphs.forEach { $0.isInteractive = true }
-        paragraphViews = views
-        layoutParagraphViews()
-        EPUBAccessibilityLog.shared.record("paragraph views built: \(views.count) for spine \(spineIndex) page \(pageIndex)")
-    }
-
-    // MARK: EPUBTextPage
-
-    var coordinateView: UIView { self }
-    func activateLink(at offset: Int) -> Bool { delegate?.pageView(self, activateLinkAt: offset) ?? false }
-    func scroll(_ direction: UIAccessibilityScrollDirection) -> Bool { accessibilityScroll(direction) }
-    func paragraphDidBecomeFocused(_ paragraph: UIView) {}
 
     /// A page of the strip only draws; the strip owns the accessibility elements.
     var isTile = false { didSet { refreshAccessibility() } }
-
-    /// Each paragraph view covers its lines on the page.
-    private func layoutParagraphViews() {
-        for view in paragraphViews {
-            let range = (view as? EPUBParagraphView)?.range ?? (view as? EPUBFigureView)?.range ?? NSRange(location: 0, length: 0)
-            let union = rectangles(for: range).reduce(CGRect.null) { $0.union($1) }
-            view.frame = union.isNull ? .zero : union
-        }
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        layoutParagraphViews()
-    }
 
     /// The attributed label of a block's visible part: heading level and speech
     /// languages, with attachment characters replaced by their alternatives.

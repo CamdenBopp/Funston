@@ -339,17 +339,6 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         return true
     }
 
-    func pageView(_ view: EPUBPageView, linkAt offset: Int) -> (label: String, isNote: Bool)? {
-        guard let session, let link = session.link(at: offset, spineIndex: view.spineIndex), let chapter = session.chapter(view.spineIndex) else { return nil }
-        return (chapter.text.text(in: link.range.range), link.isNoteReference)
-    }
-
-    func surface(_ view: EPUBContinuousView, activateLinkAt offset: Int) -> Bool {
-        guard let session, let link = session.link(at: offset, spineIndex: view.spineIndex) else { return false }
-        activate(link.target, isNoteReference: link.isNoteReference)
-        return true
-    }
-
     private var currentPageView: EPUBPageView? { (pager?.viewControllers?.first as? EPUBPageController)?.pageView }
 
     // MARK: - Continuous strip

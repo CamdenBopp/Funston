@@ -24,8 +24,8 @@ protocol EPUBTextPage: AnyObject {
 /// WWDC26 session 219 ("Enhance the accessibility of your reading app"): a
 /// transparent view over the block's lines that adopts UITextInput over the
 /// block's rendered range, linked to its neighbours with the text navigation
-/// links. The page's last block carries causesPageTurn; the page view turns the
-/// page in accessibilityScroll. The page view draws the text.
+/// links. The strip that owns the page draws the text and answers VoiceOver's
+/// scroll requests.
 @MainActor
 final class EPUBParagraphView: UIView, UITextInput {
     weak var page: (any EPUBTextPage)?
@@ -34,9 +34,6 @@ final class EPUBParagraphView: UIView, UITextInput {
     let range: NSRange
     weak var previousParagraph: EPUBParagraphView?
     weak var nextParagraph: EPUBParagraphView?
-    /// True for the page's last block: VoiceOver turns the page after reading it.
-    var turnsPage = false { didSet { refreshTraits() } }
-    private let baseTraits: UIAccessibilityTraits
     private lazy var textInteraction = UITextInteraction(for: .nonEditable)
 
     init(page: any EPUBTextPage, blockIndex: Int, range: NSRange, block: EPUBBlock) {
@@ -46,7 +43,6 @@ final class EPUBParagraphView: UIView, UITextInput {
         var traits: UIAccessibilityTraits = .staticText
         if case .heading = block.kind { traits.insert(.header) }
         if let link = block.links.first, link.range == block.range { traits.insert(.link) }
-        baseTraits = traits
         super.init(frame: .zero)
         backgroundColor = .clear
         isOpaque = false
@@ -54,7 +50,7 @@ final class EPUBParagraphView: UIView, UITextInput {
         accessibilityIdentifier = "reader.epub.paragraph.\(blockIndex)"
         accessibilityTextualContext = .narrative
         accessibilityAttributedValue = page.attributedText(for: range)
-        refreshTraits()
+        accessibilityTraits = traits
         var actions: [UIAccessibilityCustomAction] = []
         for link in block.links where NSIntersectionRange(link.range, range).length > 0 {
             let text = page.chapter?.text(in: link.range) ?? ""
@@ -67,10 +63,6 @@ final class EPUBParagraphView: UIView, UITextInput {
         textInteraction.textInput = self
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    private func refreshTraits() {
-        accessibilityTraits = turnsPage ? baseTraits.union(.causesPageTurn) : baseTraits
-    }
 
     override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
         page?.scroll(direction) ?? false
@@ -260,7 +252,6 @@ final class EPUBParagraphView: UIView, UITextInput {
 final class EPUBFigureView: UIView {
     let blockIndex: Int
     let range: NSRange
-    var turnsPage = false { didSet { accessibilityTraits = turnsPage ? [.image, .causesPageTurn] : .image } }
     weak var page: (any EPUBTextPage)?
 
     init(page: any EPUBTextPage, blockIndex: Int, range: NSRange, block: EPUBBlock) {
