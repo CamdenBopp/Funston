@@ -8,13 +8,11 @@ import OSLog
 /// Text size follows Dynamic Type and colors follow Dark Mode; the layout
 /// setting picks pages or continuous scrolling.
 @MainActor
-final class EPUBReaderController: UIViewController, UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIGestureRecognizerDelegate, EPUBPageViewDelegate {
+final class EPUBReaderController: UIViewController, UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIGestureRecognizerDelegate, EPUBPageViewDelegate, EPUBPageStripDelegate, EPUBContinuousStripDelegate {
     private static let logger = Logger(subsystem: "com.camden.Funston", category: "Books")
     /// Body text at the default Dynamic Type size is 17 pt.
     static let bodyPointSize: CGFloat = 17
     private static let positionSaveDelay: Duration = .seconds(1)
-    /// One report after scrolling stops (Spec 12.4).
-    private static let settleReportDelay: Duration = .milliseconds(300)
     /// Edge taps turn pages: the larger of this and a fraction of the width (Spec 13.6).
     static let edgeZoneMinimum: CGFloat = 80
     static let edgeZoneFraction: CGFloat = 0.3
@@ -29,18 +27,23 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     private var lease: URL?
     private var opening: Task<Void, Never>?
     private var pendingSave: Task<Void, Never>?
-    private var pendingReport: Task<Void, Never>?
     private var pendingLayout: Task<Void, Never>?
     private var lastLocator: EPUBLocator?
     private var session: EPUBReaderSession?
     private var pager: UIPageViewController?
-    private var continuous: EPUBContinuousView?
+    private var continuous: EPUBContinuousStripView?
+    /// The chapter the continuous strip's window is centred on.
+    private var continuousSpine: Int?
+    /// Page by page under the per-paragraph model: the reading window's pages in one paging strip.
+    private var strip: EPUBPageStripView?
     private var layoutMode: PDFReadingLayout = .pages
     private let container = UIView()
     private let banner = UILabel()
     private var noticeShown = false
     /// True while VoiceOver's own read-all is turning pages: nothing may move its focus (APL-33).
     private var voiceOverTurning = false
+    /// True while the adjustable Reading page element turns a page: focus stays on it.
+    private var adjusting = false
     private lazy var readerControls = ReaderControls(reader: self, pageView: view)
 
     init(summary: ArtifactSummary, file: ArchiveFile, downloads: DownloadManager, store: SQLiteStore) {
@@ -231,6 +234,9 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         installButtons()
         readerControls.page.adjust = { [weak self] amount in
             guard let self else { return }
+            // VoiceOver stays on the adjustable element and speaks its new value.
+            adjusting = true
+            defer { adjusting = false }
             if amount > 0 { goForward() } else { goBackward() }
         }
         view.accessibilityElements = [readerControls.page, container]
@@ -247,17 +253,25 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     private func installSurface() {
         pager?.willMove(toParent: nil); pager?.view.removeFromSuperview(); pager?.removeFromParent(); pager = nil
         continuous?.removeFromSuperview(); continuous = nil
+        strip?.removeFromSuperview(); strip = nil
         guard let session, let placement = session.placement else { return }
-        if layoutMode == .continuous {
-            let scroll = EPUBContinuousView(frame: container.bounds)
+        if layoutMode != .continuous, EPUBAccessibilityModel.preferred == .blocks {
+            let strip = EPUBPageStripView(frame: container.bounds)
+            strip.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            strip.isRightToLeft = session.publication.package.pageProgression == .rightToLeft
+            strip.stripDelegate = self
+            container.addSubview(strip)
+            strip.addGestureRecognizer(tapRecognizer())
+            self.strip = strip
+            loadStrip(showing: placement)
+        } else if layoutMode == .continuous {
+            let scroll = EPUBContinuousStripView(frame: container.bounds)
             scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            scroll.crossingRequested = { [weak self] direction in self?.crossChapter(direction) }
-            scroll.settled = { [weak self] in self?.continuousSettled() }
+            scroll.stripDelegate = self
             container.addSubview(scroll)
             continuous = scroll
-            scroll.pageDelegate = self
-            scroll.show(session.layout(placement.spineIndex), spineIndex: placement.spineIndex, chapter: session.chapter(placement.spineIndex)?.text, title: session.chapter(placement.spineIndex)?.text.title ?? summary.title, atOffset: session.anchor?.renderedOffset)
             scroll.addGestureRecognizer(tapRecognizer())
+            loadContinuous(offset: session.anchor?.renderedOffset ?? 0, spineIndex: placement.spineIndex)
         } else {
             let pager = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal, options: nil)
             pager.dataSource = self
@@ -297,6 +311,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
 
     /// The element VoiceOver should land on for the shown page (Spec 14.3).
     private var pageFocusElement: Any? {
+        if let strip { return strip.firstElementOnShownPage ?? strip }
         guard let pageView = currentPageView else { return continuous }
         return pageView.focusElement
     }
@@ -337,14 +352,102 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
 
     private var currentPageView: EPUBPageView? { (pager?.viewControllers?.first as? EPUBPageController)?.pageView }
 
+    // MARK: - Continuous strip
+
+    /// Loads the continuous strip's window (the chapter and its readable neighbours) with an offset at the top.
+    private func loadContinuous(offset: Int, spineIndex: Int) {
+        guard let session, let continuous else { return }
+        var chapters: [EPUBContinuousStripView.Chapter] = []
+        for spine in stripChapters(around: spineIndex) {
+            guard let layout = session.layout(spine), let chapter = session.chapter(spine) else { continue }
+            let title = session.contentsEntry(spineIndex: spine, offset: 0)?.label ?? chapter.text.title ?? summary.title
+            chapters.append(EPUBContinuousStripView.Chapter(spineIndex: spine, layout: layout, text: chapter.text, title: title))
+        }
+        continuousSpine = spineIndex
+        continuous.load(chapters, showing: offset, in: spineIndex)
+    }
+
+    func continuousStrip(_ strip: EPUBContinuousStripView, didSettleAt offset: Int, spineIndex: Int) {
+        guard let session else { return }
+        session.show(visibleOffset: offset, spineIndex: spineIndex)
+        if spineIndex != continuousSpine {
+            // Reading crossed into the next chapter: the window moves on; elements already present keep their objects.
+                loadContinuous(offset: offset, spineIndex: spineIndex)
+        }
+        prefetchNeighbour()
+        report()
+    }
+
+    func continuousStrip(_ strip: EPUBContinuousStripView, activateLinkAt offset: Int, spineIndex: Int) -> Bool {
+        guard let session, let link = session.link(at: offset, spineIndex: spineIndex) else { return false }
+        activate(link.target, isNoteReference: link.isNoteReference)
+        return true
+    }
+
+    func continuousStrip(_ strip: EPUBContinuousStripView, describeOffset offset: Int, spineIndex: Int) -> String {
+        guard let session, let locator = session.currentLocator() else { return "" }
+        return "Location \(locator.location) of \(session.scale.totalLocations)"
+    }
+
+    // MARK: - Page strip
+
+    /// The chapters the strip holds: the current one and its readable neighbours.
+    private func stripChapters(around spineIndex: Int) -> [Int] {
+        guard let session else { return [] }
+        return [session.neighbour(of: spineIndex, forward: false), spineIndex, session.neighbour(of: spineIndex, forward: true)].compactMap { $0 }
+    }
+
+    /// Loads the strip's window around a placement. Pages and paragraph elements
+    /// already in the strip keep their objects, so VoiceOver's place survives.
+    private func loadStrip(showing placement: EPUBPlacement) {
+        guard let session, let strip else { return }
+        var entries: [EPUBPageStripView.Entry] = []
+        for spine in stripChapters(around: placement.spineIndex) {
+            guard let layout = session.layout(spine), let chapter = session.chapter(spine) else { continue }
+            let title = session.contentsEntry(spineIndex: spine, offset: 0)?.label ?? chapter.text.title ?? summary.title
+            for page in 0..<layout.pageCount {
+                entries.append(EPUBPageStripView.Entry(placement: EPUBPlacement(spineIndex: spine, pageIndex: page), layout: layout, chapter: chapter.text, title: title))
+            }
+        }
+        stripSpine = placement.spineIndex
+        strip.load(entries, showing: placement)
+    }
+
+    /// The chapter the strip's window is centred on.
+    private var stripSpine: Int?
+
+    func strip(_ strip: EPUBPageStripView, didShow placement: EPUBPlacement) {
+        guard let session else { return }
+        session.show(placement)
+        if placement.spineIndex != stripSpine { loadStrip(showing: placement) }
+        prefetchNeighbour()
+        report()
+    }
+
+    func strip(_ strip: EPUBPageStripView, activateLinkAt offset: Int, spineIndex: Int) -> Bool {
+        guard let session, let link = session.link(at: offset, spineIndex: spineIndex) else { return false }
+        activate(link.target, isNoteReference: link.isNoteReference)
+        return true
+    }
+
+    func strip(_ strip: EPUBPageStripView, describe placement: EPUBPlacement) -> String {
+        guard let layout = session?.layout(placement.spineIndex) else { return "" }
+        return "Page \(placement.pageIndex + 1) of \(layout.pageCount)"
+    }
+
     /// Re-shows the session's placement after a jump or a relayout.
     private func showPlacement(direction: UIPageViewController.NavigationDirection = .forward, animated: Bool = false) {
         guard let session, let placement = session.placement else { return }
-        if let continuous {
-            if continuous.spineIndex != placement.spineIndex || continuous.layout !== session.layout(placement.spineIndex) {
-                continuous.show(session.layout(placement.spineIndex), spineIndex: placement.spineIndex, chapter: session.chapter(placement.spineIndex)?.text, title: session.chapter(placement.spineIndex)?.text.title ?? summary.title, atOffset: session.anchor?.renderedOffset)
-            } else if let offset = session.anchor?.renderedOffset {
-                continuous.scroll(toOffset: offset, animated: animated)
+        if let strip {
+            let loaded = strip.entries.first { $0.placement == placement }
+            if loaded == nil || loaded?.layout !== session.layout(placement.spineIndex) { loadStrip(showing: placement) } else { strip.show(placement, animated: animated) }
+        } else if let continuous {
+            let offset = session.anchor?.renderedOffset ?? 0
+            let loaded = continuous.chapters.first { $0.spineIndex == placement.spineIndex }
+            if loaded == nil || loaded?.layout !== session.layout(placement.spineIndex) {
+                loadContinuous(offset: offset, spineIndex: placement.spineIndex)
+            } else {
+                continuous.scroll(toOffset: offset, in: placement.spineIndex, animated: animated)
             }
         } else if let pager {
             let shown = pager.viewControllers?.first as? EPUBPageController
@@ -398,8 +501,12 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
 
     func goForward() {
         guard let session else { return }
+        if let strip {
+            if strip.turn(forward: true, animated: true) { announceTurn(chapterChanged: false) }
+            return
+        }
         if let continuous {
-            if continuous.page(forward: true, animated: !UIAccessibility.isReduceMotionEnabled) { scheduleSettleReport() } else { crossChapter(1) }
+            continuous.page(forward: true)
             return
         }
         let before = session.placement?.spineIndex
@@ -410,50 +517,25 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
 
     /// After a manual turn: layoutChanged with the page element, screenChanged after a chapter change (Spec 14.3).
     private func announceTurn(chapterChanged: Bool) {
-        guard !voiceOverTurning else { return }
+        guard !voiceOverTurning, !adjusting else { return }
         EPUBAccessibilityLog.shared.record("post \(chapterChanged ? "screenChanged" : "layoutChanged") after manual turn")
         UIAccessibility.post(notification: chapterChanged ? .screenChanged : .layoutChanged, argument: pageFocusElement)
     }
 
     func goBackward() {
         guard let session else { return }
+        if let strip {
+            if strip.turn(forward: false, animated: true) { announceTurn(chapterChanged: false) }
+            return
+        }
         if let continuous {
-            if continuous.page(forward: false, animated: !UIAccessibility.isReduceMotionEnabled) { scheduleSettleReport() } else { crossChapter(-1) }
+            continuous.page(forward: false)
             return
         }
         let before = session.placement?.spineIndex
         guard session.backward() else { return }
         showPlacement(direction: .reverse, animated: true)
         announceTurn(chapterChanged: before != session.placement?.spineIndex)
-    }
-
-    /// Continuous mode: the neighbouring chapter at its top (or bottom).
-    private func crossChapter(_ direction: Int) {
-        EPUBAccessibilityLog.shared.record("continuous crossChapter direction=\(direction) from spine=\(session?.placement?.spineIndex ?? -1)")
-        guard let session, let current = session.placement?.spineIndex, let neighbour = session.neighbour(of: current, forward: direction > 0), let layout = session.layout(neighbour) else { return }
-        let offset = direction > 0 ? 0 : (layout.table.pages.last?.firstOffset ?? 0)
-        session.show(visibleOffset: offset, spineIndex: neighbour)
-        continuous?.show(layout, spineIndex: neighbour, chapter: session.chapter(neighbour)?.text, title: session.chapter(neighbour)?.text.title ?? summary.title, atOffset: offset)
-        prefetchNeighbour()
-        report()
-        UIAccessibility.post(notification: .screenChanged, argument: container)
-    }
-
-    private func continuousSettled() {
-        guard let continuous, let session, let offset = continuous.firstVisibleOffset else { return }
-        EPUBAccessibilityLog.shared.record("continuous settled spine=\(continuous.spineIndex) offset=\(offset) contentOffset=\(continuous.contentOffset.y)")
-        session.show(visibleOffset: offset, spineIndex: continuous.spineIndex)
-        scheduleSettleReport()
-    }
-
-    private func scheduleSettleReport() {
-        pendingReport?.cancel()
-        pendingReport = Task { [weak self] in
-            do { try await Task.sleep(for: Self.settleReportDelay) } catch { return }
-            guard let self else { return }
-            if let continuous, let offset = continuous.firstVisibleOffset { session?.show(visibleOffset: offset, spineIndex: continuous.spineIndex) }
-            report()
-        }
     }
 
     func go(to target: EPUBGoTarget, recordingDeparture: Bool) {
@@ -467,8 +549,16 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
         guard let session else { return }
         let point = recognizer.location(in: container)
-        if let offset = (continuous.map { $0.characterIndex(at: recognizer.location(in: $0)) } ?? currentPageView.map { $0.characterIndex(at: recognizer.location(in: $0)) }) ?? nil,
-           let spineIndex = continuous?.spineIndex ?? session.placement?.spineIndex, let link = session.link(at: offset, spineIndex: spineIndex) {
+        if let strip, let hit = strip.characterIndex(at: recognizer.location(in: strip)), let link = session.link(at: hit.offset, spineIndex: hit.placement.spineIndex) {
+            activate(link.target, isNoteReference: link.isNoteReference)
+            return
+        }
+        if let continuous, let hit = continuous.characterIndex(at: recognizer.location(in: continuous)), let link = session.link(at: hit.offset, spineIndex: hit.spineIndex) {
+            activate(link.target, isNoteReference: link.isNoteReference)
+            return
+        }
+        if let pageView = currentPageView, let offset = pageView.characterIndex(at: recognizer.location(in: pageView)), let spineIndex = session.placement?.spineIndex,
+           let link = session.link(at: offset, spineIndex: spineIndex) {
             activate(link.target, isNoteReference: link.isNoteReference)
             return
         }

@@ -4,11 +4,11 @@ import UIKit
 enum EPUBAccessibilityModel: String, Sendable {
     /// The page is one element: reading content line by line, UITextInput, rotors.
     case page
-    /// One element per block with text navigation links; the trait on the last block.
+    /// One text element per paragraph, linked, the page-turn trait on the last (the default).
     case blocks
 
     @MainActor static var preferred: EPUBAccessibilityModel {
-        EPUBAccessibilityModel(rawValue: UserDefaults.standard.string(forKey: EPUBAccessibilityLog.modelKey) ?? "") ?? .page
+        EPUBAccessibilityModel(rawValue: UserDefaults.standard.string(forKey: EPUBAccessibilityLog.modelKey) ?? "") ?? .blocks
     }
 }
 
@@ -32,7 +32,7 @@ protocol EPUBPageViewDelegate: AnyObject {
 /// UITextInput over rendered offsets; under the block model it exposes one
 /// element per block.
 @MainActor
-final class EPUBPageView: UIView {
+final class EPUBPageView: UIView, EPUBTextPage {
     /// The text block sits this far inside the view on every side.
     static let margin: CGFloat = 20
 
@@ -41,10 +41,12 @@ final class EPUBPageView: UIView {
     private(set) var spineIndex = 0
     private(set) var chapter: EPUBChapterText?
     weak var delegate: EPUBPageViewDelegate?
-    var accessibilityModel: EPUBAccessibilityModel = .preferred { didSet { if oldValue != accessibilityModel { blockElements = nil; refreshAccessibility() } } }
+    var accessibilityModel: EPUBAccessibilityModel = .preferred { didSet { if oldValue != accessibilityModel { refreshAccessibility() } } }
     var chapterTitle: String?
     var isRightToLeft = false
-    private var blockElements: [EPUBBlockElement]?
+    /// The per-paragraph model's text elements, in reading order.
+    private(set) var paragraphViews: [UIView] = []
+    static let caretWidth: CGFloat = 2
     /// The reading-content and text-input element under the page model (UIKit treats
     /// any UITextInput view as one text element, so it cannot be the page view itself).
     let textSurface = EPUBPageTextSurface()
@@ -63,7 +65,7 @@ final class EPUBPageView: UIView {
     }
 
     /// The element VoiceOver should land on for this page.
-    var focusElement: Any { accessibilityModel == .blocks ? (accessibilityElements?.first ?? self) : textSurface }
+    var focusElement: Any { accessibilityModel == .blocks ? (paragraphViews.first ?? self) : textSurface }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func show(_ layout: EPUBLayoutSession?, page: Int, spineIndex: Int, chapter: EPUBChapterText?, title: String?) {
@@ -72,7 +74,6 @@ final class EPUBPageView: UIView {
         self.spineIndex = spineIndex
         self.chapter = chapter
         chapterTitle = title
-        blockElements = nil
         selection = nil
         setNeedsDisplay()
         refreshAccessibility()
@@ -122,6 +123,13 @@ final class EPUBPageView: UIView {
     // MARK: - Accessibility: the element model
 
     private func refreshAccessibility() {
+        if isTile {
+            paragraphViews.forEach { $0.removeFromSuperview() }
+            paragraphViews = []
+            textSurface.isHidden = true
+            accessibilityElementsHidden = true
+            return
+        }
         EPUBAccessibilityLog.shared.record("page view model=\(accessibilityModel.rawValue) page=\(pageIndex) chapterLoaded=\(chapter != nil)")
         isAccessibilityElement = false
         accessibilityContainerType = .semanticGroup
@@ -133,40 +141,71 @@ final class EPUBPageView: UIView {
             accessibilityElements = [textSurface]
         case .blocks:
             textSurface.isHidden = true
-            accessibilityElements = makeBlockElements()
+            makeParagraphViews()
+            accessibilityElements = paragraphViews
         }
     }
 
-    override var accessibilityElements: [Any]? {
-        get { accessibilityModel == .blocks ? (blockElements ?? makeBlockElements()) : [textSurface] }
-        set { super.accessibilityElements = newValue }
-    }
-
-    /// The blocks with lines on this page, one element each; empty blocks never appear.
-    private func makeBlockElements() -> [EPUBBlockElement] {
-        guard let layout, let chapter, let pageRange else { blockElements = []; return [] }
-        var elements: [EPUBBlockElement] = []
+    /// One text element per block with text on this page (empty blocks never appear),
+    /// linked in reading order, the page's last one turning the page after VoiceOver reads it.
+    private func makeParagraphViews() {
+        paragraphViews.forEach { $0.removeFromSuperview() }
+        paragraphViews = []
+        guard let chapter, let pageRange else { return }
+        var views: [UIView] = []
         for (index, block) in chapter.blocks.enumerated() {
             let visible = NSIntersectionRange(block.range, pageRange)
             guard visible.length > 0, !chapter.text(in: visible).allSatisfy(\.isWhitespace) else { continue }
-            elements.append(EPUBBlockElement(container: self, blockIndex: index, visibleRange: visible))
+            views.append(block.kind == .image ? EPUBFigureView(page: self, blockIndex: index, range: visible, block: block)
+                                              : EPUBParagraphView(page: self, blockIndex: index, range: visible, block: block))
         }
-        for (position, element) in elements.enumerated() {
-            element.previousElement = position > 0 ? elements[position - 1] : nil
-            element.nextElement = position + 1 < elements.count ? elements[position + 1] : nil
-            element.isLastOnPage = position == elements.count - 1
+        let paragraphs = views.compactMap { $0 as? EPUBParagraphView }
+        for (position, paragraph) in paragraphs.enumerated() {
+            paragraph.previousParagraph = position > 0 ? paragraphs[position - 1] : nil
+            paragraph.nextParagraph = position + 1 < paragraphs.count ? paragraphs[position + 1] : nil
         }
-        _ = layout
-        blockElements = elements
-        EPUBAccessibilityLog.shared.record("block elements built: \(elements.count) for page \(pageIndex)")
-        return elements
+        (views.last as? EPUBParagraphView)?.turnsPage = true
+        (views.last as? EPUBFigureView)?.turnsPage = true
+        views.forEach(addSubview)
+        paragraphs.forEach { $0.isInteractive = true }
+        paragraphViews = views
+        layoutParagraphViews()
+        EPUBAccessibilityLog.shared.record("paragraph views built: \(views.count) for spine \(spineIndex) page \(pageIndex)")
+    }
+
+    // MARK: EPUBTextPage
+
+    var coordinateView: UIView { self }
+    func activateLink(at offset: Int) -> Bool { delegate?.pageView(self, activateLinkAt: offset) ?? false }
+    func scroll(_ direction: UIAccessibilityScrollDirection) -> Bool { accessibilityScroll(direction) }
+    func paragraphDidBecomeFocused(_ paragraph: UIView) {}
+
+    /// A page of the strip only draws; the strip owns the accessibility elements.
+    var isTile = false { didSet { refreshAccessibility() } }
+
+    /// Each paragraph view covers its lines on the page.
+    private func layoutParagraphViews() {
+        for view in paragraphViews {
+            let range = (view as? EPUBParagraphView)?.range ?? (view as? EPUBFigureView)?.range ?? NSRange(location: 0, length: 0)
+            let union = rectangles(for: range).reduce(CGRect.null) { $0.union($1) }
+            view.frame = union.isNull ? .zero : union
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layoutParagraphViews()
     }
 
     /// The attributed label of a block's visible part: heading level and speech
     /// languages, with attachment characters replaced by their alternatives.
     func attributedText(for range: NSRange) -> NSAttributedString {
         guard let layout else { return NSAttributedString() }
-        let source = layout.string.attributedSubstring(from: range)
+        return Self.accessibleText(in: layout.string, range: range)
+    }
+
+    static func accessibleText(in string: NSAttributedString, range: NSRange) -> NSAttributedString {
+        let source = string.attributedSubstring(from: NSIntersectionRange(range, NSRange(location: 0, length: string.length)))
         let result = NSMutableAttributedString(string: source.string)
         source.enumerateAttributes(in: NSRange(location: 0, length: source.length)) { attributes, subrange, _ in
             if let level = attributes[.epubHeadingLevel] as? NSNumber { result.addAttribute(.accessibilityTextHeadingLevel, value: level, range: subrange) }
@@ -513,28 +552,34 @@ final class EPUBSelectionRect: UITextSelectionRect {
 @MainActor
 final class EPUBLineTokenizer: UITextInputStringTokenizer {
     private weak var pageView: EPUBPageView?
+    private weak var paragraph: EPUBParagraphView?
+
+    private func lineRange(containing offset: Int) -> NSRange? {
+        paragraph?.lineRange(containing: offset) ?? pageView?.lineRange(containing: offset)
+    }
 
     override init(textInput: any UIResponder & UITextInput) {
         pageView = (textInput as? EPUBPageTextSurface)?.page
+        paragraph = textInput as? EPUBParagraphView
         super.init(textInput: textInput)
     }
 
     override func rangeEnclosingPosition(_ position: UITextPosition, with granularity: UITextGranularity, inDirection direction: UITextDirection) -> UITextRange? {
-        guard granularity == .line, let pageView, let position = position as? EPUBTextPosition, let range = pageView.lineRange(containing: position.offset) else {
+        guard granularity == .line, let position = position as? EPUBTextPosition, let range = lineRange(containing: position.offset) else {
             return super.rangeEnclosingPosition(position, with: granularity, inDirection: direction)
         }
         return EPUBTextRange(range)
     }
 
     override func isPosition(_ position: UITextPosition, atBoundary granularity: UITextGranularity, inDirection direction: UITextDirection) -> Bool {
-        guard granularity == .line, let pageView, let position = position as? EPUBTextPosition, let range = pageView.lineRange(containing: position.offset) else {
+        guard granularity == .line, let position = position as? EPUBTextPosition, let range = lineRange(containing: position.offset) else {
             return super.isPosition(position, atBoundary: granularity, inDirection: direction)
         }
         return position.offset == range.location || position.offset == range.location + range.length
     }
 
     override func position(from position: UITextPosition, toBoundary granularity: UITextGranularity, inDirection direction: UITextDirection) -> UITextPosition? {
-        guard granularity == .line, let pageView, let position = position as? EPUBTextPosition, let range = pageView.lineRange(containing: position.offset) else {
+        guard granularity == .line, let position = position as? EPUBTextPosition, let range = lineRange(containing: position.offset) else {
             return super.position(from: position, toBoundary: granularity, inDirection: direction)
         }
         let backward = direction.rawValue == UITextStorageDirection.backward.rawValue || direction.rawValue == UITextLayoutDirection.left.rawValue || direction.rawValue == UITextLayoutDirection.up.rawValue
@@ -542,92 +587,9 @@ final class EPUBLineTokenizer: UITextInputStringTokenizer {
     }
 
     override func isPosition(_ position: UITextPosition, withinTextUnit granularity: UITextGranularity, inDirection direction: UITextDirection) -> Bool {
-        guard granularity == .line, let pageView, let position = position as? EPUBTextPosition else {
+        guard granularity == .line, let position = position as? EPUBTextPosition else {
             return super.isPosition(position, withinTextUnit: granularity, inDirection: direction)
         }
-        return pageView.lineRange(containing: position.offset) != nil
-    }
-}
-
-/// One block on the page under the per-block model (Spec 14.1 alternative).
-@MainActor
-final class EPUBBlockElement: UIAccessibilityElement {
-    private weak var pageView: EPUBPageView?
-    let blockIndex: Int
-    let visibleRange: NSRange
-    weak var previousElement: EPUBBlockElement?
-    weak var nextElement: EPUBBlockElement?
-    var isLastOnPage = false
-
-    init(container: EPUBPageView, blockIndex: Int, visibleRange: NSRange) {
-        pageView = container
-        self.blockIndex = blockIndex
-        self.visibleRange = visibleRange
-        super.init(accessibilityContainer: container)
-        accessibilityIdentifier = "reader.epub.block.\(blockIndex)"
-        accessibilityTextualContext = .narrative
-        guard let chapter = container.chapter, chapter.blocks.indices.contains(blockIndex) else { return }
-        let block = chapter.blocks[blockIndex]
-        accessibilityAttributedLabel = container.attributedText(for: visibleRange)
-        var traits: UIAccessibilityTraits = .staticText
-        if case .heading = block.kind { traits.insert(.header) }
-        if block.kind == .image {
-            traits.insert(.image)
-            // An image never has an empty label: its alternative, or "Image" (STD section 7.4).
-            accessibilityAttributedLabel = nil
-            accessibilityLabel = block.alternativeText.flatMap { $0.isEmpty ? nil : $0 } ?? "Image"
-        }
-        if let link = block.links.first, link.range == block.range { traits.insert(.link) }
-        accessibilityTraits = traits
-        var actions: [UIAccessibilityCustomAction] = []
-        for link in block.links where NSIntersectionRange(link.range, visibleRange).length > 0 {
-            let text = chapter.text(in: link.range)
-            let isNote = block.noteReferences.contains { $0.linkIndex == link.linkIndex }
-            actions.append(UIAccessibilityCustomAction(name: isNote ? "Show note" : "Open link: \(text)") { [weak container] _ in
-                guard let container else { return false }
-                return container.delegate?.pageView(container, activateLinkAt: link.range.location) ?? false
-            })
-        }
-        accessibilityCustomActions = actions.isEmpty ? nil : actions
-    }
-
-    override var accessibilityTraits: UIAccessibilityTraits {
-        get { isLastOnPage ? super.accessibilityTraits.union(.causesPageTurn) : super.accessibilityTraits }
-        set { super.accessibilityTraits = newValue }
-    }
-
-    // Computed on every read from the line table, never cached as screen coordinates.
-    override var accessibilityFrameInContainerSpace: CGRect {
-        get {
-            guard let pageView else { return .zero }
-            let rects = pageView.rectangles(for: visibleRange)
-            return rects.reduce(CGRect.null) { $0.union($1) }
-        }
-        set { super.accessibilityFrameInContainerSpace = newValue }
-    }
-
-    override var accessibilityFrame: CGRect {
-        get {
-            guard let pageView else { return .zero }
-            return UIAccessibility.convertToScreenCoordinates(accessibilityFrameInContainerSpace, in: pageView)
-        }
-        set { super.accessibilityFrame = newValue }
-    }
-
-    override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
-        guard let pageView else { return false }
-        return pageView.accessibilityScroll(direction)
-    }
-
-    @available(iOS 18.0, *)
-    override var accessibilityNextTextNavigationElement: Any? {
-        get { nextElement }
-        set {}
-    }
-
-    @available(iOS 18.0, *)
-    override var accessibilityPreviousTextNavigationElement: Any? {
-        get { previousElement }
-        set {}
+        return lineRange(containing: position.offset) != nil
     }
 }

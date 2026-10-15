@@ -82,6 +82,18 @@ final class EPUBReaderSessionTests: XCTestCase {
         XCTAssertEqual(session.relocationIfChanged()?.contentsEntry?.label, "Three")
     }
 
+    func testContinuousMovesWithinOnePageStillReportTheNewPosition() throws {
+        let session = try book()
+        session.go(to: .spine(0))
+        XCTAssertNotNil(session.relocationIfChanged())
+        let page = try XCTUnwrap(session.layout(0)).table.pages[0]
+        session.show(visibleOffset: page.firstOffset + page.range.length / 2, spineIndex: 0)
+        let moved = try XCTUnwrap(session.relocationIfChanged(), "Reading on within a page is a new position")
+        XCTAssertEqual(moved.pageIndex, 0)
+        XCTAssertEqual(moved.locator.offset, page.firstOffset + page.range.length / 2)
+        XCTAssertNil(session.relocationIfChanged(), "The same position reports once")
+    }
+
     func testLinksNotesAndTheBackStack() throws {
         let session = try book()
         let chapter = try XCTUnwrap(session.chapter(0))

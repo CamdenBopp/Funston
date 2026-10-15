@@ -267,7 +267,7 @@ final class EPUBReaderSession {
     /// The current-location report, or nil when nothing changed since the last one (Spec 12.4).
     func relocationIfChanged() -> EPUBRelocation? {
         guard let report = relocation() else { return nil }
-        if let last = lastReport, last.visibleRange == report.visibleRange, last.locator.spineIndex == report.locator.spineIndex, last.pageIndex == report.pageIndex, last.pageCount == report.pageCount { return nil }
+        if let last = lastReport, last.visibleRange == report.visibleRange, last.locator.spineIndex == report.locator.spineIndex, last.locator.offset == report.locator.offset, last.pageIndex == report.pageIndex, last.pageCount == report.pageCount { return nil }
         lastReport = report
         return report
     }

@@ -78,6 +78,24 @@ Installed from the device build (empty entitlements, automatic signing) and laun
   - Cause: every page rebuilt its block elements as new objects, so the element VoiceOver held vanished at each turn and VoiceOver fell back to its own guess (same screen position, or the first element of the screen).
 - Decision (Camden, 2026-10-15): keep the paragraph model ("I want to retain the paragraph model, just fix it"). The page model stays behind the switch for the record; the per-block model becomes the default once its page crossing is fixed and verified below.
 
+## The paragraph model, rebuilt on persistent elements (evening of 2026-10-15)
+
+What failed, in one sentence: every design that replaced the element VoiceOver held during a page turn lost Read All, whatever was posted afterwards. Runs on the simulator with VoiceOver driven step by step:
+
+- Look-ahead element that turns the page when focused: swipes worked; Read All stopped after the first turned paragraph (VoiceOver kept reading its old list).
+- Page-turn trait, last paragraph kept first after the turn: VoiceOver re-read it and turned again.
+- Page-turn trait, layoutChanged to the new first paragraph: read it, then turned again.
+- Page-turn trait, all-new elements, layoutChanged to the first: VoiceOver ignored the post and chose the paragraph where its old focus had been, the page's last, then turned again (pages 11 to 16 in a minute). This reproduced the iPhone failure on the simulator.
+- WWDC26 session 219 shape (one UITextInput text view per paragraph, linked, trait on the last, fresh page per turn): VoiceOver turned the page and stopped; its paragraph had left the window.
+
+What Apple's own frameworks do (decompiled with swiftdc from the iOS 26.5 simulator runtime): PDFKit's accessibility bundle builds each page's elements once and caches them (`_axPageViewElements`, reset only by `resetAccessibilityTree`); a node asks for page turning (the trait on the page's last node) only when the PDF view is paged (`pdfViewRequiresPageTurning`: a page view controller, or two-up); in continuous mode nothing turns pages because every element exists. UIKit's accessibility for UIPageViewController turns pages with `_setViewControllers:withScrollInDirection:animated:NO` and posts its scroll status.
+
+The design now shipped, on that footing: page by page is a horizontal paging scroll view holding the pages of the current chapter and its neighbours; continuous is a vertical scroll view holding the same chapters stacked. Every paragraph is a persistent text element (a transparent view adopting UITextInput over its range, linked with the text navigation links) that is never rebuilt while reading; VoiceOver's list starts at the first paragraph of the shown page or the first visible paragraph; focus brings its paragraph's page into view; a three-finger scroll moves one page or screen, posts pageScrolled and moves focus to the first paragraph there; when reading enters another chapter the window reloads with the existing elements kept.
+
+Simulator, step by step (iPhone 17 Pro, iOS 26.5), page by page: swiping in from Reading page lands on the shown page's first paragraph; swiping past a page's last paragraph lands on the next page's first and the page follows; Read All ran pages 19 to 22 and across the chapter III to IV file boundary without a stop or a repeat; the Lines rotor flows from one paragraph's last line into the next; the Reading page control keeps focus and speaks the new page. Continuous: swiping in lands on the first visible paragraph; Read All reads forward with the view following and the location advancing; the book loads once at launch.
+
+Camden's iPhone 14 Pro Max, both modes, three-finger swipes, Read All and paragraph swipes: "that works beautifully".
+
 ## Continuous mode on the simulator
 
 - Read All in continuous mode (page model switch is irrelevant there) reads the surface's block elements in order; as VoiceOver focuses each block the surface scrolls it into view and the settled report follows (log: settled offsets 0, 195, 576, 535 over a minute of reading). Blocks keep their element objects across window rebuilds after the fix above.
