@@ -2,6 +2,7 @@ import AVFoundation
 import Combine
 import MediaPlayer
 import UIKit
+import OSLog
 
 enum PlaybackPhase: Equatable, Sendable {
     case idle
@@ -80,6 +81,7 @@ private final class AudioSessionWorker: Sendable {
 
 @MainActor
 final class PlaybackController: ObservableObject, SleepTimerTarget {
+    private static let logger = Logger(subsystem: "com.camden.Funston", category: "Playback")
     let sleepTimer = SleepTimer()
     /// Set by the sleep timer: the current recording finishes, then playback stops
     /// instead of advancing to the next one.
@@ -132,6 +134,9 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     }
 
     private let player: AVPlayer
+    private let playerItemFactory: @MainActor (URL) -> AVPlayerItem
+    private let preparationTimeout: Duration
+    private var preparationTask: Task<Void, Never>?
     private let audioSessionActivator: @MainActor () async throws -> Void
     private let audioSessionDeactivator: @MainActor () async -> Void
     private let artifactDetailLoader: (@MainActor (String) async throws -> ArtifactDetail)?
@@ -172,12 +177,16 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
          audioSessionActivator: (@MainActor () async throws -> Void)? = nil,
          audioSessionDeactivator: (@MainActor () async -> Void)? = nil,
          artworkLoader: (@MainActor (URL) async throws -> SendableImage)? = nil,
-         artifactDetailLoader: (@MainActor (String) async throws -> ArtifactDetail)? = nil) {
+         artifactDetailLoader: (@MainActor (String) async throws -> ArtifactDetail)? = nil,
+         preparationTimeout: Duration = .seconds(30),
+         playerItemFactory: (@MainActor (URL) -> AVPlayerItem)? = nil) {
         self.store = store
         self.downloads = downloads
         self.settings = settings
         self.artifactDetailLoader = artifactDetailLoader
         self.player = player
+        self.preparationTimeout = preparationTimeout
+        self.playerItemFactory = playerItemFactory ?? { AVPlayerItem(asset: ArchiveNetworkPolicy.asset($0)) }
         self.audioSessionActivator = audioSessionActivator ?? {
             try await AudioSessionWorker.shared.setActive(true)
         }
@@ -214,6 +223,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     }
 
     isolated deinit {
+        preparationTask?.cancel()
         downloadQueueTask?.cancel()
         artworkTask?.cancel()
         audioSessionTail?.cancel()
@@ -314,6 +324,8 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     }
 
     private func install(artifact: ArtifactSummary, tracks: [PlayableTrack], trackIndex: Int, file: ArchiveFile, resumeOverride: Double? = nil) {
+        preparationTask?.cancel()
+        preparationTask = nil
         downloadQueueTask?.cancel()
         downloadQueueTask = nil
         generation &+= 1
@@ -341,13 +353,42 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         if let endObserver { NotificationCenter.default.removeObserver(endObserver); self.endObserver = nil }
         player.pause()
         applyPlaybackSpeed()
-        let item = AVPlayerItem(asset: ArchiveNetworkPolicy.asset(url))
+        player.currentItem?.cancelPendingSeeks()
+        player.currentItem?.asset.cancelLoading()
+        Self.logger.info("Loading audio; local=\(url.isFileURL, privacy: .public), host=\(url.host ?? "local", privacy: .public)")
+        let item = playerItemFactory(url)
         item.audioTimePitchAlgorithm = .timeDomain
         player.replaceCurrentItem(with: item)
         // AVPlayer releases its old item before a removed file's lease is released.
         if let oldLease { downloads.releaseLocalURL(oldLease) }
         observe(item: item, generation: currentGeneration, resumeOverride: resumeOverride)
+        watchPreparation()
         updateNowPlaying()
+    }
+
+    /// AVPlayer can remain unknown/buffering when a media server never replies.
+    /// Bound that wait, preserving the selected recording and the existing Retry.
+    private func watchPreparation() {
+        guard preparationTask == nil, wantsToPlay, !interrupted, videoOwnership == nil,
+              let item = player.currentItem, player.timeControlStatus != .playing else { return }
+        let expectedGeneration = generation
+        let timeout = preparationTimeout
+        preparationTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: timeout) } catch { return }
+            guard let self, self.generation == expectedGeneration,
+                  self.player.currentItem === item, self.wantsToPlay, !self.interrupted,
+                  self.videoOwnership == nil, self.player.timeControlStatus != .playing else { return }
+            self.preparationTask = nil
+            Self.logger.error("Audio preparation timed out; item status=\(item.status.rawValue, privacy: .public)")
+            item.cancelPendingSeeks()
+            item.asset.cancelLoading()
+            self.handleItemFailure("This recording is taking too long to load. Check your connection and try again.")
+        }
+    }
+
+    private func cancelPreparationWatch() {
+        preparationTask?.cancel()
+        preparationTask = nil
     }
 
     func togglePlayback() {
@@ -364,6 +405,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         }
         wantsToPlay = true
         intentRevision &+= 1
+        watchPreparation()
         guard !interrupted, !restoringPosition else { return }
         if phase == .ended {
             let currentGeneration = generation
@@ -385,6 +427,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         guard wantsToPlay, !interrupted, !restoringPosition,
               let item = player.currentItem, item.status == .readyToPlay,
               pendingActivationIntent != intentRevision || pendingActivationGeneration != generation else { return }
+        watchPreparation()
         let expectedGeneration = generation, expectedIntent = intentRevision
         pendingActivationIntent = expectedIntent
         pendingActivationGeneration = expectedGeneration
@@ -436,6 +479,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
 
     func pause() {
         guard videoOwnership == nil else { return }
+        cancelPreparationWatch()
         wantsToPlay = false
         intentRevision &+= 1
         player.pause()
@@ -621,6 +665,9 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
             Task { @MainActor in
                 guard let self, self.player.currentItem === item, self.generation == expectedGeneration else { return }
+                // Cancelling a timed-out asset can deliver a later cancellation
+                // status. Keep the useful timeout message until the user retries.
+                if case .failed = self.phase { return }
                 switch item.status {
                 case .readyToPlay:
                     guard self.readyGeneration != expectedGeneration else { return }
@@ -666,6 +713,14 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     }
 
     private func handleItemFailure(_ message: String) {
+        cancelPreparationWatch()
+        if let error = player.currentItem?.error as NSError? {
+            Self.logger.error("Audio failure: \(error.domain, privacy: .public) code=\(error.code, privacy: .public)")
+        }
+        for event in player.currentItem?.errorLog()?.events ?? [] {
+            let host = event.uri.flatMap { URL(string: $0)?.host } ?? "unknown"
+            Self.logger.error("Audio server failure: host=\(host, privacy: .public) domain=\(event.errorDomain, privacy: .public) code=\(event.errorStatusCode, privacy: .public)")
+        }
         guard let context else { return }
         let candidates = context.track.candidates.filter { !attemptedFiles.contains($0.name) }
         if attemptedFiles.count < 3,
@@ -706,8 +761,12 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         if interrupted || !wantsToPlay { phase = .paused }
         else {
             switch player.timeControlStatus {
-            case .playing: phase = .playing
-            case .waitingToPlayAtSpecifiedRate: phase = .buffering
+            case .playing:
+                cancelPreparationWatch()
+                phase = .playing
+            case .waitingToPlayAtSpecifiedRate:
+                phase = .buffering
+                watchPreparation()
             case .paused:
                 phase = pendingActivationIntent == intentRevision && pendingActivationGeneration == generation ? .preparing : .paused
             @unknown default: phase = .paused
@@ -731,6 +790,7 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
                     return
                 }
                 if type == AVAudioSession.InterruptionType.began.rawValue {
+                    self.cancelPreparationWatch()
                     self.interrupted = true
                     self.interruptionGeneration = self.wantsToPlay ? self.generation : nil
                     self.player.pause(); self.saveCurrentPosition(); self.updateTransportPhase()

@@ -101,12 +101,21 @@ actor ArtworkPipeline {
                 do {
                     try Task.checkCancellation()
                     data = try await ArchiveRetryPolicy.perform {
-                        try await ArchiveNetworkPolicy.requestLimiter.acquire()
+                        try await ArchiveNetworkPolicy.artworkRequestLimiter.acquire()
+                        var acquired = false
                         do {
+                            try await ArchiveNetworkPolicy.requestLimiter.acquire()
+                            acquired = true
+                            try Task.checkCancellation()
                             let data = try await ArtworkResponseLoader(maximumBytes: maximumResponseBytes).load(url, session: session)
                             await ArchiveNetworkPolicy.requestLimiter.release()
+                            await ArchiveNetworkPolicy.artworkRequestLimiter.release()
                             return data
-                        } catch { await ArchiveNetworkPolicy.requestLimiter.release(); throw error }
+                        } catch {
+                            if acquired { await ArchiveNetworkPolicy.requestLimiter.release() }
+                            await ArchiveNetworkPolicy.artworkRequestLimiter.release()
+                            throw error
+                        }
                     }
                     // Keep the fetch permit until decode has capacity. This bounds
                     // compressed responses waiting in memory as well as network work.
