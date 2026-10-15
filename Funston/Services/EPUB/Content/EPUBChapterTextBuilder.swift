@@ -132,6 +132,15 @@ struct EPUBChapterTextBuilder {
         var budgetExceeded = false
 
         var renderedLength: Int { text.length + buffer.utf16.count }
+
+        /// Whether the last rendered character is whitespace, read without bridging the
+        /// whole string: the buffer's last character, else the attributed string's last unit.
+        var endsWithWhitespace: Bool {
+            if let last = buffer.last { return last.isWhitespace }
+            let length = text.length
+            guard length > 0 else { return false }
+            return Unicode.Scalar(text.mutableString.character(at: length - 1)).map { $0.properties.isWhitespace } ?? false
+        }
     }
 
     // MARK: Build
@@ -418,7 +427,7 @@ struct EPUBChapterTextBuilder {
     /// `br` or a newline at the end of a block makes no extra line), shrinking
     /// the runs that covered them, then flushes the open run.
     private func trimTrailingSpace(_ state: State, start: Int) {
-        let string = state.text.string as NSString
+        let string = state.text.mutableString
         var end = state.text.length
         while end > start, string.character(at: end - 1) == 0x20 { end -= 1 }
         if end > start, string.character(at: end - 1) == Self.lineSeparatorUnit { end -= 1 }
@@ -440,7 +449,7 @@ struct EPUBChapterTextBuilder {
     private func makeParagraphStyle(_ paragraph: OpenParagraph, state: State, range: NSRange) -> NSParagraphStyle {
         let style = paragraph.frame.style
         let paragraphStyle = NSMutableParagraphStyle()
-        let text = (state.text.string as NSString).substring(with: range)
+        let text = state.text.mutableString.substring(with: range)
         let direction = Self.baseDirection(declared: paragraph.direction, language: paragraph.language, text: text)
         paragraphStyle.baseWritingDirection = direction == .rightToLeft ? .rightToLeft : .leftToRight
         let alignment = style.textAlign ?? .start
@@ -579,7 +588,7 @@ struct EPUBChapterTextBuilder {
             }
             ensureParagraph(state, inline: inline)
             if state.pendingSpace { emitPendingSpace(state, inline: inline) }
-            let transformed = Self.transform(scalar, style: inline.style, atWordStart: state.atParagraphStart || state.text.string.last?.isWhitespace == true || state.buffer.last?.isWhitespace == true)
+            let transformed = Self.transform(scalar, style: inline.style, atWordStart: state.atParagraphStart || state.endsWithWhitespace)
             emitTransformed(transformed, original: scalar, node: node, sourceOffset: sourceOffset, state: state, inline: inline)
             state.atParagraphStart = false
         }
@@ -589,14 +598,14 @@ struct EPUBChapterTextBuilder {
         scalar == " " || scalar == "\t" || scalar == "\n" || scalar == "\r" || scalar == "\u{0C}"
     }
 
-    private static func transform(_ scalar: Unicode.Scalar, style: EPUBComputedStyle, atWordStart: Bool) -> String {
+    private static func transform(_ scalar: Unicode.Scalar, style: EPUBComputedStyle, atWordStart: @autoclosure () -> Bool) -> String {
         let text = String(scalar)
         if style.smallCaps { return text.uppercased() }
         switch style.textTransform {
         case .none: return text
         case .uppercase: return text.uppercased()
         case .lowercase: return text.lowercased()
-        case .capitalize: return atWordStart ? text.uppercased() : text
+        case .capitalize: return atWordStart() ? text.uppercased() : text
         }
     }
 
