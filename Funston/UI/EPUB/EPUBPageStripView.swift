@@ -6,6 +6,8 @@ protocol EPUBPageStripDelegate: AnyObject {
     /// The strip settled on a page: by a swipe, a VoiceOver move or a scroll.
     func strip(_ strip: EPUBPageStripView, didShow placement: EPUBPlacement)
     func strip(_ strip: EPUBPageStripView, activateLinkAt offset: Int, spineIndex: Int) -> Bool
+    /// A turn past the window's last or first page: true when the owner extended the window and turned.
+    func strip(_ strip: EPUBPageStripView, turnBeyondWindow forward: Bool) -> Bool
     /// "Page p of q" within the chapter.
     func strip(_ strip: EPUBPageStripView, describe placement: EPUBPlacement) -> String
 }
@@ -242,7 +244,7 @@ final class EPUBPageStripView: UIScrollView, UIScrollViewDelegate {
         @unknown default: return false
         }
         EPUBAccessibilityLog.shared.record("strip accessibilityScroll direction=\(direction.rawValue) forward=\(forward) from index \(currentIndex)")
-        guard turn(forward: forward, animated: false), let placement = currentPlacement else { return false }
+        guard turn(forward: forward, animated: false) || stripDelegate?.strip(self, turnBeyondWindow: forward) == true, let placement = currentPlacement else { return false }
         postAccessibilityNotification(.pageScrolled, stripDelegate?.strip(self, describe: placement) ?? "")
         if let first = firstElementOnShownPage { postAccessibilityNotification(.layoutChanged, first) }
         EPUBAccessibilityLog.shared.recordFocusLater(context: "strip scroll")

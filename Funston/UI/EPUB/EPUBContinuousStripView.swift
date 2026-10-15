@@ -6,6 +6,8 @@ protocol EPUBContinuousStripDelegate: AnyObject {
     /// Scrolling settled, or VoiceOver moved: the first visible character.
     func continuousStrip(_ strip: EPUBContinuousStripView, didSettleAt offset: Int, spineIndex: Int)
     func continuousStrip(_ strip: EPUBContinuousStripView, activateLinkAt offset: Int, spineIndex: Int) -> Bool
+    /// A scroll past the window's end or start: true when the owner extended the window.
+    func continuousStrip(_ strip: EPUBContinuousStripView, extendWindow forward: Bool) -> Bool
     /// What a three-finger scroll announces ("Location n of m").
     func continuousStrip(_ strip: EPUBContinuousStripView, describeOffset offset: Int, spineIndex: Int) -> String
 }
@@ -223,7 +225,7 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
         @unknown default: return false
         }
         EPUBAccessibilityLog.shared.record("continuous strip accessibilityScroll direction=\(direction.rawValue) forward=\(forward) y=\(contentOffset.y)")
-        guard page(forward: forward) else { return false }
+        guard page(forward: forward) || (stripDelegate?.continuousStrip(self, extendWindow: forward) == true && page(forward: forward)) else { return false }
         if let position = firstVisible {
             postAccessibilityNotification(.pageScrolled, stripDelegate?.continuousStrip(self, describeOffset: position.offset, spineIndex: position.spineIndex) ?? "")
         }

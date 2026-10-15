@@ -286,7 +286,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
             pager.view.addGestureRecognizer(tapRecognizer())
             self.pager = pager
         }
-        prefetchNeighbour()
+        fillWindow()
     }
 
     private func tapRecognizer() -> UITapGestureRecognizer {
@@ -349,7 +349,8 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         guard let session, let continuous else { return }
         var chapters: [EPUBContinuousStripView.Chapter] = []
         for spine in stripChapters(around: spineIndex) {
-            guard let layout = session.layout(spine), let chapter = session.chapter(spine) else { continue }
+            // The shown chapter lays out now; the neighbours join when their layouts arrive (fillWindow).
+            guard let layout = spine == spineIndex ? session.layout(spine) : session.residentLayout(spine), let chapter = session.chapter(spine) else { continue }
             let title = session.contentsEntry(spineIndex: spine, offset: 0)?.label ?? chapter.text.title ?? summary.title
             chapters.append(EPUBContinuousStripView.Chapter(spineIndex: spine, layout: layout, text: chapter.text, title: title))
         }
@@ -364,13 +365,21 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
             // Reading crossed into the next chapter: the window moves on; elements already present keep their objects.
                 loadContinuous(offset: offset, spineIndex: spineIndex)
         }
-        prefetchNeighbour()
+        fillWindow()
         report()
     }
 
     func continuousStrip(_ strip: EPUBContinuousStripView, activateLinkAt offset: Int, spineIndex: Int) -> Bool {
         guard let session, let link = session.link(at: offset, spineIndex: spineIndex) else { return false }
         activate(link.target, isNoteReference: link.isNoteReference)
+        return true
+    }
+
+    /// The window's edge was reached before the neighbour's layout arrived: lay it out now and reload the window.
+    func continuousStrip(_ strip: EPUBContinuousStripView, extendWindow forward: Bool) -> Bool {
+        guard let session, let continuousSpine, let next = session.neighbour(of: continuousSpine, forward: forward), session.layout(next) != nil,
+              let position = strip.firstVisible else { return false }
+        loadContinuous(offset: position.offset, spineIndex: continuousSpine)
         return true
     }
 
@@ -393,7 +402,8 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         guard let session, let strip else { return }
         var entries: [EPUBPageStripView.Entry] = []
         for spine in stripChapters(around: placement.spineIndex) {
-            guard let layout = session.layout(spine), let chapter = session.chapter(spine) else { continue }
+            // The shown chapter lays out now; the neighbours join when their layouts arrive (fillWindow).
+            guard let layout = spine == placement.spineIndex ? session.layout(spine) : session.residentLayout(spine), let chapter = session.chapter(spine) else { continue }
             let title = session.contentsEntry(spineIndex: spine, offset: 0)?.label ?? chapter.text.title ?? summary.title
             for page in 0..<layout.pageCount {
                 entries.append(EPUBPageStripView.Entry(placement: EPUBPlacement(spineIndex: spine, pageIndex: page), layout: layout, chapter: chapter.text, title: title))
@@ -410,13 +420,24 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         guard let session else { return }
         session.show(placement)
         if placement.spineIndex != stripSpine { loadStrip(showing: placement) }
-        prefetchNeighbour()
+        fillWindow()
         report()
     }
 
     func strip(_ strip: EPUBPageStripView, activateLinkAt offset: Int, spineIndex: Int) -> Bool {
         guard let session, let link = session.link(at: offset, spineIndex: spineIndex) else { return false }
         activate(link.target, isNoteReference: link.isNoteReference)
+        return true
+    }
+
+    /// The window's edge was reached before the next chapter's layout arrived: lay it out now and move.
+    func strip(_ strip: EPUBPageStripView, turnBeyondWindow forward: Bool) -> Bool {
+        turnBeyondWindow(forward: forward)
+    }
+
+    private func turnBeyondWindow(forward: Bool) -> Bool {
+        guard let session, forward ? session.forward() : session.backward() else { return false }
+        showPlacement(direction: forward ? .forward : .reverse, animated: false)
         return true
     }
 
@@ -451,23 +472,36 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
                 }
             }
         }
-        prefetchNeighbour()
+        fillWindow()
         report()
     }
 
-    private func prefetchNeighbour() {
+    /// Completes the shown chapter's layout when only its first page was measured, then lays
+    /// the window's neighbours out one at a time off the main actor, reloading the surface as
+    /// each arrives; elements already present keep their objects (Spec 11.6).
+    private func fillWindow() {
         guard let session else { return }
         pendingLayout?.cancel()
-        if let neighbour = session.neighbourToPrefetch() {
-            _ = session.layout(neighbour, extent: .firstPage)
-            pendingLayout = Task { [weak session] in await session?.completeLayout(neighbour) }
-        } else if let current = session.placement?.spineIndex, session.cache.session(spineIndex: current, key: session.layoutKey)?.isPartial == true {
-            pendingLayout = Task { [weak self, weak session] in
-                await session?.completeLayout(current)
-                guard let self, !Task.isCancelled else { return }
-                showPlacement()
+        pendingLayout = Task { [weak self, weak session] in
+            guard let session else { return }
+            if let current = session.placement?.spineIndex, session.cache.session(spineIndex: current, key: session.layoutKey)?.isPartial == true {
+                await session.completeLayout(current)
+                guard !Task.isCancelled else { return }
+                self?.showPlacement()
+            }
+            for spine in session.chaptersToLayoutAhead() {
+                await session.layoutAhead(spine)
+                guard !Task.isCancelled else { return }
+                self?.reloadWindow()
             }
         }
+    }
+
+    /// Reloads the shown surface's window around the current placement; elements keep their objects.
+    private func reloadWindow() {
+        guard let session, let placement = session.placement else { return }
+        if strip != nil { loadStrip(showing: placement) }
+        else if continuous != nil { loadContinuous(offset: session.anchor?.renderedOffset ?? 0, spineIndex: placement.spineIndex) }
     }
 
     // MARK: - Settings and geometry
@@ -492,11 +526,11 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     func goForward() {
         guard let session else { return }
         if let strip {
-            if strip.turn(forward: true, animated: true) { announceTurn(chapterChanged: false) }
+            if strip.turn(forward: true, animated: true) || turnBeyondWindow(forward: true) { announceTurn(chapterChanged: false) }
             return
         }
         if let continuous {
-            continuous.page(forward: true)
+            if !continuous.page(forward: true), continuousStrip(continuous, extendWindow: true) { continuous.page(forward: true) }
             return
         }
         let before = session.placement?.spineIndex
@@ -515,11 +549,11 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     func goBackward() {
         guard let session else { return }
         if let strip {
-            if strip.turn(forward: false, animated: true) { announceTurn(chapterChanged: false) }
+            if strip.turn(forward: false, animated: true) || turnBeyondWindow(forward: false) { announceTurn(chapterChanged: false) }
             return
         }
         if let continuous {
-            continuous.page(forward: false)
+            if !continuous.page(forward: false), continuousStrip(continuous, extendWindow: false) { continuous.page(forward: false) }
             return
         }
         let before = session.placement?.spineIndex
@@ -632,7 +666,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         guard completed, let shown = (pageViewController.viewControllers?.first as? EPUBPageController)?.placement, let session else { return }
         let before = session.placement?.spineIndex
         session.show(shown)
-        prefetchNeighbour()
+        fillWindow()
         report()
         announceTurn(chapterChanged: before != shown.spineIndex)
     }

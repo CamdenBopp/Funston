@@ -136,15 +136,24 @@ final class EPUBReaderSessionTests: XCTestCase {
         XCTAssertTrue(NSLocationInRange(anchor, try XCTUnwrap(session.layout(0)).table.pages[rotated.pageIndex].range))
     }
 
-    func testTheWindowHoldsThreeChaptersAndPrefetchesTheNeighbourNearABoundary() throws {
+    func testOpeningLaysOutOnlyTheShownChapterAndTheNeighboursArriveOffTheMainActor() async throws {
+        let session = try book()
+        session.go(to: .spine(1))
+        XCTAssertEqual(session.cache.resident.map(\.spineIndex), [1], "Only the shown chapter is laid out on open")
+        XCTAssertEqual(session.chaptersToLayoutAhead(), [3, 0], "The next chapter first, then the previous")
+        XCTAssertNil(session.residentLayout(3))
+        await session.layoutAhead(3)
+        XCTAssertNotNil(session.residentLayout(3))
+        XCTAssertEqual(session.chaptersToLayoutAhead(), [0])
+        await session.layoutAhead(0)
+        XCTAssertTrue(session.chaptersToLayoutAhead().isEmpty, "Once resident they are not asked for again")
+        XCTAssertEqual(Set(session.cache.resident.map(\.spineIndex)), [0, 1, 3])
+    }
+
+    func testTheWindowHoldsThreeChaptersAndShedsBeyondIt() throws {
         let session = try book()
         session.go(to: .spine(0))
-        XCTAssertNil(session.neighbourToPrefetch(), "Far from the boundary nothing is prefetched")
-        let pages = try XCTUnwrap(session.layout(0)).pageCount
-        session.show(page: pages - 1)
-        XCTAssertEqual(session.neighbourToPrefetch(), 1)
         _ = session.layout(1)
-        XCTAssertNil(session.neighbourToPrefetch(), "Once resident it is not asked for again")
         session.go(to: .spine(3))
         XCTAssertLessThanOrEqual(session.cache.resident.count, EPUBLayoutCache.residentLimit)
         XCTAssertNil(session.cache.session(spineIndex: 0, key: session.layoutKey), "Chapter one left the window")

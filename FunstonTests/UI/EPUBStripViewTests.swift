@@ -69,6 +69,7 @@ final class EPUBStripViewTests: XCTestCase {
         var shown: [EPUBPlacement] = []
         func strip(_ strip: EPUBPageStripView, didShow placement: EPUBPlacement) { shown.append(placement) }
         func strip(_ strip: EPUBPageStripView, activateLinkAt offset: Int, spineIndex: Int) -> Bool { false }
+        func strip(_ strip: EPUBPageStripView, turnBeyondWindow forward: Bool) -> Bool { false }
         func strip(_ strip: EPUBPageStripView, describe placement: EPUBPlacement) -> String {
             "Page \(placement.pageIndex + 1) of \(strip.entries.filter { $0.placement.spineIndex == placement.spineIndex }.count)"
         }
@@ -78,6 +79,7 @@ final class EPUBStripViewTests: XCTestCase {
         var settled: [(spineIndex: Int, offset: Int)] = []
         func continuousStrip(_ strip: EPUBContinuousStripView, didSettleAt offset: Int, spineIndex: Int) { settled.append((spineIndex, offset)) }
         func continuousStrip(_ strip: EPUBContinuousStripView, activateLinkAt offset: Int, spineIndex: Int) -> Bool { false }
+        func continuousStrip(_ strip: EPUBContinuousStripView, extendWindow forward: Bool) -> Bool { false }
         func continuousStrip(_ strip: EPUBContinuousStripView, describeOffset offset: Int, spineIndex: Int) -> String { "Location \(offset) in \(spineIndex)" }
     }
 

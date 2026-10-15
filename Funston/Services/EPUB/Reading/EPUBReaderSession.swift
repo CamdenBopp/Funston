@@ -25,8 +25,6 @@ enum EPUBGoTarget: Sendable, Hashable {
 final class EPUBReaderSession {
     /// Chapters whose text is kept alongside the layout window.
     static let chapterWindowRadius = 1
-    /// The next chapter lays out ahead when the reader is within this many pages of a boundary.
-    static let prefetchPageDistance = 2
 
     let publication: EPUBPublication
     let resources: EPUBBookResources
@@ -123,12 +121,30 @@ final class EPUBReaderSession {
         resources.images.shedDecodedImages()
     }
 
-    /// The neighbour to lay out ahead, if the reader is near a boundary (Spec 11.6).
-    func neighbourToPrefetch() -> Int? {
-        guard let placement, let layout = layout(placement.spineIndex) else { return nil }
-        if layout.pageCount - 1 - placement.pageIndex < Self.prefetchPageDistance, let next = neighbour(of: placement.spineIndex, forward: true), cache.session(spineIndex: next, key: layoutKey) == nil { return next }
-        if placement.pageIndex < Self.prefetchPageDistance, let previous = neighbour(of: placement.spineIndex, forward: false), cache.session(spineIndex: previous, key: layoutKey) == nil { return previous }
-        return nil
+    /// A resident layout of a chapter under the current key; never lays out.
+    func residentLayout(_ spineIndex: Int) -> EPUBLayoutSession? {
+        cache.session(spineIndex: spineIndex, key: layoutKey).flatMap { $0.isPartial ? nil : $0 }
+    }
+
+    /// The chapters the reading window wants but does not have: the current chapter's
+    /// neighbours, next first. They lay out off the main actor (Spec 11.6); opening a book
+    /// used to lay all three out synchronously.
+    func chaptersToLayoutAhead() -> [Int] {
+        guard let placement else { return [] }
+        return [neighbour(of: placement.spineIndex, forward: true), neighbour(of: placement.spineIndex, forward: false)].compactMap { $0 }.filter { residentLayout($0) == nil }
+    }
+
+    /// Lays a chapter out whole off the main actor and installs it, unless a whole layout
+    /// arrived meanwhile or the key changed (Spec 4.3: hand-over by value).
+    func layoutAhead(_ spineIndex: Int) async {
+        guard residentLayout(spineIndex) == nil, let chapter = chapter(spineIndex) else { return }
+        let text = chapter.text, geometry = geometry, key = layoutKey, settings = settings, limits = limits
+        let whole = await Task.detached(priority: .utility) {
+            EPUBLayoutSession(text: text, geometry: geometry, key: key, settings: settings, margins: 0, extent: .whole, limits: limits)
+        }.value
+        guard key == layoutKey, residentLayout(spineIndex) == nil else { return }
+        diagnostics.merge(whole.diagnostics)
+        cache.store(whole, spineIndex: spineIndex, current: placement?.spineIndex ?? spineIndex)
     }
 
     func neighbour(of spineIndex: Int, forward: Bool) -> Int? {
