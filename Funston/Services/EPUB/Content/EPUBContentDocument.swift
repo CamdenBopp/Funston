@@ -112,13 +112,49 @@ struct EPUBContentDocument: Sendable {
                                    encodingName: decoded.encodingName, diagnostics: diagnostics, publicationLanguage: publicationLanguage)
     }
 
-    static func textOnlyTree(_ text: String) -> EPUBXMLDocument {
+    static func textOnlyTree(_ text: String) -> EPUBXMLDocument { textOnlyTree(paragraphs: [text]) }
+
+    /// html > body > one `p` per paragraph, each holding one text node.
+    static func textOnlyTree(paragraphs: [String]) -> EPUBXMLDocument {
         var nodes: [EPUBXMLDocument.Node] = []
         nodes.append(EPUBXMLDocument.Node(kind: .element, name: "html", namespaceURI: EPUBNamespace.xhtml, attributes: [], text: "", parent: nil, children: [1], utf16Length: 0))
-        nodes.append(EPUBXMLDocument.Node(kind: .element, name: "body", namespaceURI: EPUBNamespace.xhtml, attributes: [], text: "", parent: 0, children: [2], utf16Length: 0))
-        nodes.append(EPUBXMLDocument.Node(kind: .element, name: "p", namespaceURI: EPUBNamespace.xhtml, attributes: [], text: "", parent: 1, children: [3], utf16Length: 0))
-        nodes.append(EPUBXMLDocument.Node(kind: .text, name: "", namespaceURI: nil, attributes: [], text: text, parent: 2, children: [], utf16Length: text.utf16.count))
+        nodes.append(EPUBXMLDocument.Node(kind: .element, name: "body", namespaceURI: EPUBNamespace.xhtml, attributes: [], text: "", parent: 0, children: [], utf16Length: 0))
+        for paragraph in paragraphs {
+            let element = nodes.count
+            nodes[1].children.append(element)
+            nodes.append(EPUBXMLDocument.Node(kind: .element, name: "p", namespaceURI: EPUBNamespace.xhtml, attributes: [], text: "", parent: 1, children: [element + 1], utf16Length: 0))
+            nodes.append(EPUBXMLDocument.Node(kind: .text, name: "", namespaceURI: nil, attributes: [], text: paragraph, parent: element, children: [], utf16Length: paragraph.utf16.count))
+        }
         return EPUBXMLDocument(nodes: nodes, documentElement: 0)
+    }
+
+    /// The document reduced to plain paragraphs: the collapsed text of every block that
+    /// holds text directly, and of every run of text between blocks, in document order,
+    /// with no attributes and no links. The fallback when styling runs past its budget.
+    static func plainText(of document: EPUBContentDocument) -> EPUBContentDocument {
+        let tree = document.tree
+        var paragraphs: [String] = []
+        var loose = ""
+        func flush() {
+            let text = EPUBXMLDocument.collapseWhitespace(loose).trimmingCharacters(in: .whitespacesAndNewlines)
+            loose = ""
+            if !text.isEmpty { paragraphs.append(text) }
+        }
+        func walk(_ id: EPUBXMLDocument.NodeID) {
+            let node = tree[id]
+            if node.isCharacterData { loose += node.text; return }
+            guard node.isElement, !document.hidden[id], !document.isNeverRendered(id) else { return }
+            if blockElements.contains(node.name) || id == document.body {
+                flush()
+                for child in node.children { walk(child) }
+                flush()
+            } else {
+                for child in node.children { walk(child) }
+            }
+        }
+        if let body = document.body { walk(body) }
+        return EPUBContentDocument(path: document.path, tree: textOnlyTree(paragraphs: paragraphs), parserPath: .textOnly, encodingName: document.encodingName,
+                                   diagnostics: document.diagnostics, publicationLanguage: document.languages.first ?? nil)
     }
 
     init(path: String, tree: EPUBXMLDocument, parserPath: ParserPath, encodingName: String, diagnostics: EPUBDiagnosticList, publicationLanguage: String?) {

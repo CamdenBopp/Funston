@@ -32,6 +32,10 @@ struct EPUBChapterTextBuilder {
     static let noteContainerClassFragments = ["footnote", "note"]
     static let monospaceFamilies: Set<String> = ["monospace", "courier", "courier new", "menlo", "consolas", "monaco", "lucida console", "ui-monospace"]
     static let mediaElements: Set<String> = ["audio", "video", "object", "iframe", "embed", "canvas"]
+    /// Recorded when the styled build ran past its budget and the chapter was rebuilt plain (Spec 19.3).
+    static let budgetDiagnostic = "chapter.build.timeBudget"
+    /// The clock is read once per this many elements visited.
+    static let deadlineCheckInterval = 64
 
     let document: EPUBContentDocument
     let styles: [EPUBComputedStyle]
@@ -41,6 +45,8 @@ struct EPUBChapterTextBuilder {
     let images: EPUBImageCatalog?
     let resolveLink: (String) -> EPUBLinkTarget?
     let resolveImagePath: (String) -> String?
+    /// When set, the walk stops once this instant has passed.
+    var deadline: ContinuousClock.Instant? = nil
 
     // MARK: State
 
@@ -122,6 +128,8 @@ struct EPUBChapterTextBuilder {
         var pendingElementIDs: [String] = []
         var imageCount = 0
         var textCharacterCount = 0
+        var visitedElements = 0
+        var budgetExceeded = false
 
         var renderedLength: Int { text.length + buffer.utf16.count }
     }
@@ -141,6 +149,9 @@ struct EPUBChapterTextBuilder {
         }
         flushRun(state)
         flushBuffer(state)
+        if state.budgetExceeded {
+            state.diagnostics.record(.chapterParse, Self.budgetDiagnostic, path: document.path, "Styling the chapter ran past its time budget; its text is shown plain.")
+        }
         let isImagePage = state.textCharacterCount == 0 && state.imageCount == 1
         return EPUBChapterText(string: NSAttributedString(attributedString: state.text), runTable: EPUBRunTable(runs: state.runs), blocks: state.blocks,
                                containers: state.containers, links: state.links, images: state.images, pageBreaks: state.pageBreaks, anchors: state.anchors,
@@ -163,6 +174,9 @@ struct EPUBChapterTextBuilder {
             emitText(node.text, node: id, state: state, inline: inline)
             return
         }
+        if state.budgetExceeded { return }
+        if let deadline, state.visitedElements % Self.deadlineCheckInterval == 0, ContinuousClock.now > deadline { state.budgetExceeded = true; return }
+        state.visitedElements += 1
         let style = styles[id]
         if document.hidden[id] || style.display == .none || document.isNeverRendered(id) { return }
         let name = node.name

@@ -105,15 +105,17 @@ struct EPUBChapterLoader: Sendable {
         }
         if item.kind == .image {
             let document = EPUBContentDocument.parse(Data(Self.imagePageMarkup(path: path).utf8), path: path, publicationLanguage: publication.package.primaryLanguage)
-            return build(document, spineIndex: spineIndex, sheets: [], diagnostics: diagnostics)
+            return build(document, spineIndex: spineIndex, sheets: [], diagnostics: diagnostics, deadline: limits.deadline(\.chapterBuildBudget))
         }
         let document = EPUBContentDocument.parse(data, path: path, publicationLanguage: publication.package.primaryLanguage)
         diagnostics.merge(document.diagnostics)
         let sheets = collectSheets(document, diagnostics: &diagnostics)
-        return build(document, spineIndex: spineIndex, sheets: sheets, diagnostics: diagnostics)
+        return build(document, spineIndex: spineIndex, sheets: sheets, diagnostics: diagnostics, deadline: limits.deadline(\.chapterBuildBudget))
     }
 
-    private func build(_ document: EPUBContentDocument, spineIndex: Int, sheets: [EPUBStyleSheet], diagnostics: EPUBDiagnosticList) -> EPUBLoadedChapter {
+    /// Styles and builds the chapter; a build that runs past its deadline is done
+    /// again over the document reduced to plain paragraphs, with no deadline (Spec 19.3).
+    private func build(_ document: EPUBContentDocument, spineIndex: Int, sheets: [EPUBStyleSheet], diagnostics: EPUBDiagnosticList, deadline: ContinuousClock.Instant?) -> EPUBLoadedChapter {
         var diagnostics = diagnostics
         let resolver = EPUBStyleCascade(settings: settings, sheets: sheets)
         let styles = resolver.resolve(document, diagnostics: &diagnostics)
@@ -124,9 +126,12 @@ struct EPUBChapterLoader: Sendable {
                                                  var scratch = EPUBDiagnosticList()
                                                  let resolved = EPUBHref.resolve(reference, from: document.path, in: publication.zip, diagnostics: &scratch)
                                                  return resolved.kind == .internalResource ? resolved.entry : nil
-                                             })
+                                             }, deadline: deadline)
         let text = builder.build()
         diagnostics.merge(text.diagnostics)
+        if deadline != nil, text.diagnostics.contains(code: EPUBChapterTextBuilder.budgetDiagnostic) {
+            return build(EPUBContentDocument.plainText(of: document), spineIndex: spineIndex, sheets: [], diagnostics: diagnostics, deadline: nil)
+        }
         return EPUBLoadedChapter(spineIndex: spineIndex, document: document, text: text, diagnostics: diagnostics)
     }
 
