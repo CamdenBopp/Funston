@@ -51,10 +51,10 @@ private struct SettingsView: View {
                     LabeledContent("Storage used", value: ByteCountFormatter.string(fromByteCount: downloads.storageUsedBytes, countStyle: .file))
                     Button("Remove All Downloads", role: .destructive) { confirmRemoval = true }
                         .disabled(working)
-                    Button("Clear cache") { clearCache() }.disabled(working)
+                    Button("Clear Cache") { clearCache() }.disabled(working)
                 }
                 Section("Reading") {
-                    Picker("Default text recognition engine", selection: $settings.textRecognitionEngine) {
+                    Picker("Default text recognition", selection: $settings.textRecognitionEngine) {
                         ForEach(PDFTextEnginePreference().options(ocrEngines: PDFPageTextEngineRegistry.builtIn.descriptors).filter(\.isAvailable), id: \.id) { engine in
                             Text(engine.title).tag(engine.id)
                         }
@@ -75,7 +75,7 @@ private struct SettingsView: View {
                     NavigationLink("Privacy policy") {
                         SettingsTextPage(title: "Privacy policy", text: "Funston stores your library, downloads, settings, and listening and reading positions on your device. Funston requests media, artwork, and catalog information from Internet Archive. Those requests include your IP address and the Funston app version. Funston does not include analytics or advertising tracking. Internet Archive’s privacy policy applies to its service.", linkTitle: "Internet Archive privacy policy", linkURL: URL(string: "https://archive.org/about/terms.php"))
                     }
-                    Link("Contact", destination: URL(string: ArchiveNetworkPolicy.contact)!)
+                    Link("View on GitHub", destination: URL(string: ArchiveNetworkPolicy.contact)!)
                     NavigationLink("Shortcuts help") {
                         Form {
                             Section("Say to Siri") {

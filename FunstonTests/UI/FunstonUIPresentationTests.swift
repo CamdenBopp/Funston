@@ -333,6 +333,54 @@ final class FunstonUIPresentationTests: XCTestCase {
     }
 
     @MainActor
+    func testNearingTheBottomLoadsTheNextPageWithoutATap() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try SQLiteStore(url: directory.appending(path: "cache.sqlite3"))
+        let transport = UIPresentationPagedTransport(total: 120)
+        let controller = SearchController(repository: CachingArchiveRepository(store: store, transport: transport), collection: ArchiveCollection(identifier: "fixture", title: "Fixture"), open: { _ in })
+        controller.loadViewIfNeeded()
+        await waitFor { controller.rows.contains { $0.id == "artifact:p1-39" } }
+        let footer = try XCTUnwrap(controller.rows.last)
+        XCTAssertEqual(footer.id, "__pagination")
+        XCTAssertEqual(footer.title, "Loading more…")
+        XCTAssertFalse(footer.navigates, "The footer is a status row, not a button")
+        XCTAssertTrue(footer.centered)
+        var requested = await transport.pages
+        XCTAssertEqual(requested, [1])
+        controller.collectionView(controller.collectionView, willDisplay: UICollectionViewCell(), forItemAt: IndexPath(item: 0, section: 0))
+        try await Task.sleep(for: .milliseconds(50))
+        requested = await transport.pages
+        XCTAssertEqual(requested, [1], "A row near the top must not page")
+        controller.collectionView(controller.collectionView, willDisplay: UICollectionViewCell(), forItemAt: IndexPath(item: controller.rows.count - 8, section: 0))
+        await waitFor { controller.rows.contains { $0.id == "artifact:p2-0" } }
+        requested = await transport.pages
+        XCTAssertEqual(requested, [1, 2], "The eighth row from the end appearing pages once")
+        XCTAssertEqual(controller.rows.last?.id, "__pagination", "120 results leave a third page")
+    }
+
+    @MainActor
+    func testAFailedPageWaitsForTryAgainInsteadOfPagingAgain() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try SQLiteStore(url: directory.appending(path: "cache.sqlite3"))
+        let transport = UIPresentationPagedTransport(total: 120, failingPage: 2)
+        let controller = SearchController(repository: CachingArchiveRepository(store: store, transport: transport), collection: ArchiveCollection(identifier: "fixture", title: "Fixture"), open: { _ in })
+        controller.loadViewIfNeeded()
+        await waitFor { controller.rows.contains { $0.id == "artifact:p1-39" } }
+        controller.collectionView(controller.collectionView, willDisplay: UICollectionViewCell(), forItemAt: IndexPath(item: controller.rows.count - 1, section: 0))
+        await waitFor { controller.rows.contains { $0.id == "__retry:2" } }
+        XCTAssertTrue(controller.rows.contains { $0.id == "__retry:2" })
+        XCTAssertFalse(controller.rows.contains { $0.id == "__pagination" }, "No loading footer while a page is failed")
+        controller.collectionView(controller.collectionView, willDisplay: UICollectionViewCell(), forItemAt: IndexPath(item: controller.rows.count - 1, section: 0))
+        try await Task.sleep(for: .milliseconds(100))
+        let requested = await transport.pages
+        XCTAssertEqual(requested, [1, 2], "Reaching the bottom again must not retry on its own")
+    }
+
+    @MainActor
     private func waitFor(_ predicate: () -> Bool) async {
         for _ in 0..<100 {
             if predicate() { return }
@@ -396,6 +444,24 @@ private actor UIPresentationGateTransport: ArchiveTransport {
         shouldFail = true
         pending?.resume(throwing: URLError(.notConnectedToInternet))
         pending = nil
+    }
+}
+
+/// Serves 40-item pages of a fixed total, recording the page numbers asked for.
+private actor UIPresentationPagedTransport: ArchiveTransport {
+    private(set) var pages: [Int] = []
+    private let total: Int
+    private let failingPage: Int?
+    private let pageSize = 40
+    init(total: Int, failingPage: Int? = nil) { self.total = total; self.failingPage = failingPage }
+    func send(_ request: URLRequest) async throws -> ArchiveHTTPResponse {
+        let query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems ?? []
+        let page = query.first { $0.name == "page" }.flatMap { $0.value }.flatMap(Int.init) ?? 1
+        pages.append(page)
+        if page == failingPage { throw URLError(.notConnectedToInternet) }
+        let docs = (0..<pageSize).map { ["identifier": "p\(page)-\($0)", "title": "Page \(page) item \($0)"] }
+        let data = try JSONSerialization.data(withJSONObject: ["response": ["numFound": total, "docs": docs]])
+        return ArchiveHTTPResponse(data: data)
     }
 }
 

@@ -62,6 +62,22 @@ final class ArchiveNetworkPolicyTests: XCTestCase {
         }
         XCTAssertEqual(AuditHeldDownloadProtocol.starts.value - startsBefore, 2)
         XCTAssertEqual(manager.records.filter { $0.state == .queued }.count, 3)
+        let artworkConfiguration = URLSessionConfiguration.ephemeral
+        artworkConfiguration.protocolClasses = [AuditHeldArtworkProtocol.self]
+        let artworkSession = URLSession(configuration: artworkConfiguration)
+        defer { artworkSession.invalidateAndCancel() }
+        let artwork = ArtworkPipeline(session: artworkSession)
+        let artworkStarts = AuditHeldArtworkProtocol.starts.value
+        let images = (0..<4).map { index in Task {
+            try await artwork.image(url: URL(string: "https://artwork.invalid/held-\(index)")!,
+                                    pointSize: CGSize(width: 32, height: 32), scale: 1)
+        } }
+        defer { images.forEach { $0.cancel() } }
+        let artworkDeadline = ContinuousClock.now + .seconds(2)
+        while AuditHeldArtworkProtocol.starts.value < artworkStarts + 2 && ContinuousClock.now < artworkDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(AuditHeldArtworkProtocol.starts.value - artworkStarts, 2)
         let metadata = expectation(description: "Metadata completes while long downloads remain in flight")
         let probe = Task {
             _ = try await ArchiveHTTPClient(transport: PolicyTransport()).send(ArchiveNetworkPolicy.request(ArchiveURLs.metadata(identifier: "capacity")))
@@ -72,6 +88,8 @@ final class ArchiveNetworkPolicyTests: XCTestCase {
         try await manager.remove(queued)
         try await manager.removeAllDownloads()
         try await probe.value
+        images.forEach { $0.cancel() }
+        for image in images { _ = try? await image.value }
         let slots = expectation(description: "Download slots are returned after bulk cancellation")
         let capacity = Task {
             var acquired = 0
@@ -228,6 +246,14 @@ private final class AuditDownloadCounter: @unchecked Sendable {
     func increment() { lock.withLock { count += 1 } }
 }
 private final class AuditHeldDownloadProtocol: URLProtocol, @unchecked Sendable {
+    static let starts = AuditDownloadCounter()
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { Self.starts.increment() }
+    override func stopLoading() {}
+}
+
+private final class AuditHeldArtworkProtocol: URLProtocol, @unchecked Sendable {
     static let starts = AuditDownloadCounter()
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }

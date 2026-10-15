@@ -515,7 +515,7 @@ final class TracksController: SearchableArtifactContentsController {
             collectionView.layoutIfNeeded()
             scrollToRow(id: currentRowID)
         })
-        current.accessibilityLabel = "Jump to now playing"
+        current.accessibilityLabel = "Current recording"
         current.accessibilityIdentifier = "recordings.current"
         navigationItem.rightBarButtonItem = current
         playbackSubscription = environment.playback.$context.sink { [weak self] context in
@@ -616,12 +616,13 @@ private struct RecordingRow: View {
                 .accessibilityValue(available ? "" : "Unavailable.")
                 .accessibilityHint(current ? "Resumes this recording." : "Plays this recording.")
                 .accessibilityIdentifier("recording.play.\(number - 1)")
-                .accessibilityAction(named: "Recording information", information)
+                .accessibilityAction(named: "Recording Information", information)
                 .accessibilityAction(named: played ? "Mark as Unplayed" : "Mark as Played") { progress.setPlayed(track, played: !played) }
+                .accessibilityActions { if available { Button("Download Recording", action: download) } }
             Menu {
                 Button(played ? "Mark as Unplayed" : "Mark as Played", systemImage: played ? "circle" : "checkmark.circle") { progress.setPlayed(track, played: !played) }
-                if available { Button("Download recording", systemImage: "arrow.down.circle", action: download) }
-                Button("Recording information", systemImage: "info.circle", action: information)
+                if available { Button("Download Recording", systemImage: "arrow.down.circle", action: download) }
+                Button("Recording Information", systemImage: "info.circle", action: information)
             } label: { Image(systemName: "ellipsis").foregroundStyle(Color.funstonSecondaryText).frame(width: 44, height: 44) }
                 .accessibilityLabel("More actions for \(track.title)")
         }
@@ -697,18 +698,35 @@ final class FileController: FunstonListController {
         if let size = file.size { rows.append(FunstonRow(id: "size", title: "Size", subtitle: ByteCountFormatter.string(fromByteCount: size, countStyle: .file), navigates: false)) }
         if let source = file.source { rows.append(FunstonRow(id: "source", title: "Source", subtitle: source, navigates: false)) }
         if let original = file.original { rows.append(FunstonRow(id: "original", title: "Derived from", subtitle: original, navigates: false)) }
-        if !file.isPrivate && access == .available { rows += [FunstonRow(id: "download", title: "Download File"), FunstonRow(id: "open", title: "Open File"), FunstonRow(id: "copy", title: "Copy File URL")] }
+        if !file.isPrivate && access == .available { rows += [FunstonRow(id: "download", title: "Download File"), FunstonRow(id: "open", title: "Open in Browser"), FunstonRow(id: "copy", title: "Copy File URL")] }
         else { rows.append(FunstonRow(id: "restricted", title: "Restricted file", navigates: false)) }
         apply(rows)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// The three actions are buttons in the download button's style, not
+    /// navigation rows: none of them pushes a screen, and opening leaves the app.
     override func configure(_ cell: UICollectionViewListCell, row: FunstonRow) {
-        if row.id == "download" {
+        switch row.id {
+        case "download":
             cell.isAccessibilityElement = false; cell.accessories = []
             cell.contentConfiguration = UIHostingConfiguration {
                 DownloadButton(downloads: environment.downloads, artifact: summary, file: file, noun: "File")
+                    .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
             }.margins(.all, 16)
-        } else { super.configure(cell, row: row) }
+        case "open", "copy":
+            cell.isAccessibilityElement = false; cell.accessories = []
+            cell.contentConfiguration = UIHostingConfiguration {
+                Button { [weak self] in self?.selected(row.id) } label: {
+                    Label(row.title, systemImage: row.id == "open" ? "safari" : "doc.on.doc")
+                }
+                .buttonStyle(.bordered).controlSize(.large)
+                .accessibilityIdentifier("file." + row.id)
+                .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+            }.margins(.all, 16)
+        default:
+            super.configure(cell, row: row)
+        }
     }
     override func selected(_ id: String) {
         switch id {

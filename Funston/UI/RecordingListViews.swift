@@ -191,7 +191,7 @@ struct RecordingQueueView: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button { search = ""; isSearching = false; jump += 1 } label: { Label("Current", systemImage: "scope") }
-                                .accessibilityLabel("Jump to now playing").accessibilityIdentifier("queue.current")
+                                .accessibilityLabel("Current recording").accessibilityIdentifier("queue.current")
                                 .disabled(playback.context.map { visibleRows.contains($0.trackIndex) } ?? true)
                         }
                         ToolbarItem(placement: .confirmationAction) {

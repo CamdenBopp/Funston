@@ -85,7 +85,7 @@ final class AppIntentTests: XCTestCase {
     func testCurrentRecordingCanBeReadAndSavedAndQueueBoundaryFailsClearly() async throws {
         try await withEnvironment { environment in
             let output = try await GetFunstonCurrentRecordingIntent().perform()
-            XCTAssertEqual(output.value, "Fixture recording — Intent fixture")
+            XCTAssertEqual(output.value, "Fixture recording from Intent fixture")
             _ = try await SaveFunstonCurrentItemIntent().perform()
             XCTAssertEqual(environment.saved.map(\.identifier), ["intent-audio"])
             do { _ = try await NextFunstonRecordingIntent().perform(); XCTFail("Last recording must not silently succeed") }

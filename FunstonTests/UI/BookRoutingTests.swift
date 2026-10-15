@@ -35,3 +35,54 @@ final class BookRoutingTests: XCTestCase {
         XCTAssertEqual(ArtifactMediaPresentation.preferredFile(in: detail)?.name, "pg20512.epub")
     }
 }
+
+@MainActor
+final class SearchHistoryTests: XCTestCase {
+    private func withDefaults(_ body: (UserDefaults) throws -> Void) rethrows {
+        let suite = "SearchHistoryTests-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        try body(defaults)
+    }
+
+    func testAutocompleteCompletesPartialWordsAndPreservesFilters() throws {
+        let url = try XCTUnwrap(ArchiveURLs.suggestions(SearchRequest(text: "sherlock hol", scope: .audio, collection: "oldtimeradio")))
+        let parameters = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        let query = try XCTUnwrap(parameters.first { $0.name == "q" }?.value)
+        XCTAssertTrue(query.contains("title:\"sherlock\" AND title:hol*"))
+        XCTAssertTrue(query.contains("collection:\"oldtimeradio\""))
+        XCTAssertTrue(query.contains("mediatype:(audio OR etree)"))
+        XCTAssertTrue(query.contains("-access-restricted-item:true"))
+        XCTAssertNil(ArchiveURLs.suggestions(SearchRequest(text: "*")))
+    }
+
+    func testHistoryPersistsDeduplicatesAndOrdersByMostRecent() {
+        withDefaults { defaults in
+            let history = SearchHistory(defaults: defaults, collection: nil)
+            history.remember("  Sherlock Holmes  ")
+            history.remember("Jazz")
+            history.remember("sherlock holmes")
+            history.remember(" \n ")
+            let restored = SearchHistory(defaults: defaults, collection: nil)
+            XCTAssertEqual(restored.queries, ["sherlock holmes", "Jazz"])
+            XCTAssertEqual(restored.matching("HOLMES"), ["sherlock holmes"])
+        }
+    }
+
+    func testHistoryLimitAndCollectionIsolationAndRemoval() {
+        withDefaults { defaults in
+            let history = SearchHistory(defaults: defaults, collection: "oldtimeradio")
+            for number in 0..<40 { history.remember("Episode \(number)") }
+            XCTAssertEqual(history.queries.count, 30)
+            XCTAssertEqual(history.queries.first, "Episode 39")
+            XCTAssertEqual(history.queries.last, "Episode 10")
+            let global = SearchHistory(defaults: defaults, collection: nil)
+            global.remember("Books")
+            history.remove("EPISODE 39")
+            XCTAssertFalse(history.queries.contains("Episode 39"))
+            history.clear()
+            XCTAssertTrue(history.queries.isEmpty)
+            XCTAssertEqual(global.queries, ["Books"])
+        }
+    }
+}

@@ -42,7 +42,7 @@ Read `playback_positions` newest first, skip finished recordings, and show a she
 `PlaybackController.restoredPosition` only starts over when you're within one second of the end. Better rules: don't resume under 5 s, and treat 95% or the last 10 s as finished. Write them as a pure function with tests. The Dumpert app's version is MIT and adaptable. Also confirm that the first periodic save after a resume seek can't write a position near zero; Dumpert and Labstream both had to guard against that.
 
 ### 2.3 Sleep timer (M, done)
-None of the eleven apps has one. Offer 15, 30, 45 and 60 minutes, plus "end of this recording". Fade the audio out, announce when it's set and when it fires, and put it in the player's menu and as a VoiceOver action on the player.
+None of the eleven apps has one. Offer 15, 30, 45 and 60 minutes, plus "end of this recording". Fade the audio out, announce when it's set and when it fires, and put it in the player's menu. VoiceOver reaches it as the Sleep timer button on the player; it is not a separate VoiceOver action.
 
 ### 2.4 Say when it ends (S, done)
 Add remaining time, adjusted for playback speed, to the position slider's spoken value, or add an "ends at 11:40" line. Strimr does the second. It's cheap and useful context.
@@ -91,7 +91,7 @@ Still open; see [PDFScrollingPolish.md](PDFScrollingPolish.md). It shows up most
 - Scanned books stay in PDFKit with on-device OCR. For those, Internet Archive's EPUB is generated from its own OCR (checked on `alicesadventures00carr`: EPUB, derived from ABBYY, derived from page scans). Offer it only as "Text version (from OCR)".
 - Readium doesn't follow Dynamic Type. Map the text size setting to `EPUBPreferences.fontSize` yourself.
 - Store reading positions as Readium `Locator` JSON in a new table. This needs 1.1.
-- Read aloud through `PublicationSpeechSynthesizer`, sharing the audio session with the music player.
+- Not done yet: read aloud, sharing the audio session with the music player.
 - Readium switches to scrolling when VoiceOver is on, because pagination breaks the screen reader. There's an open bug (#113) where swiping to the next paragraph during continuous reading can jump to the end of the chapter. Test it on the device before calling EPUB done.
 
 ### 4.3 Search the whole book's recognized text (L)
@@ -104,7 +104,7 @@ The plan lists this as deferred. It's the natural next step for the OCR engine c
 - **CI (S).** Mac runners on a private repo cost ten times Linux minutes. Your call.
 - **`hev1`-tagged HEVC (S or M).** Labstream rewrites the tag after download because AVFoundation shows black video. Only do this if an Internet Archive file reproduces it.
 - **CarPlay audio.** Implemented using the shared player and system audio templates; entitlement setup and head-unit verification remain. See [CarPlay.md](CarPlay.md).
-- **Deferred features.** App Intents and Siri, Spotlight, Wayback captures and SharePlay.
+- **Deferred features.** Spotlight, Wayback captures and SharePlay. App Intents and Siri have shipped.
 
 ## Don't do
 

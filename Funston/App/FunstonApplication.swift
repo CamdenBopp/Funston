@@ -175,6 +175,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        guard let delegate = UIApplication.shared.delegate as? AppDelegate else { return }
+        Task {
+            let environment = try? await delegate.prepareEnvironment()
+            await environment?.downloads.refreshAvailability()
+        }
+    }
+
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene, let delegate = UIApplication.shared.delegate as? AppDelegate else { return }
         let window = UIWindow(windowScene: scene)

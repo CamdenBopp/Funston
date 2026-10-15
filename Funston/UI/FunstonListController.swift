@@ -9,6 +9,8 @@ struct FunstonRow: Hashable {
     var artworkIdentifier: String? = nil
     var mediaType: MediaType = .unknown
     var accessibilityValue: String? = nil
+    /// A centered secondary caption such as a loading footer, not a destination.
+    var centered = false
 }
 
 @MainActor
@@ -59,16 +61,20 @@ class FunstonListController: UICollectionViewController {
         configuration.textProperties.numberOfLines = 0
         configuration.secondaryTextProperties.numberOfLines = 0
         configuration.secondaryTextProperties.color = .funstonSecondaryLabel
+        if row.centered {
+            configuration.textProperties.alignment = .center
+            configuration.textProperties.color = .funstonSecondaryLabel
+        }
         configuration.image = row.symbol.flatMap { UIImage(systemName: $0) }
         if row.artworkIdentifier != nil {
             configuration.textProperties.font = .preferredFont(forTextStyle: .headline)
             configuration.secondaryTextProperties.font = .preferredFont(forTextStyle: .subheadline)
-            configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 16)
+            configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 12, leading: FunstonMetrics.sideInset, bottom: 12, trailing: FunstonMetrics.sideInset)
             configuration.image = UIImage(systemName: row.mediaType.artworkSymbol)
             configuration.imageProperties.tintColor = .tertiaryLabel
             configuration.imageProperties.reservedLayoutSize = CGSize(width: 72, height: 80)
             configuration.imageProperties.maximumSize = CGSize(width: 72, height: 80)
-            configuration.imageProperties.cornerRadius = 3
+            configuration.imageProperties.cornerRadius = FunstonMetrics.artworkCornerRadius
         }
         cell.contentConfiguration = configuration
         (cell as? ArtifactListCell)?.setArtwork(identifier: row.artworkIdentifier)

@@ -39,6 +39,20 @@ enum ArchiveURLs {
         }
         return url(path: ["advancedsearch.php"], query: parameters)
     }
+    /// Complete the last typed word; keep operators out of user input.
+    static func suggestions(_ request: SearchRequest) -> URL? {
+        let words = request.text.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        guard let last = words.last, request.text.count >= 2 else { return nil }
+        let terms = words.dropLast().map { "title:\"" + $0 + "\"" } + ["title:" + last + "*"]
+        var components = URLComponents(url: search(SearchRequest(scope: request.scope, pageSize: 8, collection: request.collection)), resolvingAgainstBaseURL: false)!
+        var parameters = components.queryItems!
+        if let index = parameters.firstIndex(where: { $0.name == "q" }) {
+            parameters[index].value = "(" + terms.joined(separator: " AND ") + ") AND " + parameters[index].value!
+        }
+        components.queryItems = parameters
+        return components.url
+    }
+
 }
 
 struct ArchiveHTTPResponse: Sendable {
@@ -85,6 +99,15 @@ actor NetworkArchiveRepository: ArchiveRepository {
         let page = try await normalizer.search(data: data, request: request)
         try Task.checkCancellation()
         return page
+    }
+
+    func suggestions(_ request: SearchRequest) async throws -> [String] {
+        guard let url = ArchiveURLs.suggestions(request) else { return [] }
+        let data = try await fetch(url)
+        let page = try await normalizer.search(data: data, request: request)
+        try Task.checkCancellation()
+        var seen = Set<String>()
+        return page.items.map(\.title).filter { seen.insert($0.lowercased()).inserted }
     }
 
     func detail(identifier: String) async throws -> ArtifactDetail {

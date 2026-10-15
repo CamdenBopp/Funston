@@ -49,14 +49,13 @@ private final class DownloadSessionDelegate: NSObject, URLSessionDownloadDelegat
     private var eventTail: Task<Void, Never>?
     private var lastProgress: [Int: ContinuousClock.Instant] = [:]
     private let permitLock = NSLock()
-    private var requestPermits = Set<Int>()
-    func holdRequestPermit(_ taskID: Int) {
-        permitLock.lock(); requestPermits.insert(taskID); permitLock.unlock()
+    private var downloadPermits = Set<Int>()
+    func holdDownloadPermit(_ taskID: Int) {
+        permitLock.lock(); downloadPermits.insert(taskID); permitLock.unlock()
     }
-    private func releaseRequestPermit(_ taskID: Int) {
-        permitLock.lock(); let held = requestPermits.remove(taskID) != nil; permitLock.unlock()
+    private func releaseDownloadPermit(_ taskID: Int) {
+        permitLock.lock(); let held = downloadPermits.remove(taskID) != nil; permitLock.unlock()
         if held { Task {
-            await ArchiveNetworkPolicy.requestLimiter.release()
             await ArchiveNetworkPolicy.downloadLimiter.release()
         } }
     }
@@ -103,7 +102,7 @@ private final class DownloadSessionDelegate: NSObject, URLSessionDownloadDelegat
     }
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
         let taskID = task.taskIdentifier
-        releaseRequestPermit(taskID)
+        releaseDownloadPermit(taskID)
         guard let identity = DownloadTaskIdentity(taskDescription: task.taskDescription) else { return }
         lastProgress[taskID] = nil
         guard let error else { return }
@@ -258,7 +257,6 @@ final class DownloadManager: NSObject, ObservableObject {
         let path = identity.destination(in: mediaDirectory).path
         let repository = accessRepository
         permitWaits[path] = Task { [weak self] in
-            var acquired = false
             var downloadAcquired = false
             do {
                 let detail = try await repository.detail(identifier: identity.identifier)
@@ -267,12 +265,9 @@ final class DownloadManager: NSObject, ObservableObject {
                       detail.files.contains(where: { $0.name == identity.fileName && !$0.isPrivate }) else { throw ArchiveError.missingItem }
                 try await ArchiveNetworkPolicy.downloadLimiter.acquire()
                 downloadAcquired = true
-                try await ArchiveNetworkPolicy.requestLimiter.acquire()
-                acquired = true
                 try Task.checkCancellation()
                 guard let self else {
                     task.cancel()
-                    await ArchiveNetworkPolicy.requestLimiter.release()
                     await ArchiveNetworkPolicy.downloadLimiter.release()
                     return
                 }
@@ -287,7 +282,7 @@ final class DownloadManager: NSObject, ObservableObject {
                     do {
                         try await store.upsertDownload(record)
                         upsertInMemory(record)
-                        delegate.holdRequestPermit(task.taskIdentifier)
+                        delegate.holdDownloadPermit(task.taskIdentifier)
                         task.resume()
                         resumed = true
                     } catch {
@@ -298,12 +293,10 @@ final class DownloadManager: NSObject, ObservableObject {
                     }
                 }
                 if !resumed {
-                    await ArchiveNetworkPolicy.requestLimiter.release()
                     await ArchiveNetworkPolicy.downloadLimiter.release()
                 }
             } catch {
                 task.cancel()
-                if acquired { await ArchiveNetworkPolicy.requestLimiter.release() }
                 if downloadAcquired { await ArchiveNetworkPolicy.downloadLimiter.release() }
                 guard let self else { return }
                 await serialize { [self] in
@@ -436,6 +429,7 @@ final class DownloadManager: NSObject, ObservableObject {
             case .success(let destination):
                 record.state = .completed; record.localPath = destination.path
                 record.receivedBytes = record.expectedBytes ?? record.receivedBytes; record.errorMessage = nil
+                exposeCompletedFile(&record)
             case .failure(let failure): record.state = .failed; record.errorMessage = failure.message
             }
             record.updatedAt = .now
@@ -558,6 +552,7 @@ final class DownloadManager: NSObject, ObservableObject {
                 record.state = record.state == .completed ? .missing : .failed
                 record.errorMessage = "The download is unavailable on this device. Try again."
             } else { active.forEach { $0.cancel() } }
+            if record.state == .completed { exposeCompletedFile(&record) }
             await persistRecoverably(record)
             reconciled.append(record)
         }
@@ -594,14 +589,18 @@ final class DownloadManager: NSObject, ObservableObject {
         let previous = URL(fileURLWithPath: record.localPath)
         guard previous.deletingLastPathComponent().lastPathComponent == mediaDirectory.lastPathComponent else { return nil }
         let name = previous.lastPathComponent
+        let managedName = name.components(separatedBy: "--").last ?? name
         guard Self.isManagedFileName(name) else { return nil }
         let legacyName = Self.localURL(key: record.key, fileName: record.fileName, directory: mediaDirectory).lastPathComponent
         let suffix = String(legacyName.dropFirst(record.key.count))
-        let stem = suffix.isEmpty ? name : String(name.dropLast(suffix.count))
-        guard name.hasSuffix(suffix),
+        let stem = suffix.isEmpty ? managedName : String(managedName.dropLast(suffix.count))
+        guard managedName.hasSuffix(suffix),
               stem == record.key || (stem.hasPrefix(record.key + "-")
                 && UUID(uuidString: String(stem.dropFirst(record.key.count + 1))) != nil) else { return nil }
-        let candidate = mediaDirectory.appendingPathComponent(name)
+        var candidate = mediaDirectory.appendingPathComponent(name)
+        if !FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = displayURL(fileName: record.fileName, managedName: name)
+        }
         guard candidate.path != record.localPath,
               let attributes = regularMediaFileAttributes(candidate),
               let bytes = (attributes[.size] as? NSNumber)?.int64Value,
@@ -609,8 +608,28 @@ final class DownloadManager: NSObject, ObservableObject {
         return candidate
     }
 
+    private func displayURL(fileName: String, managedName: String) -> URL {
+        let raw = URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
+        let label = String(raw.map { $0.isLetter || $0.isNumber || $0 == " " || $0 == "_" ? $0 : "_" }.prefix(80))
+        return mediaDirectory.appendingPathComponent((label.isEmpty ? "Download" : label) + "--" + managedName)
+    }
+
+    private func exposeCompletedFile(_ record: inout DownloadRecord) {
+        let source = URL(fileURLWithPath: record.localPath)
+        guard regularMediaFileAttributes(source) != nil,
+              !source.lastPathComponent.contains("--") else { return }
+        let destination = displayURL(fileName: record.fileName, managedName: source.lastPathComponent)
+        do {
+            try FileManager.default.moveItem(at: source, to: destination)
+            record.localPath = destination.path
+        } catch {
+            Self.logger.error("Download display name not updated: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     nonisolated private static func isManagedFileName(_ name: String) -> Bool {
-        name.range(of: "^[a-f0-9]{64}(?:-[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12})?(?:\\.[a-z0-9]{1,8})?$",
+        let name = name.components(separatedBy: "--").last ?? name
+        return name.range(of: "^[a-f0-9]{64}(?:-[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12})?(?:\\.[a-z0-9]{1,8})?$",
                    options: .regularExpression) != nil
     }
     private func upsertInMemory(_ record: DownloadRecord) {

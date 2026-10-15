@@ -181,7 +181,7 @@ final class OriginalVideoControlsView: UIView {
 
     func setMuted(_ muted: Bool) {
         muteButton.configuration?.image = Self.symbol(muted ? "speaker.slash.fill" : "speaker.wave.2.fill", size: Metrics.smallGlyph)
-        muteButton.accessibilityLabel = muted ? "Un-mute" : "Mute"
+        muteButton.accessibilityLabel = muted ? "Unmute" : "Mute"
     }
 
     func setPictureInPictureAvailable(_ available: Bool) {

@@ -3,6 +3,16 @@ import MediaPlayer
 import XCTest
 @testable import Funston
 
+private final class HeldAudioResource: NSObject, AVAssetResourceLoaderDelegate {
+    func resourceLoader(_ resourceLoader: AVAssetResourceLoader,
+                        shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest) -> Bool { true }
+    func item() -> AVPlayerItem {
+        let asset = AVURLAsset(url: URL(string: "funston-stalled-test://recording.wav")!)
+        asset.resourceLoader.setDelegate(self, queue: DispatchQueue(label: "Held test audio"))
+        return AVPlayerItem(asset: asset)
+    }
+}
+
 @MainActor
 final class PlaybackLifecyclePolishTests: XCTestCase {
     private func fixture(corrupt: Bool = false, seconds: Int = 10) async throws -> (SQLiteStore, DownloadManager, DownloadRecord) {
@@ -104,5 +114,70 @@ final class PlaybackLifecyclePolishTests: XCTestCase {
         try await until { playback.phase == .paused }
         XCTAssertEqual(player.currentTime().seconds, 20, accuracy: 0.05)
         XCTAssertFalse(playback.wantsToPlay)
+    }
+
+    func testStalledPreparationBecomesRetryableAndRetryCanPlay() async throws {
+        let (store, downloads, record) = try await fixture(seconds: 60)
+        let readyAsset = AVURLAsset(url: URL(fileURLWithPath: record.localPath))
+        _ = try await readyAsset.load(.isPlayable)
+        let held = HeldAudioResource()
+        let player = AVPlayer()
+        var attempts = 0
+        let playback = PlaybackController(store: store, downloads: downloads, player: player,
+            audioSessionDeactivator: {},
+            artworkLoader: { _ in throw URLError(.cancelled) }, preparationTimeout: .seconds(2),
+            playerItemFactory: { _ in
+                attempts += 1
+                return attempts == 1 ? held.item() : AVPlayerItem(asset: readyAsset)
+            })
+        playback.playDownloaded(record)
+        try await until { if case .failed = playback.phase { return true }; return false }
+        guard case .failed(let message) = playback.phase else { return XCTFail("Expected a retryable timeout") }
+        XCTAssertTrue(message.contains("taking too long"))
+        XCTAssertFalse(playback.wantsToPlay)
+        XCTAssertEqual(playback.context?.file.name, record.fileName)
+        playback.play()
+        try await until { playback.phase == .playing }
+        try await Task.sleep(for: .milliseconds(2200))
+        XCTAssertEqual(playback.phase, .playing)
+        XCTAssertGreaterThan(player.currentTime().seconds, 0)
+        playback.pause()
+    }
+
+    func testPausedPreparationDoesNotTimeoutAndPlayStartsANewDeadline() async throws {
+        let (store, downloads, record) = try await fixture()
+        let held = HeldAudioResource()
+        let playback = PlaybackController(store: store, downloads: downloads,
+            audioSessionDeactivator: {},
+            artworkLoader: { _ in throw URLError(.cancelled) }, preparationTimeout: .milliseconds(200),
+            playerItemFactory: { _ in held.item() })
+        playback.playDownloaded(record)
+        try await Task.sleep(for: .milliseconds(50))
+        playback.pause()
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(playback.phase, .paused)
+        playback.play()
+        try await until { if case .failed = playback.phase { return true }; return false }
+    }
+
+    func testReplacingStalledItemCancelsItsDeadline() async throws {
+        let (store, downloads, record) = try await fixture(seconds: 60)
+        let readyAsset = AVURLAsset(url: URL(fileURLWithPath: record.localPath))
+        _ = try await readyAsset.load(.isPlayable)
+        let held = HeldAudioResource()
+        var attempts = 0
+        let playback = PlaybackController(store: store, downloads: downloads,
+            audioSessionDeactivator: {},
+            artworkLoader: { _ in throw URLError(.cancelled) }, preparationTimeout: .seconds(2),
+            playerItemFactory: { _ in
+                attempts += 1
+                return attempts == 1 ? held.item() : AVPlayerItem(asset: readyAsset)
+            })
+        playback.playDownloaded(record)
+        playback.playDownloaded(record)
+        try await until { playback.phase == .playing }
+        try await Task.sleep(for: .milliseconds(2200))
+        XCTAssertEqual(playback.phase, .playing)
+        playback.pause()
     }
 }

@@ -392,7 +392,7 @@ final class ArtifactPDFController: UIViewController, UIGestureRecognizerDelegate
             loadingPDF = false
             guard let result else {
                 downloads.releaseLocalURL(url)
-                showStatus("This PDF cannot be opened", detail: "It may be locked or damaged. Open the item on Internet Archive for other formats.")
+                showStatus("Could not open PDF", detail: "It may be locked or damaged. Open the item on Internet Archive for other formats.")
                 return
             }
             lease = url
@@ -694,7 +694,7 @@ private final class PDFTextReaderController: UIViewController {
                 loadPage()
             }
         }
-        let item = UIBarButtonItem(title: "Text Engine", menu: UIMenu(title: "Text Recognition", image: UIImage(systemName: "text.viewfinder"), children: actions))
+        let item = UIBarButtonItem(title: "Text Recognition", menu: UIMenu(title: "Text Recognition", image: UIImage(systemName: "text.viewfinder"), children: actions))
         item.accessibilityLabel = "Text engine"
         item.accessibilityValue = textEnginePreference.title(ocrEngines: textEngineDescriptors)
         navigationItem.rightBarButtonItem = item

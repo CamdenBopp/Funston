@@ -2,6 +2,29 @@ import UIKit
 import Combine
 import QuickLook
 
+/// Recent queries stay on this device and are separated by collection.
+@MainActor
+struct SearchHistory {
+    let defaults: UserDefaults
+    let collection: String?
+    private var storageKey: String { "searchHistory.v1." + (collection ?? "__all") }
+    var queries: [String] { defaults.stringArray(forKey: storageKey) ?? [] }
+
+    func remember(_ query: String) {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        defaults.set(Array(([query] + queries.filter { $0.caseInsensitiveCompare(query) != .orderedSame }).prefix(30)), forKey: storageKey)
+    }
+    func remove(_ query: String) {
+        defaults.set(queries.filter { $0.caseInsensitiveCompare(query) != .orderedSame }, forKey: storageKey)
+    }
+    func clear() { defaults.removeObject(forKey: storageKey) }
+    func matching(_ text: String) -> [String] {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return queries.filter { text.isEmpty || $0.localizedStandardContains(text) }
+    }
+}
+
 @MainActor
 final class SearchController: FunstonListController, UISearchResultsUpdating, UISearchBarDelegate {
     private let repository: CachingArchiveRepository
@@ -10,6 +33,10 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
     private let collection: ArchiveCollection?
     private let open: (ArtifactSummary) -> Void
     private let search = UISearchController(searchResultsController: nil)
+    private let history: SearchHistory
+    private let suggestionRepository = NetworkArchiveRepository()
+    private var suggestionTask: Task<Void, Never>?
+    private var completions: [String] = []
     private var scope: MediaType = .all
     private var items: [ArtifactSummary] = []
     private var pages: [Int: SearchPage] = [:]
@@ -30,14 +57,15 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
         self.init(repository: environment.repository, collection: collection, settings: environment.settings, open: open)
     }
 
-    init(repository: CachingArchiveRepository, collection: ArchiveCollection? = nil, settings: SettingsStore = .shared, open: @escaping (ArtifactSummary) -> Void) {
+    init(repository: CachingArchiveRepository, collection: ArchiveCollection? = nil, historyDefaults: UserDefaults = .standard, settings: SettingsStore = .shared, open: @escaping (ArtifactSummary) -> Void) {
         self.repository = repository; self.collection = collection; self.open = open
         self.settings = settings
         lastAppliedHideUnsupportedMedia = settings.hideUnsupportedMedia
+        history = SearchHistory(defaults: historyDefaults, collection: collection?.identifier)
         super.init(title: collection?.title ?? "Search")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    deinit { task?.cancel() }
+    deinit { task?.cancel(); suggestionTask?.cancel() }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -62,14 +90,75 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
         submit(debounce: false, force: true)
     }
 
-    func updateSearchResults(for searchController: UISearchController) { submit(debounce: true) }
-    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) { submit(debounce: false, force: true) }
+    func updateSearchResults(for searchController: UISearchController) {
+        submit(debounce: true)
+        loadSuggestions()
+    }
+    func updateSearchResults(for searchController: UISearchController, selecting suggestion: any UISearchSuggestion) {
+        guard let text = suggestion.localizedSuggestion else { return }
+        runSearch(text)
+    }
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) { loadSuggestions() }
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        runSearch(searchBar.text ?? "")
+    }
+
+    private func loadSuggestions() {
+        suggestionTask?.cancel()
+        completions = []
+        updateSuggestions()
+        let request = SearchRequest(text: search.searchBar.text ?? "", scope: scope, pageSize: 8, collection: collection?.identifier)
+        guard request.text.count >= 2, search.searchBar.searchTextField.isFirstResponder else { return }
+        let repository = suggestionRepository
+        suggestionTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+                let suggestions = try await repository.suggestions(request)
+                try Task.checkCancellation()
+                guard let self, self.search.searchBar.searchTextField.isFirstResponder,
+                      self.search.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == request.text,
+                      self.scope == request.scope else { return }
+                self.completions = suggestions
+                self.updateSuggestions()
+            } catch { /* Keep recent queries available when autocomplete is offline. */ }
+        }
+    }
+
+    private func updateSuggestions() {
+        let text = search.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let recent = Array(history.matching(text).prefix(6))
+        let candidates = text.isEmpty ? [] : completions
+        var seen = Set(recent.map { $0.lowercased() })
+        let suggested = candidates.filter { query in
+            seen.insert(query.lowercased()).inserted
+        }
+        search.searchSuggestions = recent.map {
+            UISearchSuggestionItem(localizedSuggestion: $0, localizedDescription: "Recent search", iconImage: UIImage(systemName: "clock"))
+        } + suggested.prefix(5).map {
+            UISearchSuggestionItem(localizedSuggestion: $0, localizedDescription: "Suggested search", iconImage: UIImage(systemName: "magnifyingglass"))
+        }
+    }
+
+    private func runSearch(_ text: String) {
+        suggestionTask?.cancel()
+        history.remember(text)
+        updateFilter()
+        search.searchBar.text = text
+        search.searchSuggestions = nil
+        search.searchBar.resignFirstResponder()
+        submit(debounce: false, force: true)
+    }
 
     private func updateFilter() {
-        let actions = [MediaType.all, .audio, .movies, .texts, .image, .software, .collection].map { type in
+        var actions = [MediaType.all, .audio, .movies, .texts, .image, .software, .collection].map { type in
             UIAction(title: type.title, state: scope == type ? .on : .off) { [weak self] _ in
-                self?.scope = type; self?.updateFilter(); self?.submit(debounce: false)
+                self?.scope = type; self?.updateFilter(); self?.submit(debounce: false); self?.loadSuggestions()
             }
+        }
+        if !history.queries.isEmpty {
+            actions.append(UIAction(title: "Clear Search History", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
+                self?.history.clear(); self?.updateFilter(); self?.updateSuggestions()
+            })
         }
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: scope.title, menu: UIMenu(title: "Media type", children: actions))
         navigationItem.rightBarButtonItem?.accessibilityLabel = "Media type, \(scope.title)"
@@ -92,6 +181,30 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
             return
         }
         fetch(request, debounce: debounce)
+    }
+
+    /// Rows from the end whose appearance starts the next page, so a fling
+    /// through the last screen meets loaded rows instead of a footer.
+    private static let pagePrefetchLookahead = 8
+
+    override func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
+        super.collectionView(collectionView, willDisplay: cell, forItemAt: indexPath)
+        loadMoreIfNeeded(displaying: indexPath.item)
+    }
+
+    /// A failed page leaves its Try Again row in charge; nothing loads on its own
+    /// until that is tapped, so a broken page can't retry in a loop.
+    private func loadMoreIfNeeded(displaying index: Int) {
+        guard firstFailure == nil, index >= rows.count - Self.pagePrefetchLookahead else { return }
+        nextPage()
+    }
+
+    /// After a page lands, the rows that would trigger the next one may already
+    /// be on screen and will never reappear, so check them here.
+    private func loadMoreIfBottomIsVisible() {
+        let visible = collectionView.indexPathsForVisibleItems.map(\.item)
+        guard let furthest = visible.max() else { return }
+        loadMoreIfNeeded(displaying: furthest)
     }
 
     private func nextPage() {
@@ -142,6 +255,7 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
 
     private func finishLoading() {
         loading = false; refreshing = false; render()
+        loadMoreIfBottomIsVisible()
     }
 
     private static func unique(_ items: [ArtifactSummary]) -> [ArtifactSummary] {
@@ -168,16 +282,15 @@ final class SearchController: FunstonListController, UISearchResultsUpdating, UI
         if !items.isEmpty, let failure = firstFailure {
             rows.append(FunstonRow(id: "__retry:\(failure.page)", title: "Try Again", subtitle: failure.message))
         }
-        if page?.hasMore == true {
-            rows.append(FunstonRow(id: "__pagination", title: loading ? "Loading…" : "Load More", navigates: !loading))
+        if page?.hasMore == true, firstFailure == nil {
+            rows.append(FunstonRow(id: "__pagination", title: "Loading more…", navigates: false, centered: true))
         }
         apply(rows)
     }
 
     override func selected(_ id: String) {
-        if id == "__pagination" { nextPage() }
-        else if id.hasPrefix("__retry:"), let page = Int(id.dropFirst("__retry:".count)) { retryPage(page) }
-        else if id.hasPrefix("artifact:"), let artifact = items.first(where: { $0.identifier == String(id.dropFirst("artifact:".count)) }) { open(artifact) }
+        if id.hasPrefix("__retry:"), let page = Int(id.dropFirst("__retry:".count)) { retryPage(page) }
+        else if id.hasPrefix("artifact:"), let artifact = items.first(where: { $0.identifier == String(id.dropFirst("artifact:".count)) }) { history.remember(search.searchBar.text ?? ""); open(artifact) }
     }
 }
 
