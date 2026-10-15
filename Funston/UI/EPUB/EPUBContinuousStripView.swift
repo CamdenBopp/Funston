@@ -33,6 +33,8 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
     static let focusTopInset: CGFloat = EPUBPageView.margin
 
     weak var stripDelegate: EPUBContinuousStripDelegate?
+    /// Posts to VoiceOver; tests substitute a recorder.
+    var postAccessibilityNotification: (UIAccessibility.Notification, Any?) -> Void = { UIAccessibility.post(notification: $0, argument: $1) }
     private(set) var chapters: [Chapter] = []
     private var columns: [Int: EPUBChapterColumn] = [:]
     private var elementCache: [Key: UIView] = [:]
@@ -184,9 +186,9 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
         EPUBAccessibilityLog.shared.record("continuous strip accessibilityScroll forward=\(forward) y=\(contentOffset.y)")
         guard page(forward: forward) else { return false }
         if let position = firstVisible {
-            UIAccessibility.post(notification: .pageScrolled, argument: stripDelegate?.continuousStrip(self, describeOffset: position.offset, spineIndex: position.spineIndex) ?? "")
+            postAccessibilityNotification(.pageScrolled, stripDelegate?.continuousStrip(self, describeOffset: position.offset, spineIndex: position.spineIndex) ?? "")
         }
-        if let first = firstVisibleElement { UIAccessibility.post(notification: .layoutChanged, argument: first) }
+        if let first = firstVisibleElement { postAccessibilityNotification(.layoutChanged, first) }
         EPUBAccessibilityLog.shared.recordFocusLater(context: "continuous strip scroll")
         return true
     }

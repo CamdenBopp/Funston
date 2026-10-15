@@ -33,6 +33,8 @@ final class EPUBPageStripView: UIScrollView, UIScrollViewDelegate {
 
     weak var stripDelegate: EPUBPageStripDelegate?
     var isRightToLeft = false
+    /// Posts to VoiceOver; tests substitute a recorder.
+    var postAccessibilityNotification: (UIAccessibility.Notification, Any?) -> Void = { UIAccessibility.post(notification: $0, argument: $1) }
     private(set) var entries: [Entry] = []
     private(set) var currentIndex = 0
     private var pages: [EPUBPlacement: EPUBStripPage] = [:]
@@ -213,8 +215,8 @@ final class EPUBPageStripView: UIScrollView, UIScrollViewDelegate {
         }
         EPUBAccessibilityLog.shared.record("strip accessibilityScroll direction=\(direction.rawValue) forward=\(forward) from index \(currentIndex)")
         guard turn(forward: forward, animated: false), let placement = currentPlacement else { return false }
-        UIAccessibility.post(notification: .pageScrolled, argument: stripDelegate?.strip(self, describe: placement) ?? "")
-        if let first = firstElementOnShownPage { UIAccessibility.post(notification: .layoutChanged, argument: first) }
+        postAccessibilityNotification(.pageScrolled, stripDelegate?.strip(self, describe: placement) ?? "")
+        if let first = firstElementOnShownPage { postAccessibilityNotification(.layoutChanged, first) }
         EPUBAccessibilityLog.shared.recordFocusLater(context: "strip scroll")
         return true
     }
