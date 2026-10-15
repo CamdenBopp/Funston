@@ -23,7 +23,7 @@ Third-party components on the EPUB path, from the app's resolved package list:
 | Readium swift-toolkit (Shared, Streamer) | 3.8.0 | BSD-3 | Opens the archive, parses container, package document and navigation; serves resources |
 | ReadiumFuzi | 4.0.0 | BSD-3 | XML and XPath used by Readium |
 | ReadiumZIPFoundation | 3.0.1 | MIT | Zip access used by Readium |
-| SwiftSoup | 2.13.7 | MIT | HTML parsing of chapter XHTML for the legacy engine |
+| SwiftSoup | 2.13.7 | MIT | HTML parsing of chapter XHTML in both engines (the package's only dependency) |
 | iosMath | 2.3.1 | MIT | Rasterises MathML converted to LaTeX |
 | Lexbor (vendored C package) | repository copy | per its NOTICE | Present in the repository; the EPUB pipeline at this commit does not call it (one comment anticipates a future adapter) |
 
@@ -32,6 +32,7 @@ Claims checked against code:
 - The README says the app renders "with CoreText, no WebView". Verified for text: every page is drawn with Core Text into a Core Graphics context. Not true for SVG: inline SVG and SVG image files are rasterised by offscreen WKWebViews, and fixed-layout pages are shown in a web view. MathML goes through iosMath. Online web-novel sources also fetch with WKWebView; that is outside this study.
 - The README says iOS 18.0+ with Swift 6.0 and Xcode 16; the repository's orientation file for coding agents says iOS 17.0+. The deployment target in the project file was not inspected, so the minimum is unverified.
 - The documentation describes two rendering paths. Verified: a legacy engine builds one attributed string per chapter and paginates it with Core Text framesetting; a newer engine in the YueduCoreText package computes CSS, builds a box tree and fragments it into pages. A compile-time setting selects per-chapter "automatic" admission: the newer engine is tried first and a chapter that it cannot render, or that fails or times out, goes to the legacy engine. Both are studied because both ship, and the fallback decides which one a given Gutenberg chapter actually gets.
+- A project note dated 2026-09-08 says EPUB had been withdrawn to the legacy engine; the code at this commit pins automatic admission of the box-model engine, so the note is stale and the shipped behaviour is unverified either way.
 - The orientation file claims blind users and lists VoiceOver rules for the SwiftUI chrome. Verified: the reading surface itself is one accessibility element per page. Section 7 covers what that means.
 - The documentation says reading position is a spine index plus character offset and never a page index. Verified in the position type, the page data source and the persistence store; the project's own incident notes record the bugs that preceded that rule.
 
@@ -65,7 +66,7 @@ The engine. `CoreTextPageEngine` owns a five-entry distance-LRU of chapter layou
 
 Hosting. `CoreTextPagedView` wraps a `UIPageViewController` whose data source asks the engine for the page before or after the visible page's position, never by index; a write gate serialises changes to the page stack so UIKit's own transitions are never interrupted. `CoreTextPageViewController` hosts one `CoreTextPageView`, which draws the page in `draw(_:)` (or displays a prerendered bitmap), owns gesture recognisers for tap, long press and handle drag, the edit menu, overlays for selection, annotations, note markers and read-aloud highlight, and the accessibility contract. Continuous scroll slices the chapter string into roughly 2000-point chunks shown in a `UICollectionView`, with the same selection and annotation code and a one-element-per-chunk accessibility contract.
 
-The browser engine. `BrowserLayoutPageEngine` (app) feeds chapter XHTML and stylesheets to the package's `HTMLLayoutDocument`, which computes styles, builds a box tree, lays out inline content with Core Text typesetting and blocks with its own layout, fragments into pages and emits a display list per page. `BrowserLayoutPageView` paints a display list with Core Graphics and offers link hit-testing, a text interaction controller for selection, a highlight overlay and the same accessibility contract. A capability scanner decides per chapter whether this engine is admitted; the named fallback reasons are unsupported SVG, an unsupported layout property, an image-only document, no renderable content, a resource failure, a layout failure, a 5-second timeout, and an active whole-chapter translation. A rejected chapter goes to the legacy engine. Survey agent C's findings are in sections 4 and 5.
+The browser engine. `BrowserLayoutPageEngine` (app) feeds chapter XHTML and stylesheets to the package's `HTMLLayoutDocument`, which parses with SwiftSoup, computes styles (discarding the dark colour-scheme rules it parsed), builds a box tree, lays out inline content with Core Text typesetting and blocks with its own layout, fragments into pages and emits a display list per page. `BrowserLayoutPageView` paints a display list with Core Graphics and offers link hit-testing, a text interaction controller for selection, a highlight overlay and the same accessibility contract. A capability scanner decides per chapter whether this engine is admitted; the named fallback reasons are unsupported SVG, an unsupported layout property, an image-only document, no renderable content, a resource failure, a layout failure, a 5-second timeout, and an active whole-chapter translation. A rejected chapter goes to the legacy engine. Survey agent C's findings are in sections 4 and 5.
 
 Read-aloud, annotations, position. `TTSCoordinator` and `SystemTTSEngine` drive `AVSpeechSynthesizer` over text split by `TTSTextChunker`; the spoken segment is highlighted by searching its text within the visible page's range, disambiguated by an expected chapter offset. Bookmarks, underlines and highlights are one `Bookmark` list per book with a (spine, offset, length) range. The reading position is a `(spineIndex, charOffset)` pair written as JSON per book, debounced, and flushed when the reader closes.
 
@@ -186,7 +187,7 @@ Verified: order offset 10,000 per stylesheet; cyclic and remote imports are reco
 
 Spec: CSS Cascade Level 4 §6 (order of appearance), CSS Syntax Level 3 (@import placement; the candidate inlines wherever it appears, which is harmless).
 
-Edge cases: a stylesheet that fails to load is skipped; `@media` blocks other than the dark-scheme query pass to the CSS parser (YUE-10 and YUE-73).
+Edge cases: a stylesheet that fails to load is skipped; `@media` blocks other than the dark-scheme query pass to the CSS parser (YUE-10, YUE-65 and YUE-66).
 
 Test: two sheets setting `p { color }` differently; the later wins. A sheet importing itself terminates. A `@font-face` family referenced by no element is never read from the archive.
 
@@ -214,7 +215,7 @@ Test: `body { color: #333 } @media (prefers-color-scheme: dark) { body { color: 
 
 #### YUE-11 Supported properties and their mapping
 
-The reader shall map at least the following properties onto text attributes and paragraph geometry. This is the legacy cascade's verified set; the browser engine's larger set is in YUE-73.
+The reader shall map at least the following properties onto text attributes and paragraph geometry. This is the legacy cascade's verified set; the browser engine's set is in YUE-68.
 
 | Property | Values understood | Becomes |
 | --- | --- | --- |
@@ -439,7 +440,7 @@ Test: at any font size the last baseline of a full text page is at the same y ac
 
 The paginator shall create one framesetter per chapter and slice pages by: skipping a forced-break marker at the cursor; limiting the search range to the next forced break; probing the frame to place a float notch if a float marker falls in range; creating a frame for the search range in the (possibly notched) page path; taking the frame's visible string range as the proposed advance (at least one character, so an unbreakable run cannot stall); adjusting the end so a surrogate pair is not split and a line does not begin with CJK punctuation that must not start a line; pulling the end back to the start of a keep-together range the boundary falls inside; recording the page range; and repeating until the string is consumed or a requested page cap is reached. After slicing it shall create and keep one frame plus line origins per page for drawing and hit-testing.
 
-Verified. Spec: none; this is the Core Text idiom. Verified absence: an orphan and widow pass exists in the source but is never called, so no orphan or widow control is active in the legacy engine; the project's notes say it conflicts with filling every page to the last grid line. Funston shall choose between bottom-aligned pages and orphan control, or specify the browser engine's approach (YUE-78).
+Verified. Spec: none; this is the Core Text idiom. Verified absence: an orphan and widow pass exists in the source but is never called, so no orphan or widow control is active in the legacy engine; the project's notes say it conflicts with filling every page to the last grid line. Funston shall choose between bottom-aligned pages and orphan control, or build orphan control on the browser engine's walker (YUE-74).
 
 Test: a 20,000-character chapter paginates identically twice; a chapter consisting of one 10,000-character word advances at least one character per page and terminates.
 
@@ -751,7 +752,171 @@ Test: start narration, receive a call, hang up: narration resumes; unplug headph
 
 ### The browser engine
 
-YUE-65 to YUE-80 are reserved for the CSS box-model engine in the YueduCoreText package: its CSS parser and selector support, computed style and units, box tree, inline and block layout, page fragmentation (break rules, orphans and widows, tall images), display list and painting, viewport estimation in scroll mode, chapter admission and fallback, source mapping, selection and fonts. The survey of that package had not reported when this version was committed; the section will follow in a later commit with the same IDs, and the merged spec should not renumber around it.
+The newer engine lives in the YueduCoreText package and is the one the app tries first for every EPUB chapter. It computes CSS on a parsed tree, builds a box tree, breaks lines with Core Text and lays out blocks itself, fragments into pages, and paints a display list. The requirements below describe what it does and what Funston should take or leave; where the engine falls short of CSS, the deviation is named.
+
+#### YUE-65 Admit a chapter against a closed capability vocabulary, and fall back with a named reason
+
+A renderer that cannot honour a construct shall say so per chapter with a named reason rather than render it wrongly; the candidate's engine evaluates every chapter before layout and, on rejection or failure, hands the whole chapter to the legacy engine, never mixing engines within one chapter.
+
+Verified rejection facts, any one sufficient: any `@media` block anywhere in any active stylesheet or inline sheet, whether or not it would match; the DOM contains `script`, `iframe`, `object`, `embed`, `canvas` or `audio`; `math`; `table` or any table part; an `svg` that is not a single-`image` wrapper; among rules that match at least one element (head and hidden subtrees included) and in every inline `style`, a declaration with `position` absolute, fixed or sticky, `display` containing table, flex or grid, any flex or grid property or `gap`, any value containing calc(, min(, max( or clamp( (except `text-indent`, judged separately), or `writing-mode` vertical in a horizontal book; in a vertical book, any writing-mode other than vertical-rl or inherit, unsupported text-combine values, text-orientation other than mixed, and physical min-height or min-width; ruby outside the supported subset (YUE-71); a float that is not a replaced image, has no explicit width and is not a first-letter initial, or any float nested in a float; a `text-indent` the engine cannot express on a block that owns inline content. Layout-time failures (empty body, a non-replaced float taller than the page, ruby or indent violations found on the final tree) also reject. The app adds a 5-second timeout on building the box tree and another on the first page, treats zero pages as "image-only" when the markup contains `img` or `svg` and "empty" otherwise, and treats any thrown error as fallback; a chapter with whole-chapter translation active goes to the legacy engine without evaluation. Font-face demand for the visible tree is collected in the same pass.
+
+Why: the engine stays honest about what it renders, and diagnostics distinguish "unsupported" from "empty" from "failed". The cost: one `@media screen` rule, which most Gutenberg stylesheets carry, sends the entire chapter to the older engine, so in practice many Gutenberg chapters are rendered by the legacy path. Funston shall evaluate media queries (`all`, `screen`, `not print`, width and orientation features) and degrade per declaration, not per chapter.
+
+Spec: Media Queries Level 4 and 5 (evaluation); CSS Conditional Rules Level 3 (`@media`, `@supports`).
+
+Test: a chapter whose only stylesheet contains `@media screen { p { margin: 0 } }` is rendered by the primary engine with the margin applied; a chapter with a `table` renders its table (Funston) rather than falling back.
+
+#### YUE-66 CSS parser scope
+
+The reader's CSS parser shall at least: strip comments (including an unterminated trailing one); drop `@charset`, `@namespace` and `@import` statements (imports having been inlined earlier, YUE-08); parse `@media (prefers-color-scheme: dark)` blocks into a separately flagged rule set and remove every other block at-rule (`@supports`, other `@media`, `@page`, leftover `@font-face`); parse flat rules as selector list then declaration block; split declarations on semicolons only at parenthesis depth zero and outside quotes so data URIs survive; lowercase property names; detect `!important`; within one block let an important declaration beat a normal one for the same property regardless of order and otherwise keep the last; support compound selectors joined by descendant, child, adjacent-sibling and general-sibling combinators, each compound holding a type selector, `#id`, any number of `.class`, attribute selectors with presence and the `=`, `~=`, `|=`, `^=`, `$=`, `*=` operators (CSS namespace `epub|type` and escaped `epub\:type` normalised to the DOM attribute name; a case flag parsed but comparison kept case-sensitive), the universal selector, and `:first-child` and `:first-of-type` as trailing suffixes; route `::first-letter` and `:first-letter` to a separate rule list; reject any selector containing anything else and report it through a diagnostic callback; match right to left with backtracking over ancestors for descendant steps.
+
+Verified. Verified deviations: specificity is a single integer (100 per id, 10 per class, attribute, `:first-child` or `:first-of-type`, 1 per type selector, summed over all compounds), not the CSS three-tuple, so eleven classes outrank one id; rule order is global across the active sheets, which is correct; sheets with a `media` attribute other than empty or `all`, alternate sheets and failed loads are excluded, which is right for `print` and wrong for `screen`; the dark rule set is parsed and then discarded by this engine (the legacy engine honours it, YUE-10); `:lang()`, `:not()`, `:nth-*`, `::before`, `::after` and `::first-line` are unsupported.
+
+Spec: CSS Syntax Level 3 (parsing), Selectors Level 4 (selectors and specificity as a three-tuple), CSS Cascade Level 4.
+
+Test: `#a` beats `.b.c.d.e.f.g.h.i.j.k.l` (Funston rule); `p + p` and `h2 ~ p` match by element siblings; `[epub|type~="noteref"]` matches; `p:not(.x)` is reported, not silently matched.
+
+#### YUE-67 Cascade and the reader's overrides
+
+For each element the reader shall compute: inherited values from the parent; the user-agent basis for the tag; the `rt` half-size rule; HTML presentational hints (only `img` `width` and `height` as unsigned pixels or percentages); matched author rules sorted by specificity then order, normal declarations; inline `style` normal declarations; matched rules' important declarations; inline important declarations; and within each declaration block apply `font-size` first so em and percentage line heights resolve against the element's own size. Reader settings (text colour, background colour, font families, alignment, line-height multiplier, line spacing, paragraph spacing, letter spacing, bold) shall seed the style of the implicit parent of `html`, so an author `color`, `font-family`, `text-align` or `line-height` on `body` or below wins over the reader's.
+
+Verified. The reader's bold is applied as a floor at font resolution; reader letter spacing becomes a kern; reader paragraph spacing is added after each block's lines; reader line spacing between lines; the app sets the default alignment to justified. The inheritance set is: font size, families, weight, italic, colour, text-align, line-height (both the resolved length and a unitless multiplier), white-space, the reader fields, ruby-align, ruby-position, ruby-merge, text-combine-upright, text-indent, hyphens, language, overflow-wrap, word-break, text-align-last; backgrounds, borders, margins, padding, width, height, float and clear are not inherited.
+
+Spec: CSS Cascade Level 4 §6 (cascade sorting), §7 (inheritance); HTML living standard §15.3 (presentational hints).
+
+Why it matters to Funston: this is the opposite of the current EPUB controller, which turns publisher styles off so Dynamic Type and the theme apply everywhere. The merged spec needs a rule for which author properties survive a reader override (colour and font-family probably not; alignment and indents probably yes).
+
+Test: `body { color: #333 }` paints #333 under a dark theme unless the reader override is on (Funston setting); `p { font-size: 80% }` with a reader size of 20 gives 16.
+
+#### YUE-68 Computed properties, units and defaults
+
+The reader shall compute at least: display (none, block, inline, inline-block), color, background-color, background-image, background-size (cover, contain, auto), background-position (two keywords or percentages), background-repeat, background-attachment, float (none, left, right), clear, font-size, font-family, font-weight, font-style, text-align, text-align-last, hyphens (and vendor-prefixed forms), overflow-wrap and word-wrap, word-break, text-indent, line-height, white-space, ruby-align, ruby-position, ruby-merge (and prefixes), text-combine-upright (and legacy forms), width, height, min-height, max-height, max-width, max-inline-size, min-inline-size, the four margins and padding sides and their shorthands, the four border widths, colours and styles and the `border`, `border-*` side, `border-width`, `border-style`, `border-color`, `border-radius` and `background` shorthands; logical margin, padding and inline-size properties mapped to physical ones for the writing mode before application. Everything else shall be ignored and, where it changes layout materially, recorded as a diagnostic.
+
+Verified units: px, pt (×96/72), em, rem, percentage, unitless (as px), `auto`; calc(), min(), max(), clamp(), ex, ch, vw, vh, vmin, cm, mm, in and pc are dropped. Font-size keywords small 0.833, medium 1, large 1.2, x-large 1.5, xx-large 2 of the root, smaller 0.833 and larger 1.2 of the parent; xx-small and x-small absent. Font weights: normal 400, bold 700, bolder +100 (cap 900), lighter −100 (floor 100), numbers clamped. Colours: `#rgb`, `#rrggbb`, comma-form `rgb()` and `rgba()`, twelve named colours (black, white, red, green, blue, gray, grey, yellow, orange, purple, cyan, magenta); no hsl(), no 4- or 8-digit hex; `transparent` and `currentcolor` resolve to "no value", which leaves an earlier authored value in place (deviation: `background-color: transparent` cannot clear a background). `inherit`, `initial` and `unset` are honoured only for text-align, hyphens, text-indent, line-height and text-combine-upright. Line-height: normal clears to ascent plus descent; a unitless number is an inherited multiplier recomputed per descendant; a length or percentage becomes an absolute inherited value. User-agent basis: headings 32, 24, 18.72, 16, 13.28, 10.72 px at weight 700 with margins 0.67, 0.83, 1, 1.33, 1.67, 2.33 em; `p` 1em vertical margins; `body` 8px margins; ul, ol 40px left padding; blockquote 40px side margins; hr 100% width; pre white-space pre; inline list (span, a, em, i, strong, b, u, s, small, code, q, cite, mark, time, sub, sup, abbr, label, br, ruby and parts); img, svg, canvas inline-block; head, script, style, title, meta, link, template hidden; any unknown tag block. The root size is the reader's font size, or 17 pt when the body's inline style carries a vendor "fixed font size" property; a `font-size` on `html` changes the rem base for the whole tree.
+
+Verified absent (zero handlers): text-decoration, letter-spacing (authored), word-spacing, vertical-align, list-style, text-transform, direction, unicode-bidi, visibility, opacity, box-sizing, break-* and page-break-*, orphans, widows, the `font`, `list-style`, `text-decoration` and `outline` shorthands.
+
+Spec: CSS Values and Units Level 4 (units), CSS Fonts Level 4 (font-size keywords and weights), CSS Color Level 4 (colour syntax), CSS 2.1 §10.8 (line-height), HTML living standard §15.3 (default sheet; note the candidate's absolute heading sizes versus the standard's em values).
+
+Test: `h1` with no CSS is 32 px tall regardless of reader size in the candidate, 2em in a browser; Funston shall scale headings with the reader size. `color: hsl(0 0% 0%)` is ignored; `font-size: xx-small` is ignored.
+
+#### YUE-69 Box tree
+
+The reader shall build block boxes, anonymous block boxes for inline runs, and inline runs, preserving the document's inline-block-inline interleaving; shall give the first visible inline group of a container the first formatted line for `text-indent`; shall treat `img` as inline-block (an inline run with a run delegate) unless floated or display:block, when it becomes its own block box carrying the image, node id and link; shall accept an `svg` wrapping exactly one `image` child and no drawable child as a raster image; shall rewrite `video` into a placeholder image (200 to 640 points wide, aspect clamped, at least 120 tall) with its source, poster and title recorded; shall materialise `::first-letter` by scanning the leading text (stopping at a block, float, image, `br` or ruby), collecting leading whitespace, leading punctuation, the first non-punctuation character and immediately following punctuation, and wrapping that prefix in a synthetic inline (or, if floated, block) node with zero margins; shall preserve inline backgrounds, borders and horizontal padding across line flattening by recording the owning decoration on each run and reserving the edge padding and border with zero-length edge runs (object replacement character plus word joiner) that add nothing to the source text; and shall maintain a float context per block formatting context.
+
+Verified. Verified deviations: a block-level or display:none element inside an inline element is skipped entirely, so content such as a `div` inside a `span` is lost (Funston shall split the inline and keep the block); no list markers, counters or generated content; no `::before` or `::after`; an inline `img` whose loader returns no image is dropped with no alt rendering, and the public document API treats a missing image resource as a hard failure before layout while the app path omits the image.
+
+Spec: CSS 2.1 §9.2 (box generation and anonymous boxes), §12.5 (lists: markers absent here), CSS Pseudo-Elements Level 4 (first-letter punctuation rules).
+
+Test: `<span>a<div>b</div>c</span>` renders a, b (as a block), c; `<p>"Once</p>` with a first-letter rule styles `"O`; `<li>` in `<ol>` shows numbers (Funston rule).
+
+#### YUE-70 Inline layout and line breaking
+
+The reader shall build one attributed string per block with font, colour, hyphenation, language and emergency-wrap attributes per run and run delegates (object replacement character) for images, ruby groups, text-combine cells and decoration edges; create a typesetter and take suggested line breaks, then adjust each: try hyphenation candidates first; refuse a suggested break inside an alphabetic word unless emergency wrapping is set, in which case force the whole word onto the line keeping its trailing collapsible spaces; snap the count down to a grapheme cluster boundary; if the measured width exceeds the limit, reduce the count until it fits and re-snap; let a cluster wider than the line overflow rather than split; quantise measured widths (clear the low 16 mantissa bits) so layout is deterministic across runs; cap a paragraph at 10,000 lines; swap soft hyphens for word joiners before shaping so the shaper never shows them, and add a presentation-only hyphen glyph (never in the source range) when a hyphenation break is taken. Hyphenation policy per run follows `hyphens`: none, manual (authored soft hyphens), auto (the system hyphenation locator with the run's language locale, only if available for that locale); a candidate spanning a change of language or hyphens policy is refused. Justification is by added kern on the trailing unit of each space cluster, or, with no spaces, on each gap between separable clusters where at least one side is CJK; residuals under 0.5 point are ignored; the paragraph's last line is never justified unless `text-align-last` is justify. Alignment values: left, right, center, justify, start as natural, end as right. `text-indent` applies only to the first formatted line of the container, in horizontal writing, percentages against the container's content width, negatives allowed. White-space modes: normal and nowrap collapse the five collapsible characters to one space; pre and pre-wrap keep text verbatim; pre-line collapses horizontal whitespace but keeps line feeds; nowrap on any run makes the line width unbounded. Line box height follows a half-leading model: the paragraph strut (font and computed line height) and each text range contribute above and below extents; a range given a different font keeps at least its own ink height; atomic runs and vertical lines use shaped ascent and descent.
+
+Verified. Verified deviations: `end` maps to right regardless of direction, so an RTL paragraph is not right-aligned by default; `direction` and `unicode-bidi` are not handled, so bidi comes only from the typesetter's paragraph-level resolution; authored letter-spacing and word-spacing are not parsed; `vertical-align` is not parsed, so inline images sit with their bottom on the baseline (ascent equals height, descent zero) and sup and sub are not raised or lowered; the older typography helper that tags Latin text as English is not used here; the engine uses the content language.
+
+Spec: CSS Text Level 3 §4 (white space), §5 (line breaking and hyphenation), §6 (alignment and justification), §8 (text-indent); UAX #14 (line breaking), UAX #29 (grapheme clusters); CSS Inline Layout Level 3 (line box height model).
+
+Test: a word longer than the line overflows rather than splitting mid-word unless `overflow-wrap: anywhere` is set; the same chapter laid out twice yields identical line ranges; `hyphens: auto` with `lang="de"` breaks a German compound; `text-align: end` in an RTL paragraph aligns left in the candidate and right in a browser (Funston follows the browser).
+
+#### YUE-71 Ruby and text-combine-upright
+
+The reader shall accept a `ruby` element that is inline with ruby-align center, ruby-position over and ruby-merge separate, contains no nested `ruby` or `rtc`, pairs each direct `rt` with the preceding base children, skips `rp`, allows an optional `rb` wrapper, and whose base and annotation are visible inline content without `br`, `img` or `svg`; shall shape base and annotation as separate lines, make the group's advance the wider of the two, centre both within it, raise the line's ascent by the annotation's ascent plus descent, size the annotation at 50 percent of the base, treat the group as one atomic unit to the line breaker and never split it across pages; and shall render `text-combine-upright` none, all and digits N (default 2, range 2 to 4) plus the legacy horizontal keyword in vertical writing only, composing the cell horizontally with only font, colour and language attributes, scaling it horizontally into one em when wider, and centring the one-em cell on the column.
+
+Verified. Deviations: no overhang over neighbouring text, no under or inter-character ruby, an oversized group overflows rather than splitting; the legacy engine's ruby (YUE-19) uses Core Text's ruby annotation attribute instead and has none of these admission limits.
+
+Spec: HTML living standard §4.5 (ruby), CSS Ruby Level 1 (ruby-align, ruby-position, ruby-merge), CSS Writing Modes Level 4 §9 (text-combine-upright).
+
+Test: `<ruby>東京<rt>とうきょう</rt></ruby>` where the annotation is wider than the base centres both; a ruby group at a page bottom moves whole to the next page; `text-combine-upright: digits 2` combines "12" but not "123".
+
+#### YUE-72 Vertical writing and CJK typography
+
+For vertical-rl the reader shall set the Core Text vertical-forms attribute on the whole string, then set each character upright or sideways following Unicode vertical orientation classes as CSS `text-orientation: mixed` does (U and Tu upright; Tr upright only when the font's vertical alternate differs from the horizontal glyph, else sideways; R sideways), from a classification table generated from the Unicode Character Database (version 18 in the candidate); shall centre sideways runs on the column by a baseline offset of half the font's ascent-to-descent box, except dashes and ellipses which are centred by measured ink; shall lay out on canonical inline and block axes and rotate the painting context a quarter turn per text item; and shall convert page geometry from canonical to physical coordinates after fragmentation. When the host supplies a CJK typography style (traditional, simplified, japanese, korean), three passes run before shaping in both writing modes: fonts by language (Han takes the style's language tag and a stand-in reference face when the run's font and its cascade lack the glyph; kana are Japanese; Hangul is Korean; dashes, ellipses, quotation marks and middle dots side with their nearest neighbour; stand-ins are PingFang TC Regular, PingFang SC Regular, Hiragino Sans W3 and Apple SD Gothic Neo Regular, bolded or slanted to match); punctuation position (for 、。，．：；？！ drawn in a font other than the style's reference face, the mark's ink is located by rasterising it between two reference ideographs at a 64-pixel em, and if it lies closer to the other regional convention it is moved by a baseline offset across the line and a pair of opposite kerns along it so advances are preserved); adjacent-mark squeeze (a pair of adjacent marks involving a bracket shrinks from 2 em to 1.5 em of combined advance, taking room first from the blank between them and, in Chinese styles, from the bracket's far side; dividing marks and middle dots keep their square in the cases the regional requirements prescribe; a 0.02 em ink margin is kept; each blank is spent once). The style is detected from up to 6,000 UTF-16 units: kana count at least 5 and at least 10 percent of kana plus Han means Japanese; Hangul at least 5 and exceeding Han means Korean; otherwise sentences vote by Traditional versus Simplified transforms with a 75 percent majority; the declared language is the fallback.
+
+Verified. Vertical admission rejects img, svg, video, audio and table, floats, max-width, non-auto non-pixel widths, and text-combine inside or around ruby. Latin in vertical text is rotated, not kept upright per word.
+
+Spec: CSS Writing Modes Level 4 §5 (text-orientation), UAX #50 (vertical orientation); CLREQ (Requirements for Chinese Text Layout) and JLREQ (Requirements for Japanese Text Layout) for punctuation placement and adjacent-mark compression; UTR #50 data in the UCD.
+
+For Funston: the Gutenberg corpus is horizontal Latin, so only the orientation table approach and the per-run language tagging carry over; the CJK passes are reference material for a later Japanese or Chinese corpus and should not be copied as constants.
+
+Test: a Japanese sample from the IDPF set renders vertical with upright kana and sideways Latin; a Chinese "（？）" pair measures 1.5 em.
+
+#### YUE-73 Block layout
+
+The reader shall resolve a block's width as auto (container minus margins, padding and borders), or explicit clamped to the container, then apply max-width, with min-inline-size winning over the maximum, percentages against the parent's content width, and centre a constrained box when both side margins are auto (including when max-width shrinks an auto width); shall compute height as the stacked extent of children and lines plus paragraph spacing, overridden by a pixel height, with an absolute min-height honoured and a percentage min-height ignored; shall collapse adjoining vertical margins of in-flow siblings (positive pair: larger; negative pair: more negative; mixed: sum), collapse a first child's top margin through a parent with no block-start border or padding into the parent's margin, collapse a last child's bottom margin out when the parent has no block-end border or padding and no lines of its own, cancel collapsing on clearance, and never collapse floats; shall size images with both dimensions as given, one dimension preserving the intrinsic aspect, a percentage height as auto, max-width clamping with aspect, and a width exceeding the container scaled down with aspect; shall pre-scale a floated image taller than the page height to fit before float placement so text exclusion matches the painted size; shall lay out a floated child in its own float context, place it at the first y where its margin box fits (else below the next float bottom, else at the container edge), honour `clear`, let line boxes query the exclusion interval for their band and re-break up to 8 times until the band stabilises, and jump below floats when no width remains; and in vertical writing stack children right to left.
+
+Verified. Verified deviation: only the root box's background-image is painted (propagated to the page canvas); a background image on any other element is computed but never drawn. Lists get 40px padding and no markers. A non-replaced float taller than the page makes the whole chapter unsupported after layout.
+
+Spec: CSS 2.1 §8.3.1 (collapsing margins), §9.5 (floats), §10.3 (width), §10.6 (height), §10.4 (image sizing with intrinsic ratio); CSS Backgrounds and Borders Level 3 (background-image on any box).
+
+Test: two `p` with 1em margins show 1em between (unlike the legacy engine, YUE-22); `div { width: 50%; margin: 0 auto }` is centred; a bordered `aside` with `background-image` draws it (Funston rule); a left-floated image with text that regains full width below it.
+
+#### YUE-74 Page fragmentation
+
+The reader shall fragment a laid-out chapter with a resumable walker over the box tree that emits document-space steps in paint order (float boundary marker; a box's own background and border fill, except the root's, which is propagated to the canvas; children; a block image; per line, inline decoration fills then each run as ruby group, text-combine cell, inline image or text; a fill-end marker) and places each step on a page whose stride is the canvas height minus top and bottom insets. Breaks are allowed between line boxes, between blocks and between any two steps; a line box is never split: a line that fits a page but not the remaining space moves wholesale to the next page and everything after it shifts by the same displacement; ruby groups and inline decoration fills move the same way; a float that fits a page is atomic. The block-start margin adjoining the next content is accumulated as boxes are entered and discarded at an unforced page top while the page has no ink yet; the first page keeps the document's leading margin. An image that fits the remaining space is placed; one that fits a full page but not the remainder moves to the next page; one that exceeds the page height or content width is scaled by the smaller of the width and height ratios, never split or clipped, its reserved block space reclaimed, and moved to the next page top if it still does not fit the remainder; for an inline image that ends its line, the part of the line box below the image that would cross the page bottom is discarded. A box's fill is sliced per page and marked single, first, middle or last: the top border and top radius paint only on the first slice, the bottom border and radius only on the last, side borders on every slice. A page's source range is the minimum location to the maximum end over its non-empty text fragments; an image-only page gets a zero-length range at the chapter text length; offset-to-page lookup is a binary search over half-open ranges clamping to the nearest page. The walker shall be bounded (the candidate: 2,000,000 steps). Block layout and all line breaking run once for the whole chapter; fragmentation is incremental: the first page is returned as soon as its boundary is reached, later pages on demand, to a source offset, or all at once, and the incremental and batch walks produce identical geometry by construction.
+
+Verified. Verified deviations: `break-before`, `break-after`, `break-inside` and the `page-break-*` forms are not parsed (the walker models a forced-break state that nothing produces); orphans and widows are not implemented; headings get no keep-with-next; so the browser engine has fewer break controls than the legacy engine (YUE-25, YUE-26) and neither has orphan control. Funston shall implement forced breaks, `break-inside: avoid`, `orphans` and `widows` (default 2 each per CSS) and keep-with-next for headings on top of this walker.
+
+Spec: CSS Fragmentation Level 3 §3 (break controls), §4 (unforced breaks: line boxes are the atomic unit for text; images are monolithic), §5 (box-decoration-break: slice), §6 (margins at fragmentainer edges are truncated).
+
+Test: a 10-line paragraph crossing a page boundary keeps every line whole; a 300 × 1200 image on a 350 × 600 content area is scaled to fit one page; a bordered block spanning two pages shows a top border only on the first page and a bottom border only on the second; `h2 { break-before: page }` starts a page (Funston rule); a paragraph's last line never sits alone at a page top (Funston rule, widows 2).
+
+#### YUE-75 Display list and painting
+
+The reader shall paint a page from a display list of three item kinds (text, fill, image). A text item carries its source range, node id, link target, writing mode, page and document rects, baseline, font, colour, the shaped line and its source mapping; it is drawn by rebuilding an attributed string from the shaped line's run attributes (kerning, synthetic bold stroke, reader rule attributes), replacing the foreground colour unless a preserved-foreground attribute is present, appending a visible hyphen when the layout flagged one, creating a new line from that string and drawing it with the text matrix reset and the context flipped (rotated a quarter turn for vertical items). Text items are batched so every pending item's decoration pass runs before any glyph pass, and fills and images flush the batch. A fill item clips to a rounded path, fills unless clear, and strokes each visible edge separately with per-edge width, colour and style (solid; dotted as dashes of one width on and 2.5 widths off with round caps; dashed as three widths on and two off; double, groove, ridge, inset and outset as solid; none and hidden as none). An image item draws its bitmap into its rect; a missing bitmap paints a light gray rectangle. On a theme change only text items whose colour equals the layout-time theme colour are recoloured; authored colours are left alone with no inversion or contrast rule. The page view paints the theme colour, then the reader's chosen artwork if any, then the display list (skipping the authored canvas fill and image when artwork is present), then highlight rectangles, then the bars; the pressed-link wash and the read-aloud wash are separate shape layers above the content. Links get no engine styling (no underline, no colour) beyond a pressed wash at 15 percent of the text colour. For continuous scrolling a document is cut into paint surfaces grouped by baseline, fills and images as their own surfaces, each at most 1024 points tall with a one-point sampling bleed, with conservative ink bounds from the font bounding box.
+
+Verified. Deviation: the dark colour-scheme rules this engine parsed are discarded, so a book's dark palette is never applied here (the legacy engine applies it, YUE-10). Funston shall apply the dark palette and shall style links (at least the link colour when the author left them unstyled, YUE-28).
+
+Spec: CSS Backgrounds and Borders Level 3 (border styles and radii).
+
+Test: a dashed 2px border renders 6-on 4-off dashes; a page with a two-line authored-blue heading keeps blue under the dark theme; a link is visibly distinguishable (Funston rule).
+
+#### YUE-76 Viewport session for continuous scrolling
+
+For continuous scrolling the reader shall run block layout for the whole chapter but defer inline shaping per box; estimate an unshaped box's height as ceil(characters ÷ (width ÷ (font size × 0.7))) × line height, where line height is the computed value or font size × 1.4, and as the measured prefix plus that estimate for the remainder once some lines exist; shape lines only for boxes that intersect the demanded viewport, contain the anchor offset, are a float dependency, or when completion is forced, resuming from a checkpoint of character index, y and line count; serve a demand (document rect plus an optional source offset to hold still) by first rebinding already-measured lines, else looping: record the anchor's y, re-run block layout with the state, shift the demand by the anchor's new y minus old y, until no new line was shaped and the demand moved less than 0.01 point, failing after 64 passes; trim retained lines to the demand inset by max(demand height, 8 × render height) and publish an immutable snapshot; index inline boxes by document y and by source range (sorted starts with prefix maxima of ends, a segment tree of subtree maxima for intersection, sorted ends for nearest lookups, with a linear validation of the previous ordering before re-sorting); map a source offset to y via the smallest containing block and the first measured line at or after the offset, else proportional interpolation, and y to offset by the mirror; cache drawn lines per text item and evict when the layout line is no longer retained; and run session creation, layout and retirement on an actor off the main thread.
+
+Verified. The app submits at most one layout request at a time keeping only the latest pending one, asks for the visible rect extended by min(900, max(300, half its height)) on each side, applies snapshots inside the host's geometry transaction so it can read the visible anchor first, cuts the chapter into tiles with a 2000-point height cap, lays out the first screen during chapter preparation with zero content insets because the scroll host owns margins, and draws each tile asynchronously from the document's items in its rect plus a one-point bleed, skipping redraw when the list is unchanged; a separate backdrop view lays the canvas background one page-sized image per screen height, or one fixed image for background-attachment fixed. The project's own device trace (docs claim) recorded 77 scroll hitches before moving layout off the main thread, a median of 6.7 ms and p90 of 11.8 ms per update with layout afterwards, and glyph positions matching within one sixth of a point over 54,058 comparisons.
+
+Spec: none; this is the TextKit 2 viewport idiom (estimated versus measured fragment geometry with anchor relocation) rebuilt over Core Text.
+
+For Funston: TextKit 2's layout manager provides this behaviour natively; the candidate's design is useful as a description of what to expect from it and as the budget (an eight-screen retention window, a 900-point overdraw) to configure.
+
+Test: scrolling to 80 percent of a 50,000-character chapter and back lands on the same text; the content size settles within one line height of the final size once all boxes are measured; resizing the viewport keeps the anchored line at the same screen position.
+
+#### YUE-77 Source mapping and the offset space
+
+The reader shall define the layout text as the concatenation, in document order, of every visible text node after white-space collapsing per the node's computed mode, with one line feed per `br`, ruby base text included, ruby annotation and `rp` text excluded, and nothing for images or inline-box edges; offsets are UTF-16 and additive; soft hyphens stay in the source text and generated hyphens never enter it. Every text fragment shall carry its source range and a mapping to the shaped line that is linear (shaped and source advance together, one trailing presentation hyphen allowed), whole-range (a single-piece annotation maps to the whole base range) or annotation (a styled annotation slice mapping atomically to the base). Point to offset: the topmost text item containing the point (or the nearest when allowed), the position relative to the item's edge converted with the kern-corrected glyph-boundary index, clamped to the item's range and widened to the composed character sequence containing it. Offset range to rectangles: for each overlapping text item, the boundary offsets of the range ends on the shaped line, minus the item's physical origin (the lesser of the shaped range's two boundary offsets, so RTL runs work), at least 1 point wide; non-linear mappings return the whole item. Anchor id to offset: the first content offset of the element. Paragraph ranges: each inline-bearing box's minimum and maximum source range.
+
+Verified. Verified consequence for Funston: raw XHTML offsets are not retained, and the two engines collapse whitespace by different rules, so a (spine, offset) position saved while a chapter was rendered by one engine is only approximately valid when the same chapter is rendered by the other (the app's own comment admits this). Funston shall define one canonical offset space per chapter that is independent of the renderer (the collapsed text of the chapter under a fixed set of rules, or DOM-based CFI), and shall convert renderer offsets to and from it, so that changing the renderer or its whitespace handling never moves saved positions, bookmarks or annotations.
+
+Spec: none; EPUB CFI 1.1 is the standard alternative for a renderer-independent position.
+
+Test: lay out the same chapter with both engines and assert that a position saved in one resolves to the same DOM text node and character in the other (Funston rule); a link spanning two pages keeps its target on every piece and every piece has valid hit rects.
+
+#### YUE-78 Selection and link interaction in the browser engine
+
+Selection shall hold anchor and focus UTF-16 indices (inclusive range, so the length is their distance plus one; out-of-range and overflow rejected; indices clamped); a long press (0.5 seconds here, 0.25 in the legacy view) maps the point to a source offset and selects the enclosing paragraph (the string paragraph intersected with the engine's semantic paragraph range) trimmed of edge whitespace and expanded to any annotation within 2 characters; lifting presents the edit menu at the first selection rect; handles have 44 × 44 point hit boxes centred on the caret points; dragging fixes the opposite end and moves the dragged end to the nearest hit character's start or end depending on which side of the fixed end it lands; a tap inside the selection (rects inset 8 points) deselects; selection is drawn per page, with no cross-page drag, although the engine can report rects for a chapter range across pages. Link regions are built from text and image items with a non-empty link target (fills never; background images excluded), carrying the anchor's node id as identity so a link split over lines is one link; hit testing expands regions by 4 points and takes the smallest containing region, else the nearest within 6 points; a touch down arms the region, moving onto a different identity cancels, lifting on the same identity activates, and the wash covers every piece; the tap recogniser receives touches only on links, images or an active selection so the page-turn zones fire elsewhere, and yields to the long press. Resolution accepts only http and https externally, a bare fragment for the current chapter, and a path resolved against the chapter href matched exactly or after percent-decoding or encoding; activation shows a popover for an indexed note body, otherwise preloads the target chapter and navigates to the page containing the fragment's anchor offset or the chapter start. Menu actions: copy, highlight in five colours, underline, note, in-book search, translate (iOS 17.4 and later), assistant actions when licensed, replace, delete annotation. A VoiceOver custom action selects the first text fragment.
+
+Verified. Compared with the legacy view (YUE-41 to YUE-43): same paragraph granularity and annotation snapping, larger handle hit boxes, a stricter link resolver, in-book search and translate in the menu, still no word granularity, no Look Up, no cross-page selection. Funston's requirements in YUE-42 and YUE-43 stand.
+
+Test: pressing a two-line link and lifting on its second line activates it once; pressing a link and sliding onto another cancels; a tap in the margin turns the page.
+
+#### YUE-79 Fonts in the browser engine
+
+The engine shall resolve a run's font by asking the host resolver with the family list, effective weight (reader bold raises it to at least 700), italic flag and size, else instantiate the first family the system knows, else the system font; request bold at weight 600 or above (or reader bold) by symbolic trait, then by a weight trait attribute keeping the family, and when neither yields a bold face and the font has no variable weight axis synthesise bold with a stroke width of −2.5; keep the resolved font's existing cascade and extend it with Georgia and Apple Color Emoji at the real size (bolded when bold was requested); use the italic trait when present, else a 0.2 shear; probe CJK coverage per run with the font and each explicit cascade member and substitute the language stand-in (YUE-72) when the glyph is missing, caching stand-ins by style, size, bold and matrix. The app's resolver chain is: the user's selected EPUB font override for every run (bold and italic from traits), else the publication's registered embedded faces or installed fonts by best weight and italic variant, in a lock-protected cache of 128 tuples per document; `@font-face` faces are registered lazily only for the (family, weight, italic) requests the cascade produced, and not at all when a user override font is active.
+
+Verified. Compare YUE-24, which the browser engine shares for registration and de-obfuscation.
+
+Test: with a user font selected, no embedded font is read from the archive; with none selected, a chapter referencing one bold face registers exactly that file.
+
+#### YUE-80 Metrics, bounds and determinism
+
+The engine shall report content metrics from a unit map of per-chapter unit counts (prefix sums; a position scales its local UTF-16 offset proportionally within the chapter's units with full-width arithmetic, clamping at the chapter end); shall emit signposts with content-free metadata for chapter load, HTML parse, stylesheet collect, parse and match, style tree build, IR convert, attributed render, image load and decode, CJK typography, framesetter create, page ranges, display list, the five viewport stages (reuse, geometry, trim, paint eviction, retirement), first page publish, page, chunk and tile render, and document, layout and raster cache events; and shall bound its work. Verified bounds: 10,000 lines per paragraph; 2,000,000 fragmentation steps; 64 viewport passes; 8 float-band iterations; font caches of 128 entries; a display-list cache of the current page ± 2; and the app's 5-second timeouts; no node-count, depth or time limit exists inside the engine itself. Verified determinism: line widths are quantised, incremental and batch pagination share one walker and a test asserts identical pages; a memory-lifecycle test asserts resident size does not grow across repeated layouts. Memory accounting constants used for estimates: 192 bytes per retained line, 120 per style node, 200 per box, 60 per fragment, 96 per display item.
+
+Verified. No measured timings exist in the package; its tests assert call counts, not durations. The app's benchmark note measures the legacy engine (YUE-87), and a scroll-architecture note records the viewport figures quoted in YUE-76.
+
+Test: pagination of a fixture is byte-identical across ten runs; a 1,000,000-step adversarial tree is rejected, not hung.
 
 ### Images, memory and failure
 
@@ -767,7 +932,7 @@ Test: a chapter with twenty 3000 × 2000 JPEGs builds without decoding any until
 
 A block image whose scaled height exceeds the content height shall be scaled down to fit the page (preserving aspect) or moved to its own page; it shall never be clipped by the page edge.
 
-Verified: the legacy engine clamps height to 1.5 times the column width, not to the page, so a tall image on a landscape phone is cut; the browser engine's behaviour is in YUE-77.
+Verified: the legacy engine clamps height to 1.5 times the column width, not to the page, so a tall image on a landscape phone is cut; the browser engine scales such images to the page (YUE-74).
 
 Test: a 400 × 3000 image on a landscape phone fits within the page.
 
@@ -1001,9 +1166,75 @@ sliceForStart(k): drop the first k entries                 // never re-align a s
 
 Candidate: search the page's range case- and diacritic-insensitively for the utterance text; when an expected offset is known and the chapter matches, continue while the distance to the expected offset decreases and keep the nearest occurrence; wash that range with the selection-rect routine. Funston: take the utterance's chapter range from the map directly and wash it; search only as a fallback when the layout's text differs from the narration source.
 
-### Box-model engine (reserved)
+### Line break adjustment (box-model engine)
 
-Fragmentation and viewport algorithms of the box-model engine are reserved for the same later commit as YUE-65 to YUE-80.
+```
+breakLine(typesetter, start, width):
+  n = suggestedLineBreak(typesetter, start, width)
+  if a hyphenation candidate h in (start, start+n] exists: n = h; markHyphen
+  else if break lands inside an alphabetic word:
+      if emergency wrapping: extend n to the word end plus trailing collapsible spaces
+      else: pull n back to the word start (never split a word)
+  n = snapDownToGraphemeCluster(n)
+  while measuredWidth(start, n) > width and n > oneCluster: n = previousClusterBoundary(n)
+  if n == oneCluster and still too wide: accept overflow
+  widths are quantised (low 16 mantissa bits cleared) before every comparison
+```
+
+### Fragmentation walker (box-model engine)
+
+```
+stride = canvasHeight − topInset − bottomInset
+walk the box tree depth first, emitting steps in paint order:
+  floatMarker(box) if floated
+  fill(box) unless root
+  for child in children: recurse
+  blockImage(box) if any
+  for line in lines: inlineDecorationFills(line), then each run as rubyGroup | combineCell | inlineImage | text
+  fillEnd(box)
+place(step):
+  pageIndex = floor((step.documentY + displacement) / stride)
+  if step is a line box, ruby group, decoration fill or atomic float and it crosses the page bottom
+     but fits a page: move it to the next page top and add the move to `displacement`
+     (every later step shifts by the same amount)
+  if step is an image: see oversized image policy
+  if a page has no ink yet and an accumulated block-start margin precedes the step:
+     discard that margin (bounded by its size and the distance to the page top), except on the first page
+  slice fills to the page and tag single | first | middle | last
+pageRange(page) = [min location, max end] over its non-empty text fragments; image-only → (chapterLength, 0)
+```
+
+### Oversized image policy (box-model engine)
+
+```
+if image fits the remaining space on this page: place it
+else if it fits a full page: move it to the next page
+else: scale by min(pageHeight / height, contentWidth / width), reclaim the block space it had reserved,
+      and if it still does not fit the remainder move it to the next page top
+an inline image that ends its line: drop the part of the line box below the image that would cross the page bottom
+continuous mode: none of this; the image overflows
+```
+
+### Viewport estimate and anchor compensation (box-model engine, scroll mode)
+
+```
+estimateHeight(box) = ceil(chars / (width / (fontSize × 0.7))) × (computedLineHeight ?? fontSize × 1.4)
+                      (after some lines are measured: measured prefix + estimate of the remainder)
+serve(demandRect, anchorOffset?):
+  if every box in demandRect already has lines: rebind and return
+  repeat up to 64 times:
+      yBefore = y(anchorOffset)
+      run block layout; shape lines only for boxes intersecting demandRect, containing the anchor,
+          or needed by a float
+      demandRect.y += y(anchorOffset) − yBefore
+  until no new line was shaped and the shift < 0.01
+  drop lines outside demandRect inset by max(demandRect.height, 8 × renderHeight), keep their geometry
+  publish an immutable snapshot
+```
+
+### Vertical orientation (box-model engine)
+
+Set the vertical-forms attribute on the whole string; for each character look up its Unicode vertical orientation class: U and Tu upright; Tr upright only if the font's vertical alternate glyph differs from its horizontal glyph, else sideways; R sideways. Sideways runs get a baseline offset of half the font's ascent-plus-descent box so they centre on the column; dashes and ellipses are centred by measured ink instead. Layout runs on canonical axes and the painter rotates each text item a quarter turn.
 
 ## Data model and persistence
 
@@ -1163,6 +1394,15 @@ What the candidate's own tests cover, in prose, so the merged spec knows which b
 - Fixed CJK justification constants and heuristics copied without the script check; they are tuned for Chinese novels.
 - Unbounded caches (the paginator's dictionary, de-obfuscated resource bytes, MathML bitmaps) that a memory warning does not touch.
 
+- Rejecting a whole chapter because one stylesheet contains any `@media` block; evaluate the query and degrade per declaration.
+- Summing specificity into one integer; eleven classes must not outrank an id.
+- Dropping a block element nested inside an inline element.
+- Letting `transparent` or `currentcolor` mean "no value" so an earlier background cannot be cleared.
+- Mapping `text-align: end` to right regardless of direction.
+- Two offset spaces for the same chapter, one per renderer; saved positions must survive a renderer change.
+- Painting background images only on the root box.
+- Absolute pixel heading sizes that ignore the reader's font size.
+
 ## Open questions for the merged spec
 
 1. Attributed-string pagination or box-model layout? The candidate shows the ceiling of the first and the cost of the second. Decide before the renderer is written; the decision changes which of YUE-11 through YUE-29 are built in and which are worked around.
@@ -1177,6 +1417,9 @@ What the candidate's own tests cover, in prose, so the merged spec knows which b
 10. Read-aloud and the music player: one audio session owner, and how the read-aloud highlight relates to VoiceOver focus and Speak Screen.
 11. Progress units: bytes (stable before layout, markup-weighted) versus rendered characters (accurate, needs every chapter parsed); the candidate uses bytes and plans a unit map.
 12. Does Funston need media overlays at all for the Gutenberg corpus, or is detection plus "this book has narration" enough for the first release?
+
+13. If Funston adopts a box-model stage, which of the box-model engine's admission rejections become real support (tables, `@media`, `::before` content, list markers) in the first release, and which degrade to plain text with a diagnostic?
+14. Orphans and widows versus bottom-aligned pages on the box-model walker: specify the default (CSS says 2 and 2) and whether the reader exposes it.
 
 ## Clean-room statement
 
