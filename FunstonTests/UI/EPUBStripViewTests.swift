@@ -348,4 +348,27 @@ final class EPUBStripViewTests: XCTestCase {
         XCTAssertTrue(strip.accessibilityScroll(.left))
     }
 
+    // MARK: The Lines rotor (Spec 14.2; VoiceOver report item 3)
 
+    func testLineGranularityEndsBeforeASoftWrappedLinesTrailingSpaceSoVoiceOverStepsOntoTheNextLine() throws {
+        let session = try session()
+        let strip = pageStrip()
+        strip.load(try pageEntries(session, spines: [0]), showing: EPUBPlacement(spineIndex: 0, pageIndex: 0))
+        let paragraph = try XCTUnwrap(strip.accessibilityElements?.first as? EPUBParagraphView)
+        let layout = try XCTUnwrap(session.layout(0))
+        let chapter = try XCTUnwrap(session.chapter(0)).text
+        let lines = layout.table.lineFrames(onPage: 0).map { layout.table.lines[$0.line].range }.filter { NSIntersectionRange($0, paragraph.range).length > 0 }
+        XCTAssertGreaterThan(lines.count, 1, "The fixture paragraph wraps")
+        let first = lines[0], second = lines[1]
+        XCTAssertEqual(chapter.text(in: NSRange(location: first.location + first.length - 1, length: 1)), " ", "A soft wrap keeps its trailing space in the line table")
+        let tokenizer = paragraph.tokenizer
+        let start = EPUBTextPosition(first.location)
+        let enclosing = try XCTUnwrap(tokenizer.rangeEnclosingPosition(start, with: .line, inDirection: UITextDirection.storage(.forward)) as? EPUBTextRange)
+        XCTAssertEqual(enclosing.range, NSRange(location: first.location, length: first.length - 1), "The spoken line stops before the trailing space")
+        let end = try XCTUnwrap(tokenizer.position(from: start, toBoundary: .line, inDirection: UITextDirection.storage(.forward)) as? EPUBTextPosition)
+        XCTAssertEqual(end.offset + 1, second.location, "One past the boundary is the next line's first character, which is where VoiceOver steps")
+        XCTAssertTrue(tokenizer.isPosition(end, atBoundary: .line, inDirection: UITextDirection.storage(.forward)))
+        let nextLine = try XCTUnwrap(tokenizer.rangeEnclosingPosition(EPUBTextPosition(end.offset + 1), with: .line, inDirection: UITextDirection.storage(.forward)) as? EPUBTextRange)
+        XCTAssertEqual(nextLine.range.location, second.location)
+    }
+}

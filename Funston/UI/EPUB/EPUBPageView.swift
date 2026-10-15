@@ -178,14 +178,12 @@ final class EPUBPageView: UIView {
         return true
     }
 
-    /// The line containing an offset, for the tokenizer.
+    /// The line containing an offset, for the tokenizer: the line the offset is in, or
+    /// the line it ends when it is the page's end.
     func lineRange(containing offset: Int) -> NSRange? {
         guard let layout else { return nil }
-        for (line, _) in lineFrames() {
-            let range = layout.table.lines[line].range
-            if NSLocationInRange(offset, range) || offset == range.location + range.length { return range }
-        }
-        return nil
+        let ranges = lineFrames().map { layout.table.lines[$0.line].range }
+        return ranges.first { NSLocationInRange(offset, $0) } ?? ranges.first { offset == $0.location + $0.length }
     }
 }
 
@@ -485,13 +483,28 @@ final class EPUBSelectionRect: UITextSelectionRect {
 }
 
 /// Line granularity from the line table; other granularities from the string tokenizer.
+///
+/// VoiceOver's Lines rotor treats the forward line boundary as the position before a
+/// line-ending character and steps to the position after it to reach the next line, as
+/// in a text view whose lines end in newlines. A soft-wrapped line in the line table
+/// ends with its trailing space (or a line separator), so the boundary VoiceOver sees
+/// excludes that one character; otherwise every step lands one character into the next
+/// line and the spoken "lines" drift (VoiceOver report, 2026-10-15).
 @MainActor
 final class EPUBLineTokenizer: UITextInputStringTokenizer {
     private weak var pageView: EPUBPageView?
     private weak var paragraph: EPUBParagraphView?
 
     private func lineRange(containing offset: Int) -> NSRange? {
-        paragraph?.lineRange(containing: offset) ?? pageView?.lineRange(containing: offset)
+        guard let line = paragraph?.lineRange(containing: offset) ?? pageView?.lineRange(containing: offset) else { return nil }
+        return Self.spokenRange(of: line, in: paragraph?.page?.chapter ?? pageView?.chapter)
+    }
+
+    /// The line without its one trailing break character, when it has one.
+    static func spokenRange(of line: NSRange, in chapter: EPUBChapterText?) -> NSRange {
+        guard line.length > 1, let chapter, let last = chapter.text(in: NSRange(location: line.location + line.length - 1, length: 1)).unicodeScalars.first,
+              last.properties.isWhitespace || last == "\u{2028}" else { return line }
+        return NSRange(location: line.location, length: line.length - 1)
     }
 
     override init(textInput: any UIResponder & UITextInput) {

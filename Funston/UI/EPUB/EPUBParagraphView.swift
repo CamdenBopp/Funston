@@ -108,9 +108,11 @@ final class EPUBParagraphView: UIView, UITextInput {
         }
     }
 
-    /// The block's line containing an offset, for the tokenizer.
+    /// The block's line containing an offset, for the tokenizer: the line the offset is
+    /// in, or the line it ends when it is the block's end.
     func lineRange(containing offset: Int) -> NSRange? {
-        lines.first { NSLocationInRange(offset, $0.range) || offset == $0.range.location + $0.range.length }?.range
+        let lines = lines
+        return (lines.first { NSLocationInRange(offset, $0.range) } ?? lines.first { offset == $0.range.location + $0.range.length })?.range
     }
 
     // MARK: UITextInput over the block's rendered range
