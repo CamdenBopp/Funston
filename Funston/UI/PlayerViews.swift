@@ -82,6 +82,9 @@ struct FullPlayer: View {
                             }.buttonStyle(.plain).accessibilityLabel("Playback speed")
                                 .accessibilityValue("\(presentation.playbackRate.formatted()) times")
                                 .accessibilityIdentifier("player.speed")
+                                .popover(isPresented: $showingSpeed, arrowEdge: .bottom) {
+                                    PlaybackSpeedPopover(playback: playback)
+                                }
                             SleepTimerMenu(timer: playback.sleepTimer, compact: true)
                                 .frame(maxWidth: .infinity)
                             VStack(spacing: 6) {
@@ -100,7 +103,6 @@ struct FullPlayer: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
-        .sheet(isPresented: $showingSpeed) { PlaybackSpeedSheet(playback: playback) }
         .sheet(isPresented: $showingQueue) {
             if let context = presentation.context {
                 RecordingQueueView(playback: playback, identifier: context.artifact.identifier)
@@ -449,113 +451,235 @@ private extension String {
     var capitalizedFirstLetter: String { prefix(1).uppercased() + dropFirst() }
 }
 
+/// Modeled on the iOS 26 Podcasts speed popover and the Camera zoom dial: a
+/// small popover above the button holding one number line. Ticks mark tenths,
+/// labels mark the halves, the current speed reads out above the pointer, and
+/// a tortoise and hare step by a tenth. The line is one adjustable element
+/// for VoiceOver, with the labeled stops as custom actions.
 @MainActor
-struct PlaybackSpeedSheet: View {
+struct PlaybackSpeedPopover: View {
     @ObservedObject var playback: PlaybackController
-    @Environment(\.dismiss) private var dismiss
-    @State private var collectionOverride = false
-    @State private var contentHeight: CGFloat = 220
     @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var collectionOverride = false
+    @State private var contentHeight: CGFloat = 0
 
+    static let speedRange: ClosedRange<Double> = 0.5...3
+    static let speedStep = 0.1
+    private static let contentPadding: CGFloat = 16
+    private static let sectionSpacing: CGFloat = 12
+    private static let popoverWidth = SpeedDial.naturalWidth(for: speedRange, step: speedStep) + 2 * contentPadding
+
+    private var rate: Double { playback.playbackRate }
+
+    /// Accessibility sizes outgrow a popover, so the same controls get a
+    /// full-width sheet that fits its content.
     var body: some View {
-        NavigationStack {
+        if typeSize.isAccessibilitySize {
             ScrollView {
-                VStack(spacing: 20) {
-                    ViewThatFits(in: .horizontal) {
-                        if !typeSize.isAccessibilitySize {
-                            HStack(spacing: 8) {
-                                ForEach([1.0, 1.25, 1.5, 2.0], id: \.self) { speed in
-                                    preset(speed)
-                                }
-                            }
-                        }
-                        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                            GridRow { preset(1); preset(1.25) }
-                            GridRow { preset(1.5); preset(2) }
-                        }
-                    }
-                    Divider()
-                    HStack(spacing: 16) {
-                        adjustment(symbol: "minus", label: "Decrease playback speed",
-                                   disabled: playback.playbackRate <= 0.5) {
-                            set(playback.playbackRate - 0.1)
-                        }
-                        Text("\(playback.playbackRate.formatted())×")
-                            .font(.title3.weight(.semibold)).monospacedDigit()
-                            .frame(maxWidth: .infinity)
-                        adjustment(symbol: "plus", label: "Increase playback speed",
-                                   disabled: playback.playbackRate >= 3) {
-                            set(playback.playbackRate + 0.1)
-                        }
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Playback speed")
-                    .accessibilityValue("\(playback.playbackRate.formatted()) times")
-                    .accessibilityIdentifier("player.speed.adjustable")
-                    .accessibilityAdjustableAction { direction in
-                        switch direction {
-                        case .increment: set(playback.playbackRate + 0.1)
-                        case .decrement: set(playback.playbackRate - 0.1)
-                        @unknown default: break
-                        }
-                    }
-                    if let collection = playback.context?.artifact.collections.first {
-                        Divider()
-                        Toggle("Remember speed for this collection", isOn: $collectionOverride)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityHint(collection)
-                            .onChange(of: collectionOverride) { _, enabled in
-                                if enabled { playback.setPlaybackSpeed(playback.playbackRate, forCollection: true) }
-                                else { playback.useGlobalPlaybackSpeed() }
-                            }
-                    }
-                }
-                .padding(20)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
-                .padding(20)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                controls
+                    .frame(maxWidth: .infinity)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }
             .scrollBounceBehavior(.basedOnSize)
-            .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Playback Speed").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .presentationCompactAdaptation(.sheet)
+            .presentationDetents([.height(contentHeight), .large])
+            .presentationDragIndicator(.visible)
+        } else {
+            controls
+                .frame(width: Self.popoverWidth)
+                .presentationCompactAdaptation(.popover)
         }
-        .presentationDetents([.height(contentHeight + 64)])
-        .presentationDragIndicator(.visible)
+    }
+
+    private var controls: some View {
+        VStack(spacing: Self.sectionSpacing) {
+            if let collection = playback.context?.artifact.collections.first {
+                Toggle("Remember for this collection", isOn: $collectionOverride)
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHint(collection)
+                    .onChange(of: collectionOverride) { _, enabled in
+                        if enabled { playback.setPlaybackSpeed(rate, forCollection: true) }
+                        else { playback.useGlobalPlaybackSpeed() }
+                    }
+                Divider()
+            }
+            SpeedDial(rate: rate, range: Self.speedRange, step: Self.speedStep, set: set)
+                .dynamicTypeSize(...SpeedDial.largestTextSize)
+            Text("Playback speed")
+                .font(.caption)
+                .foregroundStyle(Color.funstonSecondaryText)
+                .accessibilityHidden(true)
+        }
+        .padding(Self.contentPadding)
         .onAppear { collectionOverride = playback.hasCollectionSpeedOverride }
     }
 
-    private func preset(_ speed: Double) -> some View {
-        let selected = playback.playbackRate == speed
-        return Button { set(speed) } label: {
-            Text("\(speed.formatted())×")
-                .font(.body.weight(.semibold))
-                .fixedSize(horizontal: true, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .padding(.vertical, 4)
-                .foregroundStyle(selected ? Color.white : Color.primary)
-                .background(selected ? Color.accentColor : Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(speed.formatted()) times")
-        .accessibilityAddTraits(selected ? .isSelected : [])
+    private func set(_ speed: Double) {
+        let snapped = (speed / Self.speedStep).rounded() * Self.speedStep
+        playback.setPlaybackSpeed(PlaybackSpeedPreference.clamped(snapped), forCollection: collectionOverride)
+    }
+}
+
+/// A number line of tenth-step ticks with a label at every half. The current
+/// speed is the tall pointer, read out above it; drag or tap along the line to
+/// move it, or tap the tortoise and hare to step by a tenth.
+private struct SpeedDial: View {
+    let rate: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let set: (Double) -> Void
+
+    @ScaledMetric(relativeTo: .footnote) private var textRowHeight: CGFloat = 20
+    @State private var readoutWidth: CGFloat = 0
+    @State private var lineWidth: CGFloat = 0
+
+    private static let labelInterval = 0.5
+    private static let tickSpacing: CGFloat = 8
+    private static let tickWidth: CGFloat = 2
+    private static let tickHeight: CGFloat = 14
+    private static let labeledTickHeight: CGFloat = 22
+    private static let indicatorWidth: CGFloat = 4
+    private static let indicatorHeight: CGFloat = 34
+    private static let tickOpacity = 0.3
+    private static let labeledTickOpacity = 0.55
+    private static let minTouchTarget: CGFloat = 44
+    /// The tortoise and hare stop growing here so the ticks between them keep room to drag.
+    private static let largestGlyphSize = DynamicTypeSize.xxxLarge
+    /// The readout and stop labels stop growing here. In the accessibility-size
+    /// sheet each half stop gets 54 points; footnote at this size keeps a
+    /// three-digit label under 41 points, so neighbours keep an 18-point gap.
+    /// One size larger, the labels run together.
+    static let largestTextSize = DynamicTypeSize.accessibility1
+
+    /// Ticks at their natural spacing, plus the pointer's half-widths at the ends
+    /// and a touch target for each nudge.
+    static func naturalWidth(for range: ClosedRange<Double>, step: Double) -> CGFloat {
+        CGFloat(tickCount(for: range, step: step) - 1) * tickSpacing + indicatorWidth + 2 * minTouchTarget
     }
 
-    private func adjustment(symbol: String, label: String, disabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    private static func tickCount(for range: ClosedRange<Double>, step: Double) -> Int {
+        Int(((range.upperBound - range.lowerBound) / step).rounded()) + 1
+    }
+
+    private var tickCount: Int { Self.tickCount(for: range, step: step) }
+    private var labeledStops: [Double] { Array(stride(from: range.lowerBound, through: range.upperBound, by: Self.labelInterval)) }
+    private var readout: String { "\(rate.formatted())×" }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            nudge(symbol: "tortoise.fill", by: -step)
+            line
+            nudge(symbol: "hare.fill", by: step)
+        }
+        .sensoryFeedback(.selection, trigger: rate)
+    }
+
+    private var line: some View {
+        VStack(spacing: 0) {
+            GeometryReader { geometry in
+                Text(readout)
+                    .font(.footnote.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.tint)
+                    .fixedSize()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { readoutWidth = $0 }
+                    .position(x: readoutX(in: geometry.size.width), y: geometry.size.height / 2)
+            }
+            .frame(height: textRowHeight)
+            GeometryReader { geometry in
+                let width = geometry.size.width
+                let midY = geometry.size.height / 2
+                ForEach(0..<tickCount, id: \.self) { index in
+                    let value = range.lowerBound + Double(index) * step
+                    let labeled = isLabeled(value)
+                    Capsule()
+                        .fill(Color(uiColor: .label).opacity(labeled ? Self.labeledTickOpacity : Self.tickOpacity))
+                        .frame(width: Self.tickWidth, height: labeled ? Self.labeledTickHeight : Self.tickHeight)
+                        .position(x: x(for: value, in: width), y: midY)
+                }
+                Capsule()
+                    .fill(Color(uiColor: .label))
+                    .frame(width: Self.indicatorWidth, height: Self.indicatorHeight)
+                    .position(x: x(for: rate, in: width), y: midY)
+            }
+            .frame(height: Self.minTouchTarget)
+            GeometryReader { geometry in
+                ForEach(labeledStops, id: \.self) { value in
+                    Text(value == 1 ? "1×" : value.formatted())
+                        .font(.footnote.weight(isCurrent(value) ? .semibold : .regular))
+                        .monospacedDigit()
+                        .foregroundStyle(isCurrent(value) ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.funstonSecondaryText))
+                        .fixedSize()
+                        .position(x: x(for: value, in: geometry.size.width), y: geometry.size.height / 2)
+                }
+            }
+            .frame(height: textRowHeight)
+        }
+        .animation(.snappy, value: rate)
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .local).onChanged { drag in
+            set(value(at: drag.location.x, in: lineWidth))
+        })
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { lineWidth = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback speed")
+        .accessibilityValue("\(rate.formatted()) times")
+        .accessibilityIdentifier("player.speed.adjustable")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: set(rate + step)
+            case .decrement: set(rate - step)
+            @unknown default: break
+            }
+        }
+        .accessibilityActions {
+            ForEach(labeledStops, id: \.self) { value in
+                Button("\(value.formatted()) times") { set(value) }
+            }
+        }
+    }
+
+    private func isLabeled(_ value: Double) -> Bool {
+        abs(value / Self.labelInterval - (value / Self.labelInterval).rounded()) < step / 2
+    }
+
+    private func isCurrent(_ value: Double) -> Bool { abs(rate - value) < step / 2 }
+
+    /// The pointer is centered half a pointer in from each end so the extremes aren't clipped.
+    private func x(for value: Double, in width: CGFloat) -> CGFloat {
+        let inset = Self.indicatorWidth / 2
+        let fraction = (min(max(value, range.lowerBound), range.upperBound) - range.lowerBound) / (range.upperBound - range.lowerBound)
+        return inset + CGFloat(fraction) * (width - 2 * inset)
+    }
+
+    /// The readout follows the pointer but stays inside the line.
+    private func readoutX(in width: CGFloat) -> CGFloat {
+        min(max(x(for: rate, in: width), readoutWidth / 2), width - readoutWidth / 2)
+    }
+
+    private func value(at x: CGFloat, in width: CGFloat) -> Double {
+        let inset = Self.indicatorWidth / 2
+        let fraction = Double(min(max((x - inset) / max(width - 2 * inset, 1), 0), 1))
+        return range.lowerBound + fraction * (range.upperBound - range.lowerBound)
+    }
+
+    /// VoiceOver steps through the adjustable line instead, so the nudges are touch-only.
+    private func nudge(symbol: String, by delta: Double) -> some View {
+        let disabled = delta < 0 ? rate <= range.lowerBound : rate >= range.upperBound
+        return Button { set(rate + delta) } label: {
             Image(systemName: symbol)
-                .font(.body.weight(.semibold))
-                .frame(width: 48, height: 48)
-                .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                .font(.body)
+                .dynamicTypeSize(...Self.largestGlyphSize)
+                .foregroundStyle(Color.funstonSecondaryText)
+                .frame(minWidth: Self.minTouchTarget, minHeight: Self.minTouchTarget)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.primary)
-        .opacity(disabled ? 0.4 : 1)
         .disabled(disabled)
-        .accessibilityLabel(label)
+        .opacity(disabled ? Self.labeledTickOpacity : 1)
+        .accessibilityHidden(true)
     }
-
-    private func set(_ speed: Double) { playback.setPlaybackSpeed(speed, forCollection: collectionOverride) }
 }
 
 @MainActor
