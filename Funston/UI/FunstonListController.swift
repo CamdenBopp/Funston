@@ -69,12 +69,12 @@ class FunstonListController: UICollectionViewController {
         if row.artworkIdentifier != nil {
             configuration.textProperties.font = .preferredFont(forTextStyle: .headline)
             configuration.secondaryTextProperties.font = .preferredFont(forTextStyle: .subheadline)
-            configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 16)
+            configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 12, leading: FunstonMetrics.sideInset, bottom: 12, trailing: FunstonMetrics.sideInset)
             configuration.image = UIImage(systemName: row.mediaType.artworkSymbol)
             configuration.imageProperties.tintColor = .tertiaryLabel
             configuration.imageProperties.reservedLayoutSize = CGSize(width: 72, height: 80)
             configuration.imageProperties.maximumSize = CGSize(width: 72, height: 80)
-            configuration.imageProperties.cornerRadius = 3
+            configuration.imageProperties.cornerRadius = FunstonMetrics.artworkCornerRadius
         }
         cell.contentConfiguration = configuration
         (cell as? ArtifactListCell)?.setArtwork(identifier: row.artworkIdentifier)

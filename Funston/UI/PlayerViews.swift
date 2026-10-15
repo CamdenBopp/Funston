@@ -121,21 +121,26 @@ struct FullPlayer: View {
     }
 }
 
-/// Deliberate surfaces avoid automatic system button fills while retaining
-/// the user's request for stronger control boundaries.
+/// Bare glyphs, like the system Music player: a soft highlight only while
+/// pressed, and an outline only when the user asks for button shapes.
 private struct PlayerControlStyle: ButtonStyle {
     @Environment(\.accessibilityShowBorders) private var showBorders
     @Environment(\.isEnabled) private var isEnabled
+    private static let pressedFillOpacity = 0.12
+    private static let borderOpacity = 0.55
+    private static let borderWidth: CGFloat = 2
+    private static let disabledOpacity = 0.4
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(.primary.opacity(configuration.isPressed ? 0.18 : 0.08), in: Capsule())
+            .background(.primary.opacity(configuration.isPressed ? Self.pressedFillOpacity : 0), in: Capsule())
             .overlay {
-                Capsule().strokeBorder(.primary.opacity(showBorders ? 0.55 : 0.12),
-                                       lineWidth: showBorders ? 2 : 1)
+                if showBorders {
+                    Capsule().strokeBorder(.primary.opacity(Self.borderOpacity), lineWidth: Self.borderWidth)
+                }
             }
             .contentShape(Capsule())
-            .opacity(isEnabled ? 1 : 0.4)
+            .opacity(isEnabled ? 1 : Self.disabledOpacity)
     }
 }
 

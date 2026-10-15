@@ -10,7 +10,7 @@ final class ExploreController: UICollectionViewController {
     /// identifier because Internet Archive identifiers have no spaces.
     private static let continueSection = "continue listening"
     private enum Metrics {
-        static let sideInset: CGFloat = 20
+        static let sideInset = FunstonMetrics.sideInset
         static let tileSpacing: CGFloat = 16
         /// Gap between the heading's last line and the covers.
         static let shelfTop: CGFloat = 4
@@ -398,7 +398,7 @@ final class ExploreArtifactCell: UICollectionViewCell {
 
     private enum Metrics {
         static let artworkHeight: CGFloat = ExploreArtifactCell.maximumCoverHeight
-        static let artworkCornerRadius: CGFloat = 4
+        static let artworkCornerRadius = FunstonMetrics.artworkCornerRadius
         static let placeholderSymbolSide: CGFloat = 36
         static let textSpacing: CGFloat = 10
         static let bottomPadding: CGFloat = 8
