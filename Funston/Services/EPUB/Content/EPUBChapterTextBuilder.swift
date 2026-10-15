@@ -108,7 +108,11 @@ struct EPUBChapterTextBuilder {
     private final class State {
         let text = NSMutableAttributedString()
         var buffer = ""
+        /// The buffer's UTF-16 length, kept so renderedLength never counts the buffer.
+        var bufferUTF16Count = 0
         var bufferAttributes: [NSAttributedString.Key: Any] = [:]
+        /// The key the buffer's attributes were built for; nil after a flush.
+        var bufferKey: AttributeKey?
         var runs: [EPUBTextRun] = []
         var currentRun: (node: EPUBXMLDocument.NodeID, sourceOffset: Int, renderedStart: Int, length: Int)?
         var blocks: [EPUBBlock] = []
@@ -131,7 +135,7 @@ struct EPUBChapterTextBuilder {
         var visitedElements = 0
         var budgetExceeded = false
 
-        var renderedLength: Int { text.length + buffer.utf16.count }
+        var renderedLength: Int { text.length + bufferUTF16Count }
 
         /// Whether the last rendered character is whitespace, read without bridging the
         /// whole string: the buffer's last character, else the attributed string's last unit.
@@ -153,7 +157,7 @@ struct EPUBChapterTextBuilder {
             let root = Frame(node: body, style: bodyStyle, headIndent: 0, tailIndent: 0, containerIndices: [], listCounter: 0,
                              forcedBreakBefore: false, keepTogether: false, kind: .paragraph, pendingSpaceBefore: 0, spaceAfter: 0)
             state.frames.append(root)
-            for child in document.tree.children(of: body) { walk(child, state: state, inline: InlineContext(style: bodyStyle, language: chapterLanguage)) }
+            for child in document.tree.children(of: body) { walk(child, state: state, inline: InlineContext(style: bodyStyle, styleNode: body, language: chapterLanguage)) }
             closeParagraph(state)
         }
         flushRun(state)
@@ -169,11 +173,25 @@ struct EPUBChapterTextBuilder {
 
     private struct InlineContext {
         var style: EPUBComputedStyle
+        /// The element whose computed style this is: the cheap identity for the attribute cache.
+        var styleNode: EPUBXMLDocument.NodeID
         var language: String?
         var linkIndex: Int?
         var isNoteReference = false
         var verticalAlign: EPUBComputedStyle.VerticalAlign = .baseline
         var inRuby = false
+
+        /// What decides a run's attributes, without the style itself: the same element with
+        /// the same language, link and alignment renders the same attributes.
+        var attributeKey: AttributeKey { AttributeKey(styleNode: styleNode, language: language, linkIndex: linkIndex, isNoteReference: isNoteReference, verticalAlign: verticalAlign) }
+    }
+
+    private struct AttributeKey: Equatable {
+        let styleNode: EPUBXMLDocument.NodeID
+        let language: String?
+        let linkIndex: Int?
+        let isNoteReference: Bool
+        let verticalAlign: EPUBComputedStyle.VerticalAlign
     }
 
     private func walk(_ id: EPUBXMLDocument.NodeID, state: State, inline: InlineContext) {
@@ -191,6 +209,7 @@ struct EPUBChapterTextBuilder {
         let name = node.name
         var context = inline
         context.style = style
+        context.styleNode = id
         context.language = document.languages[id] ?? inline.language
         if style.verticalAlign == .sub || style.verticalAlign == .superscript { context.verticalAlign = style.verticalAlign }
         if let elementID = tree.id(of: id) {
@@ -563,6 +582,12 @@ struct EPUBChapterTextBuilder {
         if state.paragraph == nil, !preserveAll, text.unicodeScalars.allSatisfy(Self.isCollapsible) { return }
         var sourceOffset = 0
         var skipLeadingNewline = preserveAll && state.paragraph == nil
+        let plain = inline.style.textTransform == .none && !inline.style.smallCaps
+        let key = inline.attributeKey
+        var emitted = 0
+        defer {
+            if emitted > 0 { state.textCharacterCount += emitted; state.paragraph?.hasText = true }
+        }
         for scalar in text.unicodeScalars {
             let width = scalar.utf16.count
             defer { sourceOffset += width }
@@ -588,8 +613,13 @@ struct EPUBChapterTextBuilder {
             }
             ensureParagraph(state, inline: inline)
             if state.pendingSpace { emitPendingSpace(state, inline: inline) }
-            let transformed = Self.transform(scalar, style: inline.style, atWordStart: state.atParagraphStart || state.endsWithWhitespace)
-            emitTransformed(transformed, original: scalar, node: node, sourceOffset: sourceOffset, state: state, inline: inline)
+            if plain {
+                emitPlainScalar(scalar, key: key, node: node, sourceOffset: sourceOffset, state: state, inline: inline)
+                emitted += 1
+            } else {
+                let transformed = Self.transform(scalar, style: inline.style, atWordStart: state.atParagraphStart || state.endsWithWhitespace)
+                emitTransformed(transformed, original: scalar, node: node, sourceOffset: sourceOffset, state: state, inline: inline)
+            }
             state.atParagraphStart = false
         }
     }
@@ -622,12 +652,42 @@ struct EPUBChapterTextBuilder {
         state.paragraph?.hasText = true
     }
 
+    /// The fast path for untransformed text: no Character or String is made, the attribute key
+    /// is the caller's, and the character count is settled once per text node.
+    private func emitPlainScalar(_ scalar: Unicode.Scalar, key: AttributeKey, node: EPUBXMLDocument.NodeID, sourceOffset: Int, state: State, inline: InlineContext) {
+        let renderedStart = state.renderedLength
+        let width = scalar.utf16.count
+        if inline.linkIndex != nil {
+            appendToBuffer(String(scalar), state: state, inline: inline)
+        } else {
+            if state.bufferKey != key {
+                flushBuffer(state)
+                state.bufferAttributes = attributes(for: inline, state: state)
+                state.bufferKey = key
+            }
+            state.buffer.unicodeScalars.append(scalar)
+            state.bufferUTF16Count += width
+        }
+        if var run = state.currentRun, run.node == node, run.sourceOffset + run.length == sourceOffset, run.renderedStart + run.length == renderedStart {
+            run.length += width
+            state.currentRun = run
+        } else {
+            flushRun(state)
+            state.currentRun = (node, sourceOffset, renderedStart, width)
+        }
+    }
+
     /// Emits one source character, extending the current run when contiguous.
     private func emitScalar(_ character: Character, node: EPUBXMLDocument.NodeID, sourceOffset: Int, state: State, inline: InlineContext) {
         let renderedStart = state.renderedLength
-        let text = String(character)
-        appendToBuffer(text, state: state, inline: inline)
-        let width = text.utf16.count
+        let width = character.utf16.count
+        if inline.linkIndex != nil {
+            appendToBuffer(String(character), state: state, inline: inline)
+        } else {
+            prepareBuffer(for: inline, state: state)
+            state.buffer.append(character)
+            state.bufferUTF16Count += width
+        }
         if var run = state.currentRun, run.node == node, run.sourceOffset + run.length == sourceOffset, run.renderedStart + run.length == renderedStart {
             run.length += width
             state.currentRun = run
@@ -669,11 +729,19 @@ struct EPUBChapterTextBuilder {
         state.currentRun = nil
     }
 
+    /// Flushes the buffer when the context changes; the attributes are built once per context.
+    private func prepareBuffer(for inline: InlineContext, state: State) {
+        let key = inline.attributeKey
+        guard state.bufferKey != key else { return }
+        flushBuffer(state)
+        state.bufferAttributes = attributes(for: inline, state: state)
+        state.bufferKey = key
+    }
+
     private func appendToBuffer(_ text: String, state: State, inline: InlineContext) {
-        let attributes = attributes(for: inline, state: state)
-        if !state.buffer.isEmpty, !Self.sameAttributes(attributes, state.bufferAttributes) { flushBuffer(state) }
-        if state.buffer.isEmpty { state.bufferAttributes = attributes }
-        state.buffer += text
+        prepareBuffer(for: inline, state: state)
+        state.buffer.append(contentsOf: text)
+        state.bufferUTF16Count += text.utf16.count
         if let linkIndex = inline.linkIndex, var paragraph = state.paragraph {
             let location = state.renderedLength - text.utf16.count
             let range = NSRange(location: location, length: text.utf16.count)
@@ -694,9 +762,11 @@ struct EPUBChapterTextBuilder {
     }
 
     private func flushBuffer(_ state: State) {
+        state.bufferKey = nil
         guard !state.buffer.isEmpty else { return }
         state.text.append(NSAttributedString(string: state.buffer, attributes: state.bufferAttributes))
         state.buffer = ""
+        state.bufferUTF16Count = 0
     }
 
     private static func sameAttributes(_ a: [NSAttributedString.Key: Any], _ b: [NSAttributedString.Key: Any]) -> Bool {
@@ -914,7 +984,7 @@ struct EPUBChapterTextBuilder {
         closeParagraph(state)
         guard let frame = state.frames.last else { return }
         let style = styles[id]
-        let context = InlineContext(style: style, language: document.languages[id])
+        let context = InlineContext(style: style, styleNode: id, language: document.languages[id])
         openFrame(id, style: style, state: state, inline: context)
         ensureParagraph(state, inline: context)
         state.paragraph?.kind = .thoughtBreak
