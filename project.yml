@@ -43,6 +43,7 @@ targets:
       - package: Readium
         product: ReadiumNavigator
       - sdk: libsqlite3.tbd
+      - sdk: libxml2.tbd
       - sdk: AVFoundation.framework
       - sdk: MediaPlayer.framework
       - sdk: CarPlay.framework
@@ -62,6 +63,7 @@ targets:
         MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: "16"
         CODE_SIGN_STYLE: Automatic
+        HEADER_SEARCH_PATHS: "$(SDKROOT)/usr/include/libxml2"
     scheme:
       testTargets:
         - FunstonTests
