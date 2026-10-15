@@ -41,7 +41,6 @@
 		3BDD1D8C9E0B30FCA3D0298F /* EPUBProgressScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50E45C85B10E2049627DCD69 /* EPUBProgressScale.swift */; };
 		3FBFC49B21FDCFE928EC30F6 /* EPUBReaderController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79679C44A776B115330557D /* EPUBReaderController.swift */; };
 		439E1C9432ACBDBD5C954F48 /* EPUBContinuousStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71B8821CD88244330C5FDF23 /* EPUBContinuousStripView.swift */; };
-		43E547F853E37982C3DCF10C /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = 650ECFD527B2974A8E640EDF /* ReadiumShared */; };
 		45F67344EFD030FC7D4F856F /* EPUBContinuousView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 578478840B0499E439E6CF46 /* EPUBContinuousView.swift */; };
 		4619E6C13BE93409CB710B3D /* PlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C0ABD85EEF2749ED6AE3E4 /* PlaybackController.swift */; };
 		480976CB44F1F8C2B0C79D01 /* EPUBPaginationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C35FF210BE852BE2AD554DE /* EPUBPaginationTests.swift */; };
@@ -105,7 +104,6 @@
 		A2511002AE0A8B6D7D453D0F /* EPUBHrefTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C880AADA07D4C007F21C0C8 /* EPUBHrefTests.swift */; };
 		A361AB090B7E1CEB1EE1588D /* EPUBPackageDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91739B1D795AFADC7D7EF024 /* EPUBPackageDocumentTests.swift */; };
 		A439215F7316660702F8C517 /* MetadataFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBE560371DF410B0A8012A84 /* MetadataFormatterTests.swift */; };
-		A43CA9811F9BFD3A8A89BFA0 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 9313BE6194B7283F5B698C88 /* ReadiumStreamer */; };
 		A74FAE8AF16978BD66760D6D /* EPUBPropertyVocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2202FD215518EC9796FEE395 /* EPUBPropertyVocabulary.swift */; };
 		A8D8AB026A6E45181B3B3D10 /* OriginalVideoPictureInPicture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDAC92BD36FE050CE0CEFD8 /* OriginalVideoPictureInPicture.swift */; };
 		AA20305C654DF7018EA831A0 /* ArchivePlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5AAF43B1597B01B8AA33FF4F /* ArchivePlayerCore */; };
@@ -127,7 +125,6 @@
 		BC3CA3755388B9D9C6653EB8 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DDF8921F8E80E4F8BC7D463 /* SettingsView.swift */; };
 		BC7499E5E85624E9988151D8 /* EPUBStyleResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC7EFFE6042E9EAB2A6B58E9 /* EPUBStyleResolver.swift */; };
 		BD842D5C9DC548A4AD4BB3C0 /* EPUBContainerFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32C973FA40CE45C9EDA0D0F /* EPUBContainerFileTests.swift */; };
-		BDC4D9C4CA5EDBFCCB9A66F4 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = CECD6F02E0ED0D0671ECE9DE /* ReadiumNavigator */; };
 		BDCEDCFB9D7C58FD6BD965EE /* VideoPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15D73992E91F99768E44AC95 /* VideoPlaybackTests.swift */; };
 		BDFC6221AE98FC278EB44662 /* ArchiveCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DBCB79CF586FE1530AF953 /* ArchiveCoreTests.swift */; };
 		BECC7A592932795E3E9AD23A /* ArchiveNetworkPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85F2CAC5EFC1BA2141AA0D81 /* ArchiveNetworkPolicy.swift */; };
@@ -360,9 +357,6 @@
 			files = (
 				0BAAFA8419A7B99BA926ED4F /* LNPopupController-Static in Frameworks */,
 				AA20305C654DF7018EA831A0 /* ArchivePlayerCore in Frameworks */,
-				43E547F853E37982C3DCF10C /* ReadiumShared in Frameworks */,
-				A43CA9811F9BFD3A8A89BFA0 /* ReadiumStreamer in Frameworks */,
-				BDC4D9C4CA5EDBFCCB9A66F4 /* ReadiumNavigator in Frameworks */,
 				F30D5650C3CB4BE3C874A25F /* libsqlite3.tbd in Frameworks */,
 				96772F02BCD49E428E1E0E28 /* libxml2.tbd in Frameworks */,
 				FD1FD2B4D3283EB577966091 /* AVFoundation.framework in Frameworks */,
@@ -758,9 +752,6 @@
 			packageProductDependencies = (
 				81B3780F8002DA10A3C4D5EE /* LNPopupController-Static */,
 				5AAF43B1597B01B8AA33FF4F /* ArchivePlayerCore */,
-				650ECFD527B2974A8E640EDF /* ReadiumShared */,
-				9313BE6194B7283F5B698C88 /* ReadiumStreamer */,
-				CECD6F02E0ED0D0671ECE9DE /* ReadiumNavigator */,
 			);
 			productName = Funston;
 			productReference = 4C4C0741D5A43831933E86B5 /* Funston.app */;
@@ -839,7 +830,6 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				3758C39506ED82342322E83A /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */,
-				255D0DE2B7D8732D038D6215 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
 				E3D62361AEEC228740EB8A86 /* XCLocalSwiftPackageReference "Vendor/LNPopupController" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -1358,14 +1348,6 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		255D0DE2B7D8732D038D6215 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/readium/swift-toolkit.git";
-			requirement = {
-				kind = exactVersion;
-				version = 3.11.0;
-			};
-		};
 		3758C39506ED82342322E83A /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/CamdenBopp/ArchivePlayerCore.git";
@@ -1382,29 +1364,14 @@
 			package = 3758C39506ED82342322E83A /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */;
 			productName = ArchivePlayerCore;
 		};
-		650ECFD527B2974A8E640EDF /* ReadiumShared */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 255D0DE2B7D8732D038D6215 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumShared;
-		};
 		81B3780F8002DA10A3C4D5EE /* LNPopupController-Static */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = "LNPopupController-Static";
-		};
-		9313BE6194B7283F5B698C88 /* ReadiumStreamer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 255D0DE2B7D8732D038D6215 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumStreamer;
 		};
 		A38AE549ADD4916042D85BDA /* ArchivePlayerCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 3758C39506ED82342322E83A /* XCRemoteSwiftPackageReference "ArchivePlayerCore" */;
 			productName = ArchivePlayerCore;
-		};
-		CECD6F02E0ED0D0671ECE9DE /* ReadiumNavigator */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 255D0DE2B7D8732D038D6215 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumNavigator;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

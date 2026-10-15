@@ -7,7 +7,7 @@ Written 2026-09-28 after reading the code of every repository ChatGPT suggested 
 1. Fix four quiet bugs first: the database has no schema versioning, download bookkeeping errors are swallowed, failed downloads restart from zero, and AirPods and Lock Screen controls are missing commands.
 2. Then make audio excellent: a continue-listening shelf, sensible resume rules and a sleep timer. No app we read has a sleep timer.
 3. Bring the MKV player up to the AVKit player: Now Playing, Picture in Picture, saved position.
-4. EPUB comes through Readium, but only for born-digital books. Scanned books stay in PDFKit with on-device OCR, because Internet Archive's EPUBs of scans are its own OCR.
+4. EPUB opens in Funston's own native reader ([Docs/EPUB/Spec.md](EPUB/Spec.md)), but only for born-digital books. Scanned books stay in PDFKit with on-device OCR, because Internet Archive's EPUBs of scans are its own OCR.
 5. Don't adopt GRDB, Kingfisher, waveforms, FFmpeg or VLCKit. Funston's own code is better for this app, and the reasons are below.
 6. None of the eleven apps we read is better at VoiceOver than Funston already is. Their ideas are worth taking; their player UIs aren't.
 
@@ -85,14 +85,13 @@ Still open; see [PDFScrollingPolish.md](PDFScrollingPolish.md). It shows up most
 ### 4.1 Split the item screen by experience, just before Books (M)
 `ArtifactController` knows about recordings, PDFs and films in one class. Before adding EPUB, pull the shared overview out and route each item to an experience (audio, film, book, generic) behind a small protocol. Swiftfin's engine-capability protocols are a good model for the playback side of that routing. Land it as a refactor with no behaviour change, in its own commit.
 
-### 4.2 EPUB through Readium (L, done; needs a VoiceOver check on the iPhone)
-[readium/swift-toolkit](https://github.com/readium/swift-toolkit) 3.11, BSD-3. Use only its Shared, Streamer and Navigator products.
-- Born-digital EPUBs open in `EPUBNavigatorViewController`, a plain UIViewController.
-- Scanned books stay in PDFKit with on-device OCR. For those, Internet Archive's EPUB is generated from its own OCR (checked on `alicesadventures00carr`: EPUB, derived from ABBYY, derived from page scans). Offer it only as "Text version (from OCR)".
-- Readium doesn't follow Dynamic Type. Map the text size setting to `EPUBPreferences.fontSize` yourself.
-- Store reading positions as Readium `Locator` JSON in a new table. This needs 1.1.
-- Not done yet: read aloud, sharing the audio session with the music player.
-- Readium switches to scrolling when VoiceOver is on, because pagination breaks the screen reader. There's an open bug (#113) where swiping to the next paragraph during continuous reading can jump to the end of the chapter. Test it on the device before calling EPUB done.
+### 4.2 EPUB in a native reader (L, Phase A done 2026-10-15; Phase B and C in the spec)
+Readium 3.11 shipped first (September 2026) and was replaced by a clean-room native reader specified in [Docs/EPUB/Spec.md](EPUB/Spec.md): a ZIP reader, XHTML and CSS passes, TextKit 2 pagination, page and continuous strips, EPUB CFI positions, and one VoiceOver element per paragraph that keeps its place across page turns. No web view, no third-party package.
+- Born-digital EPUBs open in `EPUBReaderController`; scanned books stay in PDFKit with on-device OCR. For those, Internet Archive's EPUB is generated from its own OCR (checked on `alicesadventures00carr`: EPUB, derived from ABBYY, derived from page scans). Offer it only as "Text version (from OCR)".
+- Text size follows Dynamic Type directly; the layout setting (pages or continuous) is shared with the PDF reader.
+- Reading positions are version 2 locators (CFI, rendered offset, text context, progression) in `book_positions`; Readium rows left by earlier builds migrate on first open.
+- Not done yet: read aloud sharing the audio session with the music player, find, highlights and bookmarks (Phase B in the spec).
+- VoiceOver runs are recorded per release in `Docs/EPUB/VoiceOver-<date>.md`.
 
 ### 4.3 Search the whole book's recognized text (L)
 The plan lists this as deferred. It's the natural next step for the OCR engine choice: recognize every page once in the background, cache the results, and search those instead of Internet Archive's embedded text.
@@ -140,7 +139,7 @@ The research suggested these, and Funston already has them:
 | [jlipworth/Labstream](https://github.com/jlipworth/Labstream) | GPL-3.0 | media corpus testing, small pure policy types | ideas only |
 | [piemonte/Player](https://github.com/piemonte/Player), [BrikerMan/BMPlayer](https://github.com/BrikerMan/BMPlayer), [DZVideoPlayerViewController](https://github.com/DZamataev/DZVideoPlayerViewController), [Alan881/AAPlayer](https://github.com/Alan881/AAPlayer), [swiftui-loop-videoPlayer](https://github.com/swiftuiux/swiftui-loop-videoPlayer) | MIT | nothing; no accessibility code in any of them, several years stale | not worth it |
 | [maxovtsin/ororo-tv-player](https://github.com/maxovtsin/ororo-tv-player) | no license file (README says MIT) | nothing | no |
-| [readium/swift-toolkit](https://github.com/readium/swift-toolkit) | BSD-3 | EPUB | yes, as a dependency |
+| [readium/swift-toolkit](https://github.com/readium/swift-toolkit) | BSD-3 | EPUB, September to October 2026 | replaced by the native reader on 2026-10-15 ([Docs/EPUB/Spec.md](EPUB/Spec.md)) |
 | [GRDB](https://github.com/groue/GRDB.swift), [Kingfisher](https://github.com/onevcat/Kingfisher), [AudioKit/Waveform](https://github.com/AudioKit/Waveform), [DSWaveformImage](https://github.com/dmrschmidt/DSWaveformImage) | MIT | see "Don't do" | not needed |
 
 What ChatGPT got wrong:

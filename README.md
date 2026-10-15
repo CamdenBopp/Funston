@@ -15,7 +15,7 @@ Multi-track items play as a queue. A mini-player stays open while you browse, th
 
 CarPlay offers recent listening, saved audio, offline downloads, and radio/music browsing through the same player. Device builds require Apple's CarPlay audio entitlement; see [CarPlay setup and verification](Docs/CarPlay.md).
 
-Books that come with their own EPUB, such as Project Gutenberg's, open in a Readium-based reader that follows your text size and remembers your place. PDFs open in PDFKit with search and a remembered page. For scanned books, Page Text recognizes the page on the device instead of trusting Internet Archive's OCR, reading multi-column magazine pages column by column in whole paragraphs and tables row by row, and Reading options lets you pick the engine yourself.
+Books that come with their own EPUB, such as Project Gutenberg's, open in Funston's own reader: it unpacks the book, parses the chapters, lays the text out with TextKit and draws it itself, with no web view, so it follows your text size, remembers your place by EPUB CFI, and gives VoiceOver one element per paragraph that keeps its place across page turns. PDFs open in PDFKit with search and a remembered page. For scanned books, Page Text recognizes the page on the device instead of trusting Internet Archive's OCR, reading multi-column magazine pages column by column in whole paragraphs and tables row by row, and Reading options lets you pick the engine yourself.
 
 MP4, M4V and MOV films play in the system player. MKV originals play through [ArchivePlayerCore](https://github.com/CamdenBopp/ArchivePlayerCore), with audio-track and caption menus. That path is experimental.
 
