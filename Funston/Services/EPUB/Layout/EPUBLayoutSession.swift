@@ -88,18 +88,54 @@ final class EPUBLayoutSession: @unchecked Sendable {
         self.geometry = geometry
         self.text = text
         self.extent = extent
-        diagnostics = EPUBDiagnosticList()
         let prepared = Self.prepared(text, columnWidth: geometry.columnWidth, maximumImageHeight: geometry.contentSize.height - 2 * margins)
-        string = prepared
         let signpost = OSSignposterHolder.shared.beginInterval("layout", id: OSSignposterHolder.shared.makeSignpostID())
         defer { OSSignposterHolder.shared.endInterval("layout", signpost) }
+        var diagnostics = EPUBDiagnosticList()
+        var source = prepared
+        var measured = Self.measure(prepared, geometry: geometry, settings: settings, extent: extent, sectionLimit: sectionLimit, limits: limits, deadline: limits.deadline(\.layoutBudget))
+        if measured.exceededBudget {
+            // Spec 19.3: past the budget the chapter is laid out again as plain text, with no deadline.
+            diagnostics.record(.layout, Self.budgetDiagnostic, "Laying out the chapter ran past its time budget; its text is laid out plain.")
+            source = Self.plainCopy(of: prepared, baseFontSize: settings.baseFontSize)
+            measured = Self.measure(source, geometry: geometry, settings: settings, extent: extent, sectionLimit: sectionLimit, limits: limits, deadline: nil)
+        }
+        string = source
+        self.diagnostics = diagnostics
+        sections = measured.sections
+        lineSources = measured.sources
+        let lines = measured.lines
+        var table = EPUBPageTable.paginate(lines: lines, geometry: geometry)
+        if extent == .firstPage, table.pages.count > 1 {
+            table = EPUBPageTable(lines: table.lines, pages: [table.pages[0]], geometry: geometry)
+        }
+        if table.pages.isEmpty {
+            // A chapter with no text still owns one page.
+            table = EPUBPageTable(lines: [], pages: [EPUBPageRecord(columns: [EPUBColumnCut(firstLine: 0, lastLine: 0, top: 0)], firstOffset: 0, endOffset: 0)], geometry: geometry)
+        }
+        self.table = table
+        measuredEndOffset = extent == .firstPage ? (table.pages.first?.endOffset ?? 0) : prepared.length
+        if extent == .whole || measuredEndOffset >= prepared.length { measuredEndOffset = prepared.length }
+    }
+
+
+    private struct Measurement {
         var lines: [EPUBLineRecord] = []
-        var sources: [(Int, Int)] = []
+        var sources: [(section: Int, fragment: Int)] = []
         var sections: [Section] = []
-        var y: CGFloat = 0
-        let heightBudget = extent == .firstPage ? geometry.contentSize.height * Self.partialPageHeights : .infinity
         var measuredEnd = 0
-        for slice in Self.sectionRanges(of: prepared, limit: sectionLimit) {
+        /// The deadline passed before the measurement finished.
+        var exceededBudget = false
+    }
+
+    /// Lays a string out section by section into line records. A partial pass stops
+    /// at its height budget; any pass stops at the deadline and says so.
+    private static func measure(_ prepared: NSAttributedString, geometry: EPUBPageGeometry, settings: EPUBReadingSettings, extent: EPUBLayoutExtent,
+                                sectionLimit: Int, limits: EPUBWorkLimits, deadline: ContinuousClock.Instant?) -> Measurement {
+        var result = Measurement()
+        var y: CGFloat = 0
+        let heightBudget = extent == .firstPage ? geometry.contentSize.height * partialPageHeights : .infinity
+        for slice in sectionRanges(of: prepared, limit: sectionLimit) {
             let sectionString = prepared.attributedSubstring(from: slice)
             let contentStorage = NSTextContentStorage()
             contentStorage.textStorage = NSTextStorage(attributedString: sectionString)
@@ -113,10 +149,11 @@ final class EPUBLayoutSession: @unchecked Sendable {
             var fragments: [NSTextLineFragment] = []
             var sectionHeight: CGFloat = 0
             var stopped = false
-            let sectionIndex = sections.count
+            let sectionIndex = result.sections.count
             let documentStart = layoutManager.documentRange.location
             guard let storage = contentStorage.textStorage else { continue }
             layoutManager.enumerateTextLayoutFragments(from: nil, options: [.ensuresLayout]) { fragment in
+                if let deadline, ContinuousClock.now > deadline { result.exceededBudget = true; return false }
                 guard let element = fragment.textElement, let elementRange = element.elementRange else { return true }
                 let elementStart = slice.location + layoutManager.offset(from: documentStart, to: elementRange.location)
                 let fragmentIndex = fragments.count
@@ -126,34 +163,33 @@ final class EPUBLayoutSession: @unchecked Sendable {
                     let range = NSRange(location: location, length: line.characterRange.length)
                     let bounds = line.typographicBounds
                     let lineFrame = CGRect(x: frame.minX + bounds.minX, y: y + frame.minY + bounds.minY, width: bounds.width, height: bounds.height)
-                    let forced = lineIndex == 0 && Self.flag(.epubForcedBreakBefore, in: storage, at: location - slice.location)
-                    let keep = Self.flag(.epubKeepTogether, in: storage, at: location - slice.location)
-                    lines.append(EPUBLineRecord(range: range, frame: lineFrame, fragmentIndex: fragmentIndex, forcesBreakBefore: forced, keepsTogether: keep))
-                    sources.append((sectionIndex, fragments.count))
+                    let forced = lineIndex == 0 && flag(.epubForcedBreakBefore, in: storage, at: location - slice.location)
+                    let keep = flag(.epubKeepTogether, in: storage, at: location - slice.location)
+                    result.lines.append(EPUBLineRecord(range: range, frame: lineFrame, fragmentIndex: fragmentIndex, forcesBreakBefore: forced, keepsTogether: keep))
+                    result.sources.append((sectionIndex, fragments.count))
                     fragments.append(line)
-                    measuredEnd = max(measuredEnd, range.location + range.length)
+                    result.measuredEnd = max(result.measuredEnd, range.location + range.length)
                 }
                 sectionHeight = max(sectionHeight, frame.maxY)
                 if sectionHeight > heightBudget { stopped = true; return false }
                 return true
             }
-            sections.append(Section(startOffset: slice.location, yOffset: y, contentStorage: contentStorage, layoutManager: layoutManager, container: container, lineFragments: fragments, height: sectionHeight))
+            result.sections.append(Section(startOffset: slice.location, yOffset: y, contentStorage: contentStorage, layoutManager: layoutManager, container: container, lineFragments: fragments, height: sectionHeight))
             y += sectionHeight
-            if stopped { break }
+            if stopped || result.exceededBudget { break }
         }
-        self.sections = sections
-        lineSources = sources
-        var table = EPUBPageTable.paginate(lines: lines, geometry: geometry)
-        if extent == .firstPage, table.pages.count > 1 {
-            table = EPUBPageTable(lines: table.lines, pages: [table.pages[0]], geometry: geometry)
+        return result
+    }
+
+    /// The same characters with the body font only; attachments stay so images still draw.
+    static func plainCopy(of string: NSAttributedString, baseFontSize: CGFloat) -> NSAttributedString {
+        let copy = NSMutableAttributedString(string: string.string)
+        let whole = NSRange(location: 0, length: copy.length)
+        copy.addAttribute(.font, value: UIFont.systemFont(ofSize: baseFontSize), range: whole)
+        string.enumerateAttribute(.attachment, in: whole) { value, range, _ in
+            if let value { copy.addAttribute(.attachment, value: value, range: range) }
         }
-        if table.pages.isEmpty {
-            // A chapter with no text still owns one page.
-            table = EPUBPageTable(lines: [], pages: [EPUBPageRecord(columns: [EPUBColumnCut(firstLine: 0, lastLine: 0, top: 0)], firstOffset: 0, endOffset: 0)], geometry: geometry)
-        }
-        self.table = table
-        measuredEndOffset = extent == .firstPage ? (table.pages.first?.endOffset ?? 0) : prepared.length
-        if extent == .whole || measuredEndOffset >= prepared.length { measuredEndOffset = prepared.length }
+        return copy
     }
 
     /// Slices of the string no longer than the limit, cut at paragraph separators.

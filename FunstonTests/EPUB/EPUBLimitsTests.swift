@@ -78,4 +78,24 @@ final class EPUBLimitsTests: XCTestCase {
         XCTAssertEqual(Array(styledCharacters), Array(plainCharacters))
     }
 
+    func testALayoutPastItsBudgetIsLaidOutAgainAsPlainTextWithADiagnostic() throws {
+        var limits = EPUBWorkLimits()
+        limits.layoutBudget = .zero
+        let reader = try session(limits: limits)
+        let layout = try XCTUnwrap(reader.layout(0))
+        XCTAssertTrue(layout.diagnostics.contains(code: EPUBLayoutSession.budgetDiagnostic))
+        XCTAssertTrue(reader.diagnostics.contains(code: EPUBLayoutSession.budgetDiagnostic), "The session surfaces the layout's diagnostic")
+        let text = try XCTUnwrap(reader.chapter(0)).text
+        XCTAssertEqual(layout.string.string, text.string.string, "The plain layout keeps every character")
+        XCTAssertEqual(layout.table.lines.last.map { $0.range.location + $0.range.length }, text.length, "Every line is laid out")
+        let body = UIFont.systemFont(ofSize: EPUBReadingSettings().baseFontSize)
+        var fonts = Set<String>()
+        layout.string.enumerateAttribute(.font, in: NSRange(location: 0, length: layout.string.length)) { value, _, _ in
+            if let font = value as? UIFont { fonts.insert(font.fontName + "@\(font.pointSize)") }
+        }
+        XCTAssertEqual(fonts, [body.fontName + "@\(body.pointSize)"], "Plain text: one body font, no heading sizes")
+        let styled = try XCTUnwrap(try session(limits: EPUBWorkLimits()).layout(0))
+        XCTAssertFalse(styled.diagnostics.contains(code: EPUBLayoutSession.budgetDiagnostic))
+        XCTAssertNotEqual(styled.pageCount, 0)
+    }
 }
