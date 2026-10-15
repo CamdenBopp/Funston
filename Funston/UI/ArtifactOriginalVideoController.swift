@@ -426,7 +426,7 @@ final class ArtifactOriginalVideoController: UIViewController {
         return true
     }
 
-    private static let updateFailedNotice = "Couldn't change playback. Try again."
+    private static let updateFailedNotice = "Could not change playback. Try again."
 
     /// A menu row for a track, led by its language as the system player does.
     /// Embedded track names are often an uploader's tag ("Toonworld4all.me"), so a
@@ -594,7 +594,7 @@ final class ArtifactOriginalVideoController: UIViewController {
         navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.close() })
         navigationController?.setNavigationBarHidden(false, animated: false)
         var config = UIContentUnavailableConfiguration.empty()
-        config.text = "Could not play this film"
+        config.text = "Could not play film"
         if case .unsupported(let reason) = error as? DemuxError { config.secondaryText = reason }
         else { config.secondaryText = "Check your connection or choose another version of this film." }
         config.button.title = "Try Again"

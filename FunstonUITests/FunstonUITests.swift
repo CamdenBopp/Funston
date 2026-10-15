@@ -529,7 +529,7 @@ final class FunstonUITests: XCTestCase {
         let current = app.buttons["queue.recording.0"]
         XCTAssertTrue(current.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["queue.current"].isEnabled)
-        XCTAssertEqual(app.buttons["queue.current"].label, "Jump to now playing")
+        XCTAssertEqual(app.buttons["queue.current"].label, "Current recording")
         capture(app, name: name + " Recordings")
         app.buttons["queue.done"].tap()
         app.buttons["Close player"].tap()

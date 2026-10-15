@@ -221,7 +221,7 @@ struct GetFunstonCurrentRecordingIntent: AudioPlaybackIntent {
         let environment = try await FunstonIntentRuntime.environment()
         let playback = try await FunstonIntentRuntime.playback(in: environment)
         guard let context = playback.context else { throw FunstonIntentError.noRecording }
-        return .result(value: "\(context.track.title) — \(context.artifact.title)")
+        return .result(value: "\(context.track.title) from \(context.artifact.title)")
     }
 }
 

@@ -129,7 +129,7 @@ final class EPUBReaderController: UIViewController, EPUBNavigatorDelegate {
             opening = nil
             switch result {
             case .success(let publication): present(publication, at: saved)
-            case .failure(let message): showStatus("This book can't be opened", detail: message, retry: true)
+            case .failure(let message): showStatus("Could not open book", detail: message, retry: true)
             }
         }
     }
@@ -185,7 +185,7 @@ final class EPUBReaderController: UIViewController, EPUBNavigatorDelegate {
             UIAccessibility.post(notification: .screenChanged, argument: navigator.view)
         } catch {
             Self.logger.error("Navigator: \(String(describing: error), privacy: .public)")
-            showStatus("This book can't be opened", detail: "It may be protected or damaged.")
+            showStatus("Could not open book", detail: "It may be protected or damaged.")
         }
     }
 

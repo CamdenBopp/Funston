@@ -51,10 +51,10 @@ private struct SettingsView: View {
                     LabeledContent("Storage used", value: ByteCountFormatter.string(fromByteCount: downloads.storageUsedBytes, countStyle: .file))
                     Button("Remove All Downloads", role: .destructive) { confirmRemoval = true }
                         .disabled(working)
-                    Button("Clear cache") { clearCache() }.disabled(working)
+                    Button("Clear Cache") { clearCache() }.disabled(working)
                 }
                 Section("Reading") {
-                    Picker("Default text recognition engine", selection: $settings.textRecognitionEngine) {
+                    Picker("Default text recognition", selection: $settings.textRecognitionEngine) {
                         ForEach(PDFTextEnginePreference().options(ocrEngines: PDFPageTextEngineRegistry.builtIn.descriptors).filter(\.isAvailable), id: \.id) { engine in
                             Text(engine.title).tag(engine.id)
                         }

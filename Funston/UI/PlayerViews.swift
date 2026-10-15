@@ -48,7 +48,7 @@ struct FullPlayer: View {
                         }
                         PlaybackPositionView(playback: playback)
                         HStack {
-                            transport("Back \(Int(playback.skipBackInterval)) seconds", symbol: "gobackward.\(Int(playback.skipBackInterval))") { playback.skip(by: -playback.skipBackInterval) }
+                            transport("Skip back \(Int(playback.skipBackInterval)) seconds", symbol: "gobackward.\(Int(playback.skipBackInterval))") { playback.skip(by: -playback.skipBackInterval) }
                             Spacer()
                             Button { playback.togglePlayback() } label: {
                                 Image(systemName: presentation.showsPauseControl ? "pause.fill" : "play.fill")
@@ -57,7 +57,7 @@ struct FullPlayer: View {
                                 .accessibilityValue(presentation.phase.spokenValue)
                                 .accessibilityIdentifier("player.toggle")
                             Spacer()
-                            transport("Forward \(Int(playback.skipForwardInterval)) seconds", symbol: "goforward.\(Int(playback.skipForwardInterval))") { playback.skip(by: playback.skipForwardInterval) }
+                            transport("Skip forward \(Int(playback.skipForwardInterval)) seconds", symbol: "goforward.\(Int(playback.skipForwardInterval))") { playback.skip(by: playback.skipForwardInterval) }
                         }.buttonStyle(PlayerControlStyle()).foregroundStyle(.primary).padding(.horizontal, 8)
                         if context.tracks.count > 1 {
                             HStack {
@@ -80,6 +80,7 @@ struct FullPlayer: View {
                                     Text("Speed").font(.caption).foregroundStyle(Color.funstonSecondaryText)
                                 }.frame(maxWidth: .infinity)
                             }.buttonStyle(.plain).accessibilityLabel("Playback speed")
+                                .accessibilityInputLabels(["Speed", "Playback speed"])
                                 .accessibilityValue("\(presentation.playbackRate.formatted()) times")
                                 .accessibilityIdentifier("player.speed")
                                 .popover(isPresented: $showingSpeed, arrowEdge: .bottom) {
@@ -89,7 +90,7 @@ struct FullPlayer: View {
                                 .frame(maxWidth: .infinity)
                             VStack(spacing: 6) {
                                 RoutePicker().frame(width: 48, height: 48)
-                                    .accessibilityLabel("Audio output")
+                                    .accessibilityLabel("AirPlay")
                                     .accessibilityIdentifier("player.audioOutput")
                                 Text("AirPlay").font(.caption).foregroundStyle(Color.funstonSecondaryText)
                                     .accessibilityHidden(true)
@@ -399,7 +400,7 @@ struct SleepTimerMenu: View {
                 ForEach(SleepTimer.choices, id: \.self) { duration in
                     Button(SleepTimer.spoken(duration).capitalizedFirstLetter) { timer.start(after: duration) }
                 }
-                Button("End of This Recording") { timer.stopAtEndOfRecording() }
+                Button("End of Recording") { timer.stopAtEndOfRecording() }
                 if timer.setting != .off {
                     Button("Turn Off Sleep Timer", role: .destructive) { timer.turnOff() }
                 }
@@ -421,6 +422,7 @@ struct SleepTimerMenu: View {
             .buttonStyle(.plain)
             .foregroundStyle(.tint)
             .accessibilityLabel("Sleep timer")
+            .accessibilityInputLabels(["Sleep", "Sleep timer"])
             .accessibilityValue(spokenValue(at: context.date))
             .accessibilityIdentifier("player.sleepTimer")
         }
