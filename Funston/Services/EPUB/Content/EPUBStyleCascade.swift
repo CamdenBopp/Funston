@@ -94,7 +94,7 @@ enum EPUBUserAgentStyles {
 /// Computes one style per element: user-agent defaults, presentational
 /// attributes, author rules by specificity and order, inline style, author
 /// `!important`, inline `!important`, then the user overrides of Spec 9.3.
-struct EPUBStyleResolver: Sendable {
+struct EPUBStyleCascade: Sendable {
     static let fontSizeKeywords: [String: CGFloat] = ["xx-small": 0.5625, "x-small": 0.625, "small": 0.8125, "medium": 1, "large": 1.125, "x-large": 1.5, "xx-large": 2, "xxx-large": 3]
     static let smallerScale: CGFloat = 0.833
     static let largerScale: CGFloat = 1.2

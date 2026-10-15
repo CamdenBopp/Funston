@@ -163,7 +163,7 @@ enum EPUBCFIGenerator {
 
     /// Collapsed text before and after a position across the whole document.
     static func context(around position: EPUBSourcePosition, in tree: EPUBXMLDocument, length: Int) -> (String, String)? {
-        let order = EPUBCFIResolver.characterDataNodes(in: tree)
+        let order = EPUBCFIFollower.characterDataNodes(in: tree)
         var before = "", after = ""
         switch position {
         case .text(let node, let offset):
@@ -176,7 +176,7 @@ enum EPUBCFIGenerator {
             var later = index + 1
             while after.count < length * 2, later < order.count { after += tree[order[later]].text; later += 1 }
         case .element(let element):
-            let descendants = EPUBCFIResolver.characterDataNodes(in: tree, under: element)
+            let descendants = EPUBCFIFollower.characterDataNodes(in: tree, under: element)
             let first = descendants.first.flatMap { order.firstIndex(of: $0) } ?? order.firstIndex { tree[$0].parent.map { tree.ancestors(of: $0).contains(element) } ?? false }
             guard let first else { return nil }
             var earlier = first - 1
@@ -232,7 +232,7 @@ struct EPUBCFIResolveFailure: Error, Hashable {
 /// Resolves CFIs against the package document and a chapter's raw tree with
 /// intent-preserving correction (CFI 1.1 section 3.5), falling back to the
 /// index when an asserted id is absent instead of refusing.
-enum EPUBCFIResolver {
+enum EPUBCFIFollower {
     struct SpineResolution: Sendable, Hashable {
         let spineIndex: Int
         let correctedByID: Bool

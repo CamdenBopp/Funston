@@ -163,7 +163,7 @@ struct EPUBPositionResolver {
         }
         fallbacks.append(.offset)
         if let cfiString = locator.cfi, let cfi = try? EPUBCFI.parse(cfiString), let path = cfi.documentPath,
-           case .success(let resolution) = EPUBCFIResolver.resolve(path, in: loaded.document.tree),
+           case .success(let resolution) = EPUBCFIFollower.resolve(path, in: loaded.document.tree),
            let offset = text.runTable.renderedOffset(for: resolution.position, in: loaded.document.tree) {
             return EPUBRestoredPosition(spineIndex: spineIndex, offset: offset, progression: progression(of: offset, in: text), method: .cfi, fallbacks: fallbacks)
         }

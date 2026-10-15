@@ -114,7 +114,7 @@ struct EPUBChapterLoader: Sendable {
 
     private func build(_ document: EPUBContentDocument, spineIndex: Int, sheets: [EPUBStyleSheet], diagnostics: EPUBDiagnosticList) -> EPUBLoadedChapter {
         var diagnostics = diagnostics
-        let resolver = EPUBStyleResolver(settings: settings, sheets: sheets)
+        let resolver = EPUBStyleCascade(settings: settings, sheets: sheets)
         let styles = resolver.resolve(document, diagnostics: &diagnostics)
         let publication = publication
         let builder = EPUBChapterTextBuilder(document: document, styles: styles, settings: settings, geometry: geometry, fonts: resources.fonts, images: resources.images,

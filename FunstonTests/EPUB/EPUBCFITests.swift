@@ -160,7 +160,7 @@ final class EPUBCFITests: XCTestCase {
     }
 
     private func resolve(_ text: String, in tree: EPUBXMLDocument) throws -> EPUBCFIResolution {
-        switch EPUBCFIResolver.resolve(try path(text), in: tree) {
+        switch EPUBCFIFollower.resolve(try path(text), in: tree) {
         case .success(let resolution): return resolution
         case .failure(let failure): throw failure
         }
@@ -233,13 +233,13 @@ final class EPUBCFITests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(EPUBCFIGenerator.packageLevel(package: package, spineIndex: 0)).steps.map(EPUBCFI.serialize).joined(), "/8/2")
         XCTAssertEqual(try XCTUnwrap(EPUBCFIGenerator.packageLevel(package: package, spineIndex: 1)).steps.map(EPUBCFI.serialize).joined(), "/8/4[c1]")
         XCTAssertEqual(try XCTUnwrap(EPUBCFIGenerator.packageLevel(package: package, spineIndex: 2)).steps.map(EPUBCFI.serialize).joined(), "/8/6")
-        let byID = try XCTUnwrap(EPUBCFIResolver.spineIndex(of: try EPUBCFI.parse("epubcfi(/6/4[c1]!/4/2)"), in: package))
+        let byID = try XCTUnwrap(EPUBCFIFollower.spineIndex(of: try EPUBCFI.parse("epubcfi(/6/4[c1]!/4/2)"), in: package))
         XCTAssertEqual(byID.spineIndex, 1); XCTAssertTrue(byID.correctedByID)
-        XCTAssertNil(EPUBCFIResolver.spineIndex(of: try EPUBCFI.parse("epubcfi(/6/4!/4/2)"), in: package), "No id and the wrong spine step: nothing to resolve")
-        let dropped = try XCTUnwrap(EPUBCFIResolver.spineIndex(of: try EPUBCFI.parse("epubcfi(/8/6[ch2]!/4/2)"), in: package))
+        XCTAssertNil(EPUBCFIFollower.spineIndex(of: try EPUBCFI.parse("epubcfi(/6/4!/4/2)"), in: package), "No id and the wrong spine step: nothing to resolve")
+        let dropped = try XCTUnwrap(EPUBCFIFollower.spineIndex(of: try EPUBCFI.parse("epubcfi(/8/6[ch2]!/4/2)"), in: package))
         XCTAssertEqual(dropped.spineIndex, 2); XCTAssertTrue(dropped.idDropped, "An id that names a manifest item, not an itemref, is dropped")
-        XCTAssertEqual(EPUBCFIResolver.spineIndex(of: try EPUBCFI.parse("epubcfi(/8/2!/4/2)"), in: package)?.spineIndex, 0)
-        XCTAssertNil(EPUBCFIResolver.spineIndex(of: try EPUBCFI.parse("epubcfi(/8/40!/4/2)"), in: package))
+        XCTAssertEqual(EPUBCFIFollower.spineIndex(of: try EPUBCFI.parse("epubcfi(/8/2!/4/2)"), in: package)?.spineIndex, 0)
+        XCTAssertNil(EPUBCFIFollower.spineIndex(of: try EPUBCFI.parse("epubcfi(/8/40!/4/2)"), in: package))
     }
 
     func testFoliateComparisonVectors() throws {

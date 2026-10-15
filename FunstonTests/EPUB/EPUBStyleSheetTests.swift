@@ -102,7 +102,7 @@ final class EPUBStyleSheetTests: XCTestCase {
         let document = EPUBContentDocument.parse(Data("<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\"><head><style>\(css)</style></head><body>\(body)</body></html>".utf8), path: "OEBPS/c.xhtml", publicationLanguage: "en")
         let parsed = EPUBStyleSheet.parse(css, path: "OEBPS/c.xhtml", media: .default, loader: { _ in nil }, resolve: { r, _ in r })
         var diagnostics = EPUBDiagnosticList()
-        let resolved = EPUBStyleResolver(settings: settings, sheets: [parsed]).resolve(document, diagnostics: &diagnostics)
+        let resolved = EPUBStyleCascade(settings: settings, sheets: [parsed]).resolve(document, diagnostics: &diagnostics)
         return (document, resolved, diagnostics)
     }
 
@@ -208,11 +208,11 @@ final class EPUBStyleSheetTests: XCTestCase {
         XCTAssertEqual(EPUBColor.parse("rgba(0%, 100%, 0%, 0.5)"), EPUBColor(red: 0, green: 1, blue: 0, alpha: 0.5))
         XCTAssertNil(EPUBColor.parse("hsl(0 0% 0%)"))
         let settings = EPUBReadingSettings()
-        XCTAssertEqual(EPUBStyleResolver.fontSize("medium", parentSize: 20, settings: settings), 17)
-        XCTAssertEqual(EPUBStyleResolver.fontSize("x-large", parentSize: 20, settings: settings), 25.5)
-        XCTAssertEqual(EPUBStyleResolver.fontSize("smaller", parentSize: 20, settings: settings) ?? 0, 16.66, accuracy: 0.01)
-        XCTAssertEqual(EPUBStyleResolver.fontSize("larger", parentSize: 20, settings: settings), 24)
-        XCTAssertEqual(EPUBStyleResolver.fontSize("150%", parentSize: 20, settings: settings), 30)
-        XCTAssertEqual(EPUBStyleResolver.fontSize("1.5em", parentSize: 20, settings: settings), 30)
+        XCTAssertEqual(EPUBStyleCascade.fontSize("medium", parentSize: 20, settings: settings), 17)
+        XCTAssertEqual(EPUBStyleCascade.fontSize("x-large", parentSize: 20, settings: settings), 25.5)
+        XCTAssertEqual(EPUBStyleCascade.fontSize("smaller", parentSize: 20, settings: settings) ?? 0, 16.66, accuracy: 0.01)
+        XCTAssertEqual(EPUBStyleCascade.fontSize("larger", parentSize: 20, settings: settings), 24)
+        XCTAssertEqual(EPUBStyleCascade.fontSize("150%", parentSize: 20, settings: settings), 30)
+        XCTAssertEqual(EPUBStyleCascade.fontSize("1.5em", parentSize: 20, settings: settings), 30)
     }
 }

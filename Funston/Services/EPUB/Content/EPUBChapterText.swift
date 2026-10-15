@@ -72,16 +72,16 @@ struct EPUBRunTable: Sendable, Hashable {
             }
             if let following { return following }
             // No run in this node: the first run of a later node in document order.
-            let order = EPUBCFIResolver.characterDataNodes(in: tree)
+            let order = EPUBCFIFollower.characterDataNodes(in: tree)
             guard let index = order.firstIndex(of: node) else { return nil }
             for later in order[(index + 1)...] {
                 if let run = runs.first(where: { $0.node == later }) { return run.renderedStart }
             }
             return runs.last.map(\.renderedEnd)
         case .element(let element):
-            let descendants = Set(EPUBCFIResolver.characterDataNodes(in: tree, under: element))
+            let descendants = Set(EPUBCFIFollower.characterDataNodes(in: tree, under: element))
             if let run = runs.first(where: { descendants.contains($0.node) }) { return run.renderedStart }
-            let order = EPUBCFIResolver.characterDataNodes(in: tree)
+            let order = EPUBCFIFollower.characterDataNodes(in: tree)
             let after = order.drop { !descendants.contains($0) }.dropFirst()
             for later in after where !descendants.contains(later) {
                 if let run = runs.first(where: { $0.node == later }) { return run.renderedStart }
@@ -100,7 +100,7 @@ struct EPUBRunTable: Sendable, Hashable {
                 let child = children[childIndex]
                 return renderedOffset(for: tree[child].isElement ? .element(child) : .text(node: child, offset: 0), in: tree)
             }
-            let descendants = Set(EPUBCFIResolver.characterDataNodes(in: tree, under: parent))
+            let descendants = Set(EPUBCFIFollower.characterDataNodes(in: tree, under: parent))
             if let last = runs.last(where: { descendants.contains($0.node) }) { return last.renderedEnd }
             return renderedOffset(for: .element(parent), in: tree)
         }

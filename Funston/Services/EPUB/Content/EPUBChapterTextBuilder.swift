@@ -809,7 +809,7 @@ struct EPUBChapterTextBuilder {
         guard let parent = tree.parent(of: id) else { return true }
         var current = parent
         while !styles[current].isBlockLevel, let next = tree.parent(of: current) { current = next }
-        let text = EPUBCFIResolver.characterDataNodes(in: tree, under: current).map { tree[$0].text }.joined()
+        let text = EPUBCFIFollower.characterDataNodes(in: tree, under: current).map { tree[$0].text }.joined()
         guard EPUBXMLDocument.collapseWhitespace(text).isEmpty else { return false }
         return tree.descendantElements(of: current).filter { ["img", "image", "svg"].contains(tree.localName(of: $0)) }.count == 1
     }
