@@ -170,13 +170,18 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
 
     var firstVisibleElement: UIView? { orderedElements.first { $0.frame.maxY > contentOffset.y + Self.visibleThreshold } }
 
-    /// VoiceOver moved onto a paragraph: bring it into view if it is not.
+    /// VoiceOver moved onto a paragraph: bring it into view if it is not, and make it
+    /// the reading position (the scroll offset after a move can still touch the end of
+    /// the chapter above, which is not where the reader is).
     func paragraphDidReceiveFocus(_ view: UIView) {
         let visible = CGRect(origin: contentOffset, size: bounds.size)
-        guard !visible.contains(CGRect(x: view.frame.minX, y: view.frame.minY, width: 1, height: min(view.frame.height, bounds.height / 2))) else { return }
-        contentOffset = CGPoint(x: 0, y: clampedY(view.frame.minY - Self.focusTopInset))
-        updateTiles()
-        report()
+        if !visible.contains(CGRect(x: view.frame.minX, y: view.frame.minY, width: 1, height: min(view.frame.height, bounds.height / 2))) {
+            contentOffset = CGPoint(x: 0, y: clampedY(view.frame.minY - Self.focusTopInset))
+            updateTiles()
+        }
+        guard let range = (view as? EPUBParagraphView)?.range ?? (view as? EPUBFigureView)?.range,
+              let page = (view as? EPUBParagraphView)?.page ?? (view as? EPUBFigureView)?.page else { return }
+        stripDelegate?.continuousStrip(self, didSettleAt: range.location, spineIndex: page.spineIndex)
     }
 
     /// A three-finger scroll: one screen, announced as a location, landing on the first paragraph there.

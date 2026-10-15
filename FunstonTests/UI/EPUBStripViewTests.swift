@@ -213,6 +213,28 @@ final class EPUBStripViewTests: XCTestCase {
         XCTAssertTrue(strip.firstVisibleElement === first)
     }
 
+    func testFocusingAParagraphReportsItsOwnPositionNotTheScrollOffset() throws {
+        let session = try session()
+        let strip = continuousStrip()
+        let delegate = ContinuousDelegate()
+        strip.stripDelegate = delegate
+        strip.load(try chapters(session, spines: [0, 1, 2]), showing: 0, in: 0)
+        let elements = try XCTUnwrap(strip.accessibilityElements as? [UIView])
+        // A paragraph already on screen: nothing scrolls, and it is still the position.
+        let second = try XCTUnwrap(elements[1] as? EPUBParagraphView)
+        let offsetBefore = strip.contentOffset.y
+        second.accessibilityElementDidBecomeFocused()
+        XCTAssertEqual(strip.contentOffset.y, offsetBefore, accuracy: 0.5)
+        XCTAssertEqual(delegate.settled.last?.spineIndex, 0)
+        XCTAssertEqual(delegate.settled.last?.offset, second.range.location)
+        // The next chapter's first paragraph: the strip scrolls, and the position is that
+        // paragraph, not the previous chapter's end that the scroll offset happens to touch.
+        let next = try XCTUnwrap(elements.first { column(of: $0)?.spineIndex == 1 } as? EPUBParagraphView)
+        next.accessibilityElementDidBecomeFocused()
+        XCTAssertEqual(delegate.settled.last?.spineIndex, 1)
+        XCTAssertEqual(delegate.settled.last?.offset, next.range.location)
+    }
+
     func testFocusingAParagraphBelowTheViewBringsItIntoView() throws {
         let session = try session()
         let strip = continuousStrip()
