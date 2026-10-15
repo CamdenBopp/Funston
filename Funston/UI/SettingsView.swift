@@ -75,7 +75,7 @@ private struct SettingsView: View {
                     NavigationLink("Privacy policy") {
                         SettingsTextPage(title: "Privacy policy", text: "Funston stores your library, downloads, settings, and listening and reading positions on your device. Funston requests media, artwork, and catalog information from Internet Archive. Those requests include your IP address and the Funston app version. Funston does not include analytics or advertising tracking. Internet Archive’s privacy policy applies to its service.", linkTitle: "Internet Archive privacy policy", linkURL: URL(string: "https://archive.org/about/terms.php"))
                     }
-                    Link("Contact", destination: URL(string: ArchiveNetworkPolicy.contact)!)
+                    Link("View on GitHub", destination: URL(string: ArchiveNetworkPolicy.contact)!)
                     NavigationLink("Shortcuts help") {
                         Form {
                             Section("Say to Siri") {
