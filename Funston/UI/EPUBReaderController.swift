@@ -258,7 +258,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         if layoutMode != .continuous, EPUBAccessibilityModel.preferred == .blocks {
             let strip = EPUBPageStripView(frame: container.bounds)
             strip.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            strip.isRightToLeft = session.publication.package.pageProgression == .rightToLeft
+            strip.isRightToLeft = session.publication.package.pagesRightToLeft
             strip.stripDelegate = self
             container.addSubview(strip)
             strip.addGestureRecognizer(tapRecognizer())
@@ -267,7 +267,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         } else if layoutMode == .continuous {
             let scroll = EPUBContinuousStripView(frame: container.bounds)
             scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            scroll.isRightToLeft = session.publication.package.pageProgression == .rightToLeft
+            scroll.isRightToLeft = session.publication.package.pagesRightToLeft
             scroll.stripDelegate = self
             container.addSubview(scroll)
             continuous = scroll
@@ -306,7 +306,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         let title = session?.contentsEntry(spineIndex: placement.spineIndex, offset: 0)?.label ?? chapter?.text.title ?? summary.title
         controller.update(to: placement)
         controller.pageView.delegate = self
-        controller.pageView.isRightToLeft = session?.publication.package.pageProgression == .rightToLeft
+        controller.pageView.isRightToLeft = session?.publication.package.pagesRightToLeft == true
         controller.pageView.show(session?.layout(placement.spineIndex), page: placement.pageIndex, spineIndex: placement.spineIndex, chapter: chapter?.text, title: title)
     }
 
@@ -554,7 +554,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         }
         if continuous == nil {
             let zone = max(Self.edgeZoneMinimum, container.bounds.width * Self.edgeZoneFraction)
-            let rightToLeft = session.publication.package.pageProgression == .rightToLeft
+            let rightToLeft = session.publication.package.pagesRightToLeft
             if point.x < zone { rightToLeft ? goForward() : goBackward(); return }
             if point.x > container.bounds.width - zone { rightToLeft ? goBackward() : goForward(); return }
         }
@@ -575,11 +575,11 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     override var canBecomeFirstResponder: Bool { true }
 
     @objc private func keyForward() {
-        guard session?.publication.package.pageProgression != .rightToLeft else { goBackward(); return }
+        guard session?.publication.package.pagesRightToLeft != true else { goBackward(); return }
         goForward()
     }
     @objc private func keyBackward() {
-        guard session?.publication.package.pageProgression != .rightToLeft else { goForward(); return }
+        guard session?.publication.package.pagesRightToLeft != true else { goForward(); return }
         goBackward()
     }
 
@@ -616,11 +616,11 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     // MARK: - Pager
 
     func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
-        neighbourController(of: viewController, forward: session?.publication.package.pageProgression == .rightToLeft)
+        neighbourController(of: viewController, forward: session?.publication.package.pagesRightToLeft == true)
     }
 
     func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
-        neighbourController(of: viewController, forward: session?.publication.package.pageProgression != .rightToLeft)
+        neighbourController(of: viewController, forward: session?.publication.package.pagesRightToLeft != true)
     }
 
     private func neighbourController(of viewController: UIViewController, forward: Bool) -> UIViewController? {

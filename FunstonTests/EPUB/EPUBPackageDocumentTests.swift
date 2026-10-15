@@ -199,6 +199,14 @@ final class EPUBPackageDocumentTests: XCTestCase {
         }
     }
 
+    func testPagesRunRightToLeftWhenDeclaredOrWhenTheLanguageIsRightToLeftAndNothingIsDeclared() throws {
+        let arabic = EPUBFixture.package().replacingOccurrences(of: "<dc:language>en</dc:language>", with: "<dc:language>ar</dc:language>")
+        XCTAssertTrue(try parse(arabic, files: chapterFiles).pagesRightToLeft, "An undeclared progression follows a right-to-left language")
+        XCTAssertFalse(try parse(arabic.replacingOccurrences(of: "<spine>", with: "<spine page-progression-direction=\"ltr\">"), files: chapterFiles).pagesRightToLeft, "A declared ltr wins over the language")
+        XCTAssertFalse(try parse(EPUBFixture.package(), files: chapterFiles).pagesRightToLeft)
+        XCTAssertTrue(try parse(EPUBFixture.package().replacingOccurrences(of: "<spine>", with: "<spine page-progression-direction=\"rtl\">"), files: chapterFiles).pagesRightToLeft)
+    }
+
     func testPageProgressionAndSpineElementPosition() throws {
         let withGuide = EPUBFixture.package().replacingOccurrences(of: "<spine>", with: "<guide/><spine page-progression-direction=\"default\">")
         let package = try parse(withGuide, files: chapterFiles)

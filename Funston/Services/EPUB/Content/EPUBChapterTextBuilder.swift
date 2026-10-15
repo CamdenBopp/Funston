@@ -26,7 +26,6 @@ struct EPUBChapterTextBuilder {
     static let subscriptBaselineFactor: CGFloat = -0.2
     static let listMarkerGap = " "
     static let bulletMarkers: [EPUBComputedStyle.ListStyleType: String] = [.disc: "\u{2022}", .circle: "\u{25E6}", .square: "\u{25AA}"]
-    static let rightToLeftLanguages: Set<String> = ["ar", "arc", "ckb", "dv", "fa", "ha", "he", "iw", "khw", "ks", "ku", "nqo", "prs", "ps", "sd", "syr", "ug", "ur", "yi"]
     static let noteReferenceClasses = ["fnanchor", "noteref"]
     static let noteTargetPrefixes = ["Footnote_", "fn", "note"]
     static let noteContainerClassFragments = ["footnote", "note"]
@@ -513,7 +512,7 @@ struct EPUBChapterTextBuilder {
         if let declared, declared != .auto { return declared }
         if declared == nil, let language {
             let primary = language.split(separator: "-").first.map { $0.lowercased() } ?? ""
-            if rightToLeftLanguages.contains(primary) { return .rightToLeft }
+            if EPUBPackageDocument.rightToLeftLanguages.contains(primary) { return .rightToLeft }
         }
         for scalar in text.unicodeScalars {
             if isRightToLeftScalar(scalar) { return .rightToLeft }

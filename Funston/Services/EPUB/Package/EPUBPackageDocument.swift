@@ -186,6 +186,18 @@ struct EPUBPackageDocument: Sendable, Hashable {
     var releaseIdentifier: String { modified.map { uniqueIdentifier + "@" + $0 } ?? uniqueIdentifier }
     var mainTitle: EPUBTitle? { titles.first { $0.kind == .main } ?? titles.first }
     var primaryLanguage: String { languages.first ?? Self.undeterminedLanguage }
+    /// Languages whose pages run right to left when the spine declares no progression.
+    static let rightToLeftLanguages: Set<String> = ["ar", "arc", "ckb", "dv", "fa", "ha", "he", "iw", "khw", "ks", "ku", "nqo", "prs", "ps", "sd", "syr", "ug", "ur", "yi"]
+    /// Pages run right to left: declared on the spine, or defaulted from a right-to-left
+    /// primary language when the spine declares nothing (EPUB 3.3 section 6.4; W3C
+    /// pkg-spine-progression-default).
+    var pagesRightToLeft: Bool {
+        switch pageProgression {
+        case .rightToLeft: return true
+        case .leftToRight: return false
+        case .default: return Self.rightToLeftLanguages.contains(String(primaryLanguage.prefix { $0 != "-" }).lowercased())
+        }
+    }
     var creators: [EPUBContributor] { contributors.filter(\.isCreator) }
     var isFixedLayout: Bool { rendition.layout == .prePaginated }
     var hasMediaOverlays: Bool { manifest.contains { $0.mediaOverlay != nil } }
