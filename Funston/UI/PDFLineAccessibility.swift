@@ -222,8 +222,12 @@ final class ReaderControls: NSObject {
         UIAccessibility.post(notification: .layoutChanged, argument: page)
     }
 
+    /// A reader that reports a position ("Chapter 3, page 4 of 12") keeps it as the
+    /// element's value; the controls state then lives only in the custom action.
+    var positionValue: String? { didSet { updateAction() } }
+
     private func updateAction() {
-        page.accessibilityValue = isHidden ? "Controls hidden" : "Controls visible"
+        page.accessibilityValue = positionValue ?? (isHidden ? "Controls hidden" : "Controls visible")
         page.accessibilityCustomActions = [UIAccessibilityCustomAction(name: isHidden ? "Show controls" : "Hide controls") { [weak self] _ in
             self?.toggle(); return true
         }]

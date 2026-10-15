@@ -8,7 +8,7 @@ import OSLog
 /// Text size follows Dynamic Type and colors follow Dark Mode; the layout
 /// setting picks pages or continuous scrolling.
 @MainActor
-final class EPUBReaderController: UIViewController, UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
+final class EPUBReaderController: UIViewController, UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIGestureRecognizerDelegate, EPUBPageViewDelegate {
     private static let logger = Logger(subsystem: "com.camden.Funston", category: "Books")
     /// Body text at the default Dynamic Type size is 17 pt.
     static let bodyPointSize: CGFloat = 17
@@ -39,6 +39,8 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     private let container = UIView()
     private let banner = UILabel()
     private var noticeShown = false
+    /// True while VoiceOver's own read-all is turning pages: nothing may move its focus (APL-33).
+    private var voiceOverTurning = false
     private lazy var readerControls = ReaderControls(reader: self, pageView: view)
 
     init(summary: ArtifactSummary, file: ArchiveFile, downloads: DownloadManager, store: SQLiteStore) {
@@ -237,7 +239,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
             noticeShown = true
             UIAccessibility.post(notification: .announcement, argument: "Approximate position")
         }
-        UIAccessibility.post(notification: .screenChanged, argument: container)
+        UIAccessibility.post(notification: .screenChanged, argument: pageFocusElement)
     }
 
     // MARK: - Surfaces
@@ -253,7 +255,8 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
             scroll.settled = { [weak self] in self?.continuousSettled() }
             container.addSubview(scroll)
             continuous = scroll
-            scroll.show(session.layout(placement.spineIndex), spineIndex: placement.spineIndex, atOffset: session.anchor?.renderedOffset)
+            scroll.pageDelegate = self
+            scroll.show(session.layout(placement.spineIndex), spineIndex: placement.spineIndex, chapter: session.chapter(placement.spineIndex)?.text, title: session.chapter(placement.spineIndex)?.text.title ?? summary.title, atOffset: session.anchor?.renderedOffset)
             scroll.addGestureRecognizer(tapRecognizer())
         } else {
             let pager = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal, options: nil)
@@ -279,8 +282,57 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
 
     private func pageController(for placement: EPUBPlacement) -> EPUBPageController {
         let controller = EPUBPageController(placement: placement)
-        controller.pageView.show(session?.layout(placement.spineIndex), page: placement.pageIndex, spineIndex: placement.spineIndex)
+        show(placement, in: controller)
         return controller
+    }
+
+    private func show(_ placement: EPUBPlacement, in controller: EPUBPageController) {
+        let chapter = session?.chapter(placement.spineIndex)
+        let title = session?.contentsEntry(spineIndex: placement.spineIndex, offset: 0)?.label ?? chapter?.text.title ?? summary.title
+        controller.update(to: placement)
+        controller.pageView.delegate = self
+        controller.pageView.isRightToLeft = session?.publication.package.pageProgression == .rightToLeft
+        controller.pageView.show(session?.layout(placement.spineIndex), page: placement.pageIndex, spineIndex: placement.spineIndex, chapter: chapter?.text, title: title)
+    }
+
+    /// The element VoiceOver should land on for the shown page (Spec 14.3).
+    private var pageFocusElement: Any? {
+        guard let pageView = currentPageView else { return continuous }
+        return pageView.focusElement
+    }
+
+    // MARK: - EPUBPageViewDelegate
+
+    func pageView(_ view: EPUBPageView, turnPage forward: Bool) -> Bool {
+        guard let session else { return false }
+        voiceOverTurning = true
+        defer { voiceOverTurning = false }
+        let moved = forward ? session.forward() : session.backward()
+        guard moved else { return false }
+        showPlacement(direction: forward ? .forward : .reverse, animated: false)
+        return true
+    }
+
+    func pageViewPageDescription(_ view: EPUBPageView) -> String {
+        guard let session, let placement = session.placement, let layout = session.layout(placement.spineIndex) else { return "" }
+        return "Page \(placement.pageIndex + 1) of \(layout.pageCount)"
+    }
+
+    func pageView(_ view: EPUBPageView, activateLinkAt offset: Int) -> Bool {
+        guard let session, let link = session.link(at: offset, spineIndex: view.spineIndex) else { return false }
+        activate(link.target, isNoteReference: link.isNoteReference)
+        return true
+    }
+
+    func pageView(_ view: EPUBPageView, linkAt offset: Int) -> (label: String, isNote: Bool)? {
+        guard let session, let link = session.link(at: offset, spineIndex: view.spineIndex), let chapter = session.chapter(view.spineIndex) else { return nil }
+        return (chapter.text.text(in: link.range.range), link.isNoteReference)
+    }
+
+    func surface(_ view: EPUBContinuousView, activateLinkAt offset: Int) -> Bool {
+        guard let session, let link = session.link(at: offset, spineIndex: view.spineIndex) else { return false }
+        activate(link.target, isNoteReference: link.isNoteReference)
+        return true
     }
 
     private var currentPageView: EPUBPageView? { (pager?.viewControllers?.first as? EPUBPageController)?.pageView }
@@ -290,14 +342,20 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         guard let session, let placement = session.placement else { return }
         if let continuous {
             if continuous.spineIndex != placement.spineIndex || continuous.layout !== session.layout(placement.spineIndex) {
-                continuous.show(session.layout(placement.spineIndex), spineIndex: placement.spineIndex, atOffset: session.anchor?.renderedOffset)
+                continuous.show(session.layout(placement.spineIndex), spineIndex: placement.spineIndex, chapter: session.chapter(placement.spineIndex)?.text, title: session.chapter(placement.spineIndex)?.text.title ?? summary.title, atOffset: session.anchor?.renderedOffset)
             } else if let offset = session.anchor?.renderedOffset {
                 continuous.scroll(toOffset: offset, animated: animated)
             }
         } else if let pager {
             let shown = pager.viewControllers?.first as? EPUBPageController
             if shown?.placement != placement || shown?.pageView.layout !== session.layout(placement.spineIndex) {
-                pager.setViewControllers([pageController(for: placement)], direction: direction, animated: animated && !UIAccessibility.isReduceMotionEnabled)
+                if UIAccessibility.isVoiceOverRunning, let shown {
+                    // The page element keeps its identity: VoiceOver reads the new page from the same element (APL-29).
+                    show(placement, in: shown)
+                    pager.setViewControllers([shown], direction: direction, animated: false)
+                } else {
+                    pager.setViewControllers([pageController(for: placement)], direction: direction, animated: animated && !UIAccessibility.isReduceMotionEnabled)
+                }
             }
         }
         prefetchNeighbour()
@@ -326,7 +384,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         let mode = SettingsStore.shared.readingLayout
         session.update(settings: settings, mediaContext: mediaContext)
         if mode != layoutMode { layoutMode = mode; installSurface() } else { showPlacement() }
-        UIAccessibility.post(notification: .layoutChanged, argument: container)
+        UIAccessibility.post(notification: .layoutChanged, argument: pageFocusElement)
     }
 
     private func applyGeometry() {
@@ -344,8 +402,17 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
             if continuous.page(forward: true, animated: !UIAccessibility.isReduceMotionEnabled) { scheduleSettleReport() } else { crossChapter(1) }
             return
         }
+        let before = session.placement?.spineIndex
         guard session.forward() else { return }
         showPlacement(direction: .forward, animated: true)
+        announceTurn(chapterChanged: before != session.placement?.spineIndex)
+    }
+
+    /// After a manual turn: layoutChanged with the page element, screenChanged after a chapter change (Spec 14.3).
+    private func announceTurn(chapterChanged: Bool) {
+        guard !voiceOverTurning else { return }
+        EPUBAccessibilityLog.shared.record("post \(chapterChanged ? "screenChanged" : "layoutChanged") after manual turn")
+        UIAccessibility.post(notification: chapterChanged ? .screenChanged : .layoutChanged, argument: pageFocusElement)
     }
 
     func goBackward() {
@@ -354,16 +421,19 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
             if continuous.page(forward: false, animated: !UIAccessibility.isReduceMotionEnabled) { scheduleSettleReport() } else { crossChapter(-1) }
             return
         }
+        let before = session.placement?.spineIndex
         guard session.backward() else { return }
         showPlacement(direction: .reverse, animated: true)
+        announceTurn(chapterChanged: before != session.placement?.spineIndex)
     }
 
     /// Continuous mode: the neighbouring chapter at its top (or bottom).
     private func crossChapter(_ direction: Int) {
+        EPUBAccessibilityLog.shared.record("continuous crossChapter direction=\(direction) from spine=\(session?.placement?.spineIndex ?? -1)")
         guard let session, let current = session.placement?.spineIndex, let neighbour = session.neighbour(of: current, forward: direction > 0), let layout = session.layout(neighbour) else { return }
         let offset = direction > 0 ? 0 : (layout.table.pages.last?.firstOffset ?? 0)
         session.show(visibleOffset: offset, spineIndex: neighbour)
-        continuous?.show(layout, spineIndex: neighbour, atOffset: offset)
+        continuous?.show(layout, spineIndex: neighbour, chapter: session.chapter(neighbour)?.text, title: session.chapter(neighbour)?.text.title ?? summary.title, atOffset: offset)
         prefetchNeighbour()
         report()
         UIAccessibility.post(notification: .screenChanged, argument: container)
@@ -371,6 +441,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
 
     private func continuousSettled() {
         guard let continuous, let session, let offset = continuous.firstVisibleOffset else { return }
+        EPUBAccessibilityLog.shared.record("continuous settled spine=\(continuous.spineIndex) offset=\(offset) contentOffset=\(continuous.contentOffset.y)")
         session.show(visibleOffset: offset, spineIndex: continuous.spineIndex)
         scheduleSettleReport()
     }
@@ -388,7 +459,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     func go(to target: EPUBGoTarget, recordingDeparture: Bool) {
         guard let session, session.go(to: target, recordingDeparture: recordingDeparture) != nil else { return }
         showPlacement(direction: .forward, animated: false)
-        UIAccessibility.post(notification: .screenChanged, argument: container)
+        UIAccessibility.post(notification: .screenChanged, argument: pageFocusElement)
     }
 
     // MARK: - Input
@@ -479,9 +550,11 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
 
     func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
         guard completed, let shown = (pageViewController.viewControllers?.first as? EPUBPageController)?.placement, let session else { return }
+        let before = session.placement?.spineIndex
         session.show(shown)
         prefetchNeighbour()
         report()
+        announceTurn(chapterChanged: before != shown.spineIndex)
     }
 
     // MARK: - Contents and landmarks
@@ -544,7 +617,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     private func report() {
         guard let session, let relocation = session.relocationIfChanged() else { return }
         let chapter = relocation.contentsEntry?.label ?? relocation.locator.title ?? "Chapter \(relocation.locator.spineIndex + 1)"
-        readerControls.page.accessibilityValue = continuous == nil
+        readerControls.positionValue = continuous == nil
             ? "\(chapter), page \(relocation.pageIndex + 1) of \(relocation.pageCount)"
             : "\(chapter), location \(relocation.location) of \(relocation.totalLocations)"
         scheduleSave(relocation.locator)
@@ -599,10 +672,11 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     }
 }
 
-/// One page of the pager.
+/// One page of the pager. Under VoiceOver the same controller shows page
+/// after page, so the page element VoiceOver holds never changes identity.
 @MainActor
 final class EPUBPageController: UIViewController {
-    let placement: EPUBPlacement
+    private(set) var placement: EPUBPlacement
     let pageView = EPUBPageView()
 
     init(placement: EPUBPlacement) {
@@ -612,6 +686,8 @@ final class EPUBPageController: UIViewController {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func loadView() { view = pageView }
+
+    func update(to placement: EPUBPlacement) { self.placement = placement }
 }
 
 /// A note's blocks in a sheet: the text first, "Return to text" last (Spec 13.4).

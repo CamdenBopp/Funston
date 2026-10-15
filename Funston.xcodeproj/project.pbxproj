@@ -85,6 +85,7 @@
 		8946332DBAD4F9DFFF2C2A05 /* FunstonRootController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FBBB642621A8FDC9EB59A6D /* FunstonRootController.swift */; };
 		8A2CBB2DE50A02EE1709B2B4 /* EPUBClockValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7695E32D17ADA4B7156CAB0 /* EPUBClockValue.swift */; };
 		8B2E73912516B1CED9E37FC3 /* OriginalVideoLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7540836E849C6DFD78F2033B /* OriginalVideoLiveTests.swift */; };
+		8CE70324198862C15DD9314D /* EPUBAccessibilityLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD6CC1EC8B959E1AAA11EDB0 /* EPUBAccessibilityLog.swift */; };
 		8F36107E122B75C8E867DE43 /* ArtifactArtworkLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37212FCCB7B0625E5D94E558 /* ArtifactArtworkLifecycleTests.swift */; };
 		8F96EDE4F9313F45320CDD6E /* AppIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F28EB53A203A0710CFBE557A /* AppIntentTests.swift */; };
 		913F43521BCBA5FC260B20A6 /* ContinueListening.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C4A1A2218332A1F56B2F54 /* ContinueListening.swift */; };
@@ -312,6 +313,7 @@
 		C6B2556F6A00E16BF44C90D2 /* ResumePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumePolicyTests.swift; sourceTree = "<group>"; };
 		CB73A6339210FC418D6AAF77 /* PDFPerformanceView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PDFPerformanceView.m; sourceTree = "<group>"; };
 		CC15EAA4846BEB6D80D8C029 /* EPUBContentDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBContentDocumentTests.swift; sourceTree = "<group>"; };
+		CD6CC1EC8B959E1AAA11EDB0 /* EPUBAccessibilityLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBAccessibilityLog.swift; sourceTree = "<group>"; };
 		D0742EF0885D2E7C2F295BC7 /* MediaAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaAvailability.swift; sourceTree = "<group>"; };
 		D2275460558ED9B1F14D4806 /* FunstonApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonApplication.swift; sourceTree = "<group>"; };
 		D66AB97AFBE5A2BE8B21FD76 /* FunstonUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FunstonUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -424,6 +426,7 @@
 		405D8C12A970E7305FD045E2 /* EPUB */ = {
 			isa = PBXGroup;
 			children = (
+				CD6CC1EC8B959E1AAA11EDB0 /* EPUBAccessibilityLog.swift */,
 				578478840B0499E439E6CF46 /* EPUBContinuousView.swift */,
 				54A58E7A4B31532A65A98939 /* EPUBPageView.swift */,
 			);
@@ -897,6 +900,7 @@
 				3210CFDCBF7ECDBBA0B5E175 /* CarPlaySceneDelegate.swift in Sources */,
 				913F43521BCBA5FC260B20A6 /* ContinueListening.swift in Sources */,
 				B71B2B79473396C8456E2659 /* DownloadManager.swift in Sources */,
+				8CE70324198862C15DD9314D /* EPUBAccessibilityLog.swift in Sources */,
 				2CDA88512F4FAB82B56FF464 /* EPUBCFI.swift in Sources */,
 				93DA2B5C98A194746902015A /* EPUBCFIResolution.swift in Sources */,
 				FCB6D6E85416C4E219F63980 /* EPUBChapterLoader.swift in Sources */,
