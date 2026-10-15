@@ -22,4 +22,32 @@ final class EPUBLimitsTests: XCTestCase {
         XCTAssertTrue(rows.allSatisfy { !$0.navigates })
     }
 
+    func testStandardLimitsDeriveTheBookCapFromAvailableMemoryWithAFloor() {
+        let small = EPUBWorkLimits.derived(availableMemory: 1024)
+        XCTAssertEqual(small.bookBytes, EPUBWorkLimits.minimumBookBytes, "Tiny or unknown memory keeps the floor")
+        let phone = EPUBWorkLimits.derived(availableMemory: 3 * 1024 * 1024 * 1024)
+        XCTAssertEqual(phone.bookBytes, 3 * 1024 * 1024 * 1024 * EPUBWorkLimits.bookBytesPerAvailableByte)
+        XCTAssertEqual(EPUBWorkLimits.derived(availableMemory: .max).bookBytes, .max, "An overflow never wraps to a small cap")
+        XCTAssertGreaterThanOrEqual(EPUBWorkLimits.standard.bookBytes, EPUBWorkLimits.minimumBookBytes)
+    }
+
+    func testABookWhoseDeclaredSizesExceedTheCapIsRefusedBeforeAnyEntryIsInflated() throws {
+        let data = EPUBFixture.minimalBook()
+        var limits = EPUBWorkLimits()
+        limits.bookBytes = 64
+        XCTAssertThrowsError(try EPUBZipReader(data: data, limits: limits)) { XCTAssertEqual($0 as? EPUBZipError, .bookTooLarge) }
+        XCTAssertNoThrow(try EPUBZipReader(data: data), "The same archive is fine under the standard cap")
+        XCTAssertThrowsError(try EPUBPublication.open(data: data, limits: limits)) { XCTAssertEqual($0 as? EPUBOpenFailure, .tooLarge) }
+        XCTAssertEqual(EPUBOpenFailure.tooLarge.message, "This book is too large to open on this device.")
+    }
+
+    func testAnEntryOverTheEntryCapIsRefusedOnRead() throws {
+        let publication = try EPUBPublication.open(data: EPUBFixture.minimalBook())
+        var limits = EPUBWorkLimits()
+        limits.entryBytes = 8
+        let reader = try EPUBZipReader(data: EPUBFixture.minimalBook(), limits: limits)
+        XCTAssertThrowsError(try reader.contents(named: "OEBPS/ch1.xhtml")) { XCTAssertEqual($0 as? EPUBZipError, .entryTooLarge) }
+        XCTAssertEqual(try publication.zip.contents(named: "mimetype").map { String(decoding: $0, as: UTF8.self) }, "application/epub+zip")
+    }
+
 }

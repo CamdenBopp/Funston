@@ -30,6 +30,7 @@ final class EPUBReaderSession {
 
     let publication: EPUBPublication
     let resources: EPUBBookResources
+    let limits: EPUBWorkLimits
     let cache = EPUBLayoutCache()
     private(set) var settings: EPUBReadingSettings
     private(set) var contentSize: CGSize
@@ -48,9 +49,10 @@ final class EPUBReaderSession {
 
     var diagnostics = EPUBDiagnosticList()
 
-    init(publication: EPUBPublication, settings: EPUBReadingSettings, contentSize: CGSize, allowsTwoColumns: Bool, mediaContext: EPUBMediaContext) {
+    init(publication: EPUBPublication, settings: EPUBReadingSettings, contentSize: CGSize, allowsTwoColumns: Bool, mediaContext: EPUBMediaContext, limits: EPUBWorkLimits = .standard) {
         self.publication = publication
         resources = EPUBBookResources(publication: publication)
+        self.limits = limits
         self.settings = settings
         self.contentSize = contentSize
         self.allowsTwoColumns = allowsTwoColumns
@@ -76,7 +78,7 @@ final class EPUBReaderSession {
 
     func chapter(_ spineIndex: Int) -> EPUBLoadedChapter? {
         if let loaded = chapters[spineIndex] { return loaded }
-        let loader = EPUBChapterLoader(resources: resources, settings: settings, geometry: textGeometry, mediaContext: mediaContext)
+        let loader = EPUBChapterLoader(resources: resources, settings: settings, geometry: textGeometry, mediaContext: mediaContext, limits: limits)
         guard let loaded = loader.load(spineIndex: spineIndex) else { return nil }
         chapters[spineIndex] = loaded
         diagnostics.merge(loaded.diagnostics)
@@ -89,7 +91,8 @@ final class EPUBReaderSession {
         if let resident = cache.session(spineIndex: spineIndex, key: key), !resident.isPartial || extent == .firstPage { return resident }
         guard let chapter = chapter(spineIndex) else { return nil }
         let wanted: EPUBLayoutExtent = extent == .whole || chapter.text.length <= EPUBLayoutSession.twoPassThreshold ? .whole : .firstPage
-        let session = EPUBLayoutSession(text: chapter.text, geometry: geometry, key: key, settings: settings, margins: 0, extent: wanted)
+        let session = EPUBLayoutSession(text: chapter.text, geometry: geometry, key: key, settings: settings, margins: 0, extent: wanted, limits: limits)
+        diagnostics.merge(session.diagnostics)
         cache.store(session, spineIndex: spineIndex, current: placement?.spineIndex ?? spineIndex)
         return session
     }
@@ -97,11 +100,12 @@ final class EPUBReaderSession {
     /// Lays out the whole of a chapter that only has its first page, off the main actor, then installs it.
     func completeLayout(_ spineIndex: Int) async {
         guard let partial = cache.session(spineIndex: spineIndex, key: layoutKey), partial.isPartial else { return }
-        let text = partial.text, geometry = geometry, key = layoutKey, settings = settings
+        let text = partial.text, geometry = geometry, key = layoutKey, settings = settings, limits = limits
         let whole = await Task.detached(priority: .userInitiated) {
-            EPUBLayoutSession(text: text, geometry: geometry, key: key, settings: settings, margins: 0, extent: .whole)
+            EPUBLayoutSession(text: text, geometry: geometry, key: key, settings: settings, margins: 0, extent: .whole, limits: limits)
         }.value
         guard key == layoutKey else { return }
+        diagnostics.merge(whole.diagnostics)
         cache.store(whole, spineIndex: spineIndex, current: placement?.spineIndex ?? spineIndex)
     }
 

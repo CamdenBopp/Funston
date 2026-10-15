@@ -88,6 +88,7 @@ struct EPUBChapterLoader: Sendable {
     let settings: EPUBReadingSettings
     let geometry: EPUBTextGeometry
     let mediaContext: EPUBMediaContext
+    var limits: EPUBWorkLimits = .standard
 
     var publication: EPUBPublication { resources.publication }
 

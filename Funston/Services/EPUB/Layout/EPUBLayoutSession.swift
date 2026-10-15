@@ -51,6 +51,8 @@ final class EPUBLayoutSession: @unchecked Sendable {
     static let sectionLimit = 300_000
     /// The partial pass measures this many page heights so the first cut sees its lookahead.
     static let partialPageHeights: CGFloat = 3
+    /// Recorded when the styled layout ran past its budget and the chapter was laid out plain (Spec 19.3).
+    static let budgetDiagnostic = "layout.timeBudget"
 
     /// One TextKit 2 stack over a slice of the chapter string.
     private struct Section {
@@ -68,6 +70,7 @@ final class EPUBLayoutSession: @unchecked Sendable {
     let text: EPUBChapterText
     let string: NSAttributedString
     let extent: EPUBLayoutExtent
+    let diagnostics: EPUBDiagnosticList
     private(set) var table: EPUBPageTable
     /// The first rendered offset no page covers: the string length for a whole layout.
     private(set) var measuredEndOffset: Int
@@ -80,11 +83,12 @@ final class EPUBLayoutSession: @unchecked Sendable {
 
     /// Lays the chapter out synchronously on the calling queue.
     init(text: EPUBChapterText, geometry: EPUBPageGeometry, key: EPUBLayoutKey, settings: EPUBReadingSettings, margins: CGFloat,
-         extent: EPUBLayoutExtent = .whole, sectionLimit: Int = EPUBLayoutSession.sectionLimit) {
+         extent: EPUBLayoutExtent = .whole, sectionLimit: Int = EPUBLayoutSession.sectionLimit, limits: EPUBWorkLimits = .standard) {
         self.key = key
         self.geometry = geometry
         self.text = text
         self.extent = extent
+        diagnostics = EPUBDiagnosticList()
         let prepared = Self.prepared(text, columnWidth: geometry.columnWidth, maximumImageHeight: geometry.contentSize.height - 2 * margins)
         string = prepared
         let signpost = OSSignposterHolder.shared.beginInterval("layout", id: OSSignposterHolder.shared.makeSignpostID())
@@ -101,6 +105,7 @@ final class EPUBLayoutSession: @unchecked Sendable {
             contentStorage.textStorage = NSTextStorage(attributedString: sectionString)
             let layoutManager = NSTextLayoutManager()
             layoutManager.usesHyphenation = settings.hyphenates
+            layoutManager.limitsLayoutForSuspiciousContents = limits.limitsSuspiciousLayout
             contentStorage.addTextLayoutManager(layoutManager)
             let container = NSTextContainer(size: CGSize(width: geometry.columnWidth, height: 0))
             container.lineFragmentPadding = 0

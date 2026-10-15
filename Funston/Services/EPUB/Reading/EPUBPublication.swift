@@ -5,12 +5,14 @@ enum EPUBOpenFailure: Error, Equatable {
     case notABook
     case damaged(String)
     case protected
+    case tooLarge
 
     var message: String {
         switch self {
         case .notABook: return "The file isn't a book this app can read."
         case .damaged: return "The book's file looks damaged. Try downloading it again."
         case .protected: return "This book is protected and can't be opened here."
+        case .tooLarge: return "This book is too large to open on this device."
         }
     }
 }
@@ -52,15 +54,15 @@ struct EPUBPublication: Sendable {
 
     // MARK: Opening
 
-    static func open(url: URL) throws(EPUBOpenFailure) -> EPUBPublication {
+    static func open(url: URL, limits: EPUBWorkLimits = .standard) throws(EPUBOpenFailure) -> EPUBPublication {
         let zip: EPUBZipReader
-        do { zip = try EPUBZipReader(contentsOf: url) } catch { throw .notABook }
+        do { zip = try EPUBZipReader(contentsOf: url, limits: limits) } catch EPUBZipError.bookTooLarge { throw .tooLarge } catch { throw .notABook }
         return try open(zip: zip)
     }
 
-    static func open(data: Data) throws(EPUBOpenFailure) -> EPUBPublication {
+    static func open(data: Data, limits: EPUBWorkLimits = .standard) throws(EPUBOpenFailure) -> EPUBPublication {
         let zip: EPUBZipReader
-        do { zip = try EPUBZipReader(data: data) } catch { throw .notABook }
+        do { zip = try EPUBZipReader(data: data, limits: limits) } catch EPUBZipError.bookTooLarge { throw .tooLarge } catch { throw .notABook }
         return try open(zip: zip)
     }
 

@@ -175,7 +175,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
             case .success(let publication): present(publication, stored: saved)
             case .failure(let failure):
                 Self.logger.error("Book open: \(failure.message, privacy: .public)")
-                showStatus("Could not open book", detail: failure.message, retry: failure != .protected)
+                showStatus("Could not open book", detail: failure.message, retry: failure != .protected && failure != .tooLarge)
             }
         }
     }

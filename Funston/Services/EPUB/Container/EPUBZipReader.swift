@@ -34,6 +34,8 @@ enum EPUBZipError: Error, Equatable {
     case unsupportedMethod(UInt16)
     case encryptedEntry
     case entryTooLarge
+    /// The declared uncompressed sizes add up to more than the book cap (Spec 19.3).
+    case bookTooLarge
     case crcMismatch
     case corruptEntry
 }
@@ -59,11 +61,10 @@ final class EPUBZipReader: Sendable {
     static let allOnes32: UInt32 = 0xFFFF_FFFF
     /// A hostile archive can declare millions of entries; nothing Funston opens needs more.
     static let maximumEntryCount = 100_000
-    /// The largest single entry the reader will hold in memory.
-    static let maximumEntryBytes: UInt64 = 256 * 1024 * 1024
     static let resourceForkDirectory = "__MACOSX/"
 
     let data: Data
+    let limits: EPUBWorkLimits
     /// Every readable entry in central directory order: directories and
     /// resource forks are dropped, a duplicate name keeps its last record.
     let entries: [EPUBZipEntry]
@@ -73,14 +74,15 @@ final class EPUBZipReader: Sendable {
     let diagnostics: EPUBDiagnosticList
     private let indexByName: [String: Int]
 
-    convenience init(contentsOf url: URL) throws {
+    convenience init(contentsOf url: URL, limits: EPUBWorkLimits = .standard) throws {
         let data: Data
         do { data = try Data(contentsOf: url, options: .alwaysMapped) } catch { throw EPUBZipError.notAZip }
-        try self.init(data: data)
+        try self.init(data: data, limits: limits)
     }
 
-    init(data: Data) throws {
+    init(data: Data, limits: EPUBWorkLimits = .standard) throws {
         self.data = data
+        self.limits = limits
         var diagnostics = EPUBDiagnosticList()
         let count = data.count
         guard count >= Self.endRecordLength else { throw EPUBZipError.notAZip }
@@ -184,6 +186,13 @@ final class EPUBZipReader: Sendable {
                 parsed.append(named)
             }
         }
+        // The whole-book cap (Spec 19.3): declared sizes are checked before any entry is inflated.
+        var declared: UInt64 = 0
+        for entry in parsed {
+            let (sum, overflow) = declared.addingReportingOverflow(entry.uncompressedSize)
+            guard !overflow, sum <= limits.bookBytes else { throw EPUBZipError.bookTooLarge }
+            declared = sum
+        }
         entries = parsed
         firstEntryName = firstName
         indexByName = index
@@ -209,7 +218,7 @@ final class EPUBZipReader: Sendable {
     /// The inflated, CRC-checked bytes of an entry.
     func contents(of entry: EPUBZipEntry) throws -> Data {
         guard !entry.isEncrypted else { throw EPUBZipError.encryptedEntry }
-        guard entry.uncompressedSize <= Self.maximumEntryBytes, entry.compressedSize <= Self.maximumEntryBytes else {
+        guard entry.uncompressedSize <= limits.entryBytes, entry.compressedSize <= limits.entryBytes else {
             throw EPUBZipError.entryTooLarge
         }
         let count = data.count
