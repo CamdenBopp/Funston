@@ -45,6 +45,43 @@ final class DownloadRelocationTests: XCTestCase {
         }
     }
 
+    func testMigratingPrivateMediaPreservesDownloadsAndIsRepeatable() async throws {
+        let (store, root, old, current) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        let key = DownloadManager.key(identifier: "catalog", fileName: "catalog.pdf")
+        let original = DownloadManager.localURL(key: key, fileName: "catalog.pdf", directory: old)
+        let bytes = Data([1, 2, 3, 4])
+        try bytes.write(to: original)
+        try await store.upsertDownload(record(path: original))
+        try AppPaths.migrateMedia(from: old, to: current)
+        try AppPaths.migrateMedia(from: old, to: current)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: original.path))
+        let manager = DownloadManager(store: store, mediaDirectory: current, sessionConfiguration: .ephemeral)
+        await manager.waitUntilReady()
+        let exposed = try XCTUnwrap(manager.completedLocalURL(identifier: "catalog", fileName: "catalog.pdf"))
+        XCTAssertEqual(try Data(contentsOf: exposed), bytes)
+    }
+
+    func testDeletingEpisodeOutsideAppRefreshesAvailability() async throws {
+        let (store, root, _, current) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let key = DownloadManager.key(identifier: "catalog", fileName: "catalog.pdf")
+        let original = DownloadManager.localURL(key: key, fileName: "catalog.pdf", directory: current)
+        try Data([1, 2, 3, 4]).write(to: original)
+        try await store.upsertDownload(record(path: original))
+        let manager = DownloadManager(store: store, mediaDirectory: current, sessionConfiguration: .ephemeral)
+        await manager.waitUntilReady()
+        let exposed = try XCTUnwrap(manager.completedLocalURL(identifier: "catalog", fileName: "catalog.pdf"))
+        XCTAssertTrue(exposed.lastPathComponent.hasPrefix("catalog--"))
+        try FileManager.default.removeItem(at: exposed)
+        await manager.refreshAvailability()
+        XCTAssertNil(manager.completedLocalURL(identifier: "catalog", fileName: "catalog.pdf"))
+        XCTAssertEqual(manager.records.first?.state, .missing)
+        let persisted = try await store.downloads()
+        XCTAssertEqual(persisted.first?.state, .missing)
+    }
+
     func testUntrustedPathsCannotAdoptOrDeleteFiles() async throws {
         let (store, root, old, current) = try fixture()
         defer { try? FileManager.default.removeItem(at: root) }
