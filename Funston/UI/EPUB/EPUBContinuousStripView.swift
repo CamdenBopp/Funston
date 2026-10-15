@@ -46,6 +46,10 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
     private var tiles: [Int: EPUBLineTileView] = [:]
     private var reusableTiles: [EPUBLineTileView] = []
     private var listStart = -1
+    /// True until VoiceOver's focus enters the strip: the list then starts at the first
+    /// visible paragraph. Once focus is inside, the list is the whole window so a swipe
+    /// left finds the paragraph above the top edge. Focus leaving the strip restores the start.
+    private var listStartsAtFirstVisible = true
 
     struct Key: Hashable {
         let spineIndex: Int
@@ -59,7 +63,9 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
         contentInsetAdjustmentBehavior = .never
         delegate = self
         isAccessibilityElement = false
+        accessibilityContainerType = .semanticGroup
         accessibilityIdentifier = "reader.epub.continuous"
+        NotificationCenter.default.addObserver(self, selector: #selector(accessibilityFocusChanged(_:)), name: UIAccessibility.elementFocusedNotification, object: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -162,7 +168,7 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
     /// VoiceOver's list starts at the first paragraph that reaches more than a sliver below the top edge.
     private func updateElementList() {
         let edge = contentOffset.y + Self.visibleThreshold
-        let start = orderedElements.firstIndex { $0.frame.maxY > edge } ?? max(0, orderedElements.count - 1)
+        let start = listStartsAtFirstVisible ? (orderedElements.firstIndex { $0.frame.maxY > edge } ?? max(0, orderedElements.count - 1)) : 0
         guard start != listStart, !orderedElements.isEmpty else { return }
         listStart = start
         accessibilityElements = Array(orderedElements[start...])
@@ -170,10 +176,30 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
 
     var firstVisibleElement: UIView? { orderedElements.first { $0.frame.maxY > contentOffset.y + Self.visibleThreshold } }
 
+    @objc private func accessibilityFocusChanged(_ notification: Notification) {
+        focusDidMove(to: notification.userInfo?[UIAccessibility.focusedElementUserInfoKey])
+    }
+
+    /// VoiceOver's focus moved to an element: inside the strip the list is the whole
+    /// window; outside it, the list starts at the first visible paragraph again.
+    func focusDidMove(to element: Any?) {
+        guard let element else { return }
+        let inside = (element as? UIView).map { $0.isDescendant(of: self) } ?? false
+        EPUBAccessibilityLog.shared.record("focus \(inside ? "inside" : "outside") the continuous strip: \(type(of: element))")
+        if listStartsAtFirstVisible == inside {
+            listStartsAtFirstVisible = !inside
+            updateElementList()
+        }
+        // The focus callback on the paragraph views does not arrive on iOS 26 (VoiceOver
+        // report, 2026-10-15), so the notification also brings the paragraph into view.
+        if inside, let view = element as? UIView, view.superview === self { paragraphDidReceiveFocus(view) }
+    }
+
     /// VoiceOver moved onto a paragraph: bring it into view if it is not, and make it
     /// the reading position (the scroll offset after a move can still touch the end of
     /// the chapter above, which is not where the reader is).
     func paragraphDidReceiveFocus(_ view: UIView) {
+        if listStartsAtFirstVisible { listStartsAtFirstVisible = false; updateElementList() }
         let visible = CGRect(origin: contentOffset, size: bounds.size)
         if !visible.contains(CGRect(x: view.frame.minX, y: view.frame.minY, width: 1, height: min(view.frame.height, bounds.height / 2))) {
             contentOffset = CGPoint(x: 0, y: clampedY(view.frame.minY - Self.focusTopInset))

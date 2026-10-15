@@ -273,4 +273,63 @@ final class EPUBStripViewTests: XCTestCase {
         XCTAssertFalse(strip.accessibilityScroll(.up))
         XCTAssertTrue(recorder.posted.isEmpty)
     }
-}
+
+    // MARK: Swiping back out of the shown page (Spec 24, VoiceOver report gap 1)
+
+    func testOnceFocusIsInsideThePageStripTheListReachesBackToEarlierPagesUntilFocusLeaves() throws {
+        let session = try session()
+        let strip = pageStrip()
+        let shown = EPUBPlacement(spineIndex: 0, pageIndex: 2)
+        strip.load(try pageEntries(session, spines: [0, 1]), showing: shown)
+        let first = try XCTUnwrap(strip.accessibilityElements?.first as? EPUBParagraphView)
+        XCTAssertEqual(placement(of: first), shown, "Entering from the controls lands on the shown page")
+        first.accessibilityElementDidBecomeFocused()
+        let elements = try XCTUnwrap(strip.accessibilityElements as? [UIView])
+        let position = try XCTUnwrap(elements.firstIndex { $0 === first })
+        XCTAssertGreaterThan(position, 0, "With focus inside, the earlier pages' paragraphs come before it")
+        XCTAssertEqual(placement(of: elements[position - 1]), EPUBPlacement(spineIndex: 0, pageIndex: 1), "A swipe left reaches the previous page's last paragraph")
+        XCTAssertEqual(placement(of: elements[0]), EPUBPlacement(spineIndex: 0, pageIndex: 0))
+        strip.focusDidMove(to: UIView())
+        XCTAssertTrue((strip.accessibilityElements?.first as? UIView) === first, "Once focus left the strip the list starts at the shown page again")
+    }
+
+    func testOnceFocusIsInsideTheContinuousStripTheListReachesAboveTheTopEdgeUntilFocusLeaves() throws {
+        let session = try session()
+        let strip = continuousStrip()
+        strip.load(try chapters(session, spines: [0, 1, 2]), showing: 0, in: 0)
+        let chapter = try XCTUnwrap(session.chapter(0)).text
+        strip.scroll(toOffset: chapter.blocks[10].range.location, in: 0)
+        let first = try XCTUnwrap(strip.accessibilityElements?.first as? EPUBParagraphView)
+        XCTAssertEqual(first.blockIndex, 10)
+        first.accessibilityElementDidBecomeFocused()
+        let elements = try XCTUnwrap(strip.accessibilityElements as? [UIView])
+        XCTAssertEqual((elements.first as? EPUBParagraphView)?.blockIndex, 0, "With focus inside, the paragraphs above the top edge are in the list")
+        XCTAssertEqual((elements[9] as? EPUBParagraphView)?.blockIndex, 9)
+        strip.focusDidMove(to: UIView())
+        XCTAssertTrue((strip.accessibilityElements?.first as? UIView) === first, "Once focus left the strip the list starts at the first visible paragraph again")
+    }
+
+
+    func testRightToLeftPageStripOrdersPagesFromTheRightAndMapsScrollDirectionsThroughTheProgression() throws {
+        let session = try session()
+        let strip = pageStrip()
+        strip.isRightToLeft = true
+        let recorder = Recorder()
+        strip.postAccessibilityNotification = { recorder.post($0, $1) }
+        let entries = try pageEntries(session, spines: [0, 1])
+        strip.load(entries, showing: EPUBPlacement(spineIndex: 0, pageIndex: 0))
+        XCTAssertEqual(strip.contentOffset.x, strip.pageWidth * CGFloat(entries.count - 1), accuracy: 0.5, "The first page sits at the right end")
+        XCTAssertFalse(strip.accessibilityScroll(.left), "Left is backward in a right-to-left book: nothing before the first page")
+        XCTAssertTrue(strip.accessibilityScroll(.right), "Right is forward")
+        XCTAssertEqual(strip.currentPlacement, EPUBPlacement(spineIndex: 0, pageIndex: 1))
+        XCTAssertEqual(strip.contentOffset.x, strip.pageWidth * CGFloat(entries.count - 2), accuracy: 0.5)
+        XCTAssertEqual(recorder.posted.first?.notification.rawValue, UIAccessibility.Notification.pageScrolled.rawValue)
+        XCTAssertTrue(strip.accessibilityScroll(.next), "Next is always forward")
+        XCTAssertEqual(strip.currentPlacement, EPUBPlacement(spineIndex: 0, pageIndex: 2))
+        XCTAssertTrue(strip.accessibilityScroll(.left))
+        XCTAssertEqual(strip.currentPlacement, EPUBPlacement(spineIndex: 0, pageIndex: 1))
+        let hit = try XCTUnwrap(strip.characterIndex(at: CGPoint(x: strip.contentOffset.x + EPUBPageView.margin + 1, y: EPUBPageView.margin + 1)))
+        XCTAssertEqual(hit.placement, EPUBPlacement(spineIndex: 0, pageIndex: 1), "Hit testing follows the reversed slots")
+    }
+
+

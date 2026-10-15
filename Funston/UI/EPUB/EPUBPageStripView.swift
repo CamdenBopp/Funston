@@ -44,6 +44,11 @@ final class EPUBPageStripView: UIScrollView, UIScrollViewDelegate {
     private var elementPageIndex: [Int] = []
     private var tiles: [Int: EPUBPageView] = [:]
     private var reusableTiles: [EPUBPageView] = []
+    /// True until VoiceOver's focus enters the strip: the list then starts at the shown
+    /// page so entering from the controls lands on its top. Once focus is inside, the list
+    /// reaches back through the window so a swipe left, or a previous-heading move, finds
+    /// the page before. Focus leaving the strip restores the start.
+    private var listStartsAtShownPage = true
 
     struct EPUBBlockKey: Hashable {
         let placement: EPUBPlacement
@@ -61,7 +66,9 @@ final class EPUBPageStripView: UIScrollView, UIScrollViewDelegate {
         backgroundColor = .systemBackground
         delegate = self
         isAccessibilityElement = false
+        accessibilityContainerType = .semanticGroup
         accessibilityIdentifier = "reader.epub.strip"
+        NotificationCenter.default.addObserver(self, selector: #selector(accessibilityFocusChanged(_:)), name: UIAccessibility.elementFocusedNotification, object: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -168,10 +175,30 @@ final class EPUBPageStripView: UIScrollView, UIScrollViewDelegate {
 
     /// VoiceOver's list starts at the shown page's first paragraph, so entering the
     /// page from the controls lands on its top; it runs on through the window, so Read All
-    /// and swipes continue into the following pages and the next chapter.
+    /// and swipes continue into the following pages and the next chapter. With focus
+    /// inside the strip it is the whole window, so swipes also lead back.
     private func updateElementList() {
-        let start = elementPageIndex.firstIndex { $0 >= currentIndex } ?? orderedElements.count
+        let start = listStartsAtShownPage ? (elementPageIndex.firstIndex { $0 >= currentIndex } ?? orderedElements.count) : 0
         accessibilityElements = Array(orderedElements[start...])
+    }
+
+    @objc private func accessibilityFocusChanged(_ notification: Notification) {
+        focusDidMove(to: notification.userInfo?[UIAccessibility.focusedElementUserInfoKey])
+    }
+
+    /// VoiceOver's focus moved to an element: inside the strip the list reaches back
+    /// through the window; outside it, the list starts at the shown page again.
+    func focusDidMove(to element: Any?) {
+        guard let element else { return }
+        let inside = (element as? UIView).map { $0.isDescendant(of: self) } ?? false
+        EPUBAccessibilityLog.shared.record("focus \(inside ? "inside" : "outside") the page strip: \(type(of: element))")
+        if listStartsAtShownPage == inside {
+            listStartsAtShownPage = !inside
+            updateElementList()
+        }
+        // The focus callback on the paragraph views does not arrive on iOS 26 (VoiceOver
+        // report, 2026-10-15), so the notification also brings the focused page into view.
+        if let page = ((element as? EPUBParagraphView)?.page ?? (element as? EPUBFigureView)?.page) as? EPUBStripPage { pageDidReceiveFocus(page) }
     }
 
     private func layoutElements() {
@@ -195,6 +222,7 @@ final class EPUBPageStripView: UIScrollView, UIScrollViewDelegate {
 
     /// VoiceOver moved onto a paragraph: show its page, aligned, if it is not the shown one.
     func pageDidReceiveFocus(_ page: EPUBStripPage) {
+        if listStartsAtShownPage { listStartsAtShownPage = false; updateElementList() }
         guard let index = entries.firstIndex(where: { $0.placement == page.placement }), index != currentIndex else { return }
         EPUBAccessibilityLog.shared.record("focus moved to spine \(page.placement.spineIndex) page \(page.placement.pageIndex): showing it")
         setCurrent(index)
