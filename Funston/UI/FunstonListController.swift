@@ -9,6 +9,8 @@ struct FunstonRow: Hashable {
     var artworkIdentifier: String? = nil
     var mediaType: MediaType = .unknown
     var accessibilityValue: String? = nil
+    /// A centered secondary caption such as a loading footer, not a destination.
+    var centered = false
 }
 
 @MainActor
@@ -59,6 +61,10 @@ class FunstonListController: UICollectionViewController {
         configuration.textProperties.numberOfLines = 0
         configuration.secondaryTextProperties.numberOfLines = 0
         configuration.secondaryTextProperties.color = .funstonSecondaryLabel
+        if row.centered {
+            configuration.textProperties.alignment = .center
+            configuration.textProperties.color = .funstonSecondaryLabel
+        }
         configuration.image = row.symbol.flatMap { UIImage(systemName: $0) }
         if row.artworkIdentifier != nil {
             configuration.textProperties.font = .preferredFont(forTextStyle: .headline)

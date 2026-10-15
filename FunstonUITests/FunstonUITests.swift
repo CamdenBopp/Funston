@@ -7,6 +7,33 @@ final class FunstonUITests: XCTestCase {
     }
 
     @MainActor
+    func testSearchAutocompleteAndHistoryKeepOriginalScreen() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--skip-playback-restoration"]
+        app.launch()
+        app.tabBars.buttons["Search"].tap()
+        XCTAssertFalse(app.collectionViews.cells["__suggestedHeading"].exists)
+        let field = app.searchFields["Search the Internet Archive"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("sherl")
+        let completion = app.cells.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT identifier BEGINSWITH %@", "Sherlock", "artifact:")).firstMatch
+        XCTAssertTrue(completion.waitForExistence(timeout: 30))
+        capture(app, name: "Search autocomplete")
+        completion.tap()
+        let completedQuery = try XCTUnwrap(field.value as? String)
+        XCTAssertTrue(completedQuery.lowercased().contains("sherlock"))
+        app.terminate()
+        app.launch()
+        app.tabBars.buttons["Search"].tap()
+        app.searchFields["Search the Internet Archive"].tap()
+        let recent = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", completedQuery)).firstMatch
+        XCTAssertTrue(recent.waitForExistence(timeout: 5))
+        recent.tap()
+        XCTAssertEqual(app.searchFields["Search the Internet Archive"].value as? String, completedQuery)
+    }
+
+    @MainActor
     func testPrimaryNavigationAndInitialAccessibility() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--skip-playback-restoration"]
@@ -490,11 +517,12 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(stepper.waitForExistence(timeout: 5))
         XCTAssertEqual(stepper.label, "Playback speed")
         XCTAssertTrue((stepper.value as? String ?? "").hasSuffix(" times"))
-        app.buttons["1.5 times"].tap()
+        setSpeed(app, dial: stepper, to: 1.5)
         XCTAssertEqual(stepper.value as? String, "1.5 times")
         capture(app, name: name + " Speed")
-        app.buttons["1 times"].tap()
-        app.buttons["Done"].tap()
+        setSpeed(app, dial: stepper, to: 1)
+        XCTAssertEqual(stepper.value as? String, "1 times")
+        dismissSpeedPopover(app, stepper: stepper)
         let recordings = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Recordings,")).firstMatch
         if name == "AX5" { for _ in 0..<8 where !recordings.isHittable { app.swipeDown() } }
         recordings.tap()
@@ -604,6 +632,29 @@ final class FunstonUITests: XCTestCase {
 }
 
 extension FunstonUITests {
+    /// The speed control has no Done button; a tap outside it closes it. It is a
+    /// popover near the bottom at standard sizes and a content-height sheet at
+    /// accessibility sizes, so a point a fifth of the way down lies outside both.
+    /// The dismiss regions can't be queried: the sheet exposes two of them, and
+    /// their centers fall on the sheet's own controls.
+    @MainActor
+    func dismissSpeedPopover(_ app: XCUIApplication, stepper: XCUIElement) {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
+        XCTAssertTrue(stepper.waitForNonExistence(timeout: 5), "Speed control should close")
+        XCTAssertTrue(app.buttons["player.toggle"].exists, "Closing speed must leave the player open")
+    }
+
+    /// Taps the number line where `speed` sits. Ticks run from 0.5 to 3 between
+    /// a half-pointer inset at each end, and a tap rounds to the nearest tenth.
+    @MainActor
+    func setSpeed(_ app: XCUIApplication, dial: XCUIElement, to speed: Double) {
+        let width = dial.frame.width
+        let pointerInset = 2.0
+        let fraction = (speed - 0.5) / 2.5
+        let x = (pointerInset + fraction * (width - 2 * pointerInset)) / width
+        dial.coordinate(withNormalizedOffset: CGVector(dx: x, dy: 0.5)).tap()
+    }
+
     @MainActor
     func testPlaybackSpeedSheetLayoutMatrix() throws {
         let originalAppearance = XCUIDevice.shared.appearance
@@ -635,40 +686,35 @@ extension FunstonUITests {
                 let mini = app.descendants(matching: .any)["compactPlayer.open"].firstMatch
                 XCTAssertTrue(mini.waitForExistence(timeout: 15))
                 mini.tap()
+                let transport = app.buttons["player.toggle"]
+                if transport.label == "Pause" { transport.tap() }
                 let speed = app.buttons["player.speed"]
                 XCTAssertTrue(speed.waitForExistence(timeout: 8))
                 for _ in 0..<8 where !speed.isHittable { app.swipeUp() }
                 speed.tap()
                 let stepper = app.descendants(matching: .any)["player.speed.adjustable"].firstMatch
                 XCTAssertTrue(stepper.waitForExistence(timeout: 5))
-                let presets = ["1 times", "1.25 times", "1.5 times", "2 times"].map { app.buttons[$0] }
-                for preset in presets {
-                    XCTAssertTrue(preset.isHittable)
-                    XCTAssertGreaterThanOrEqual(preset.frame.height, 44)
-                    XCTAssertEqual(preset.frame.width, presets[0].frame.width, accuracy: 1)
-                }
-                if category == "UICTContentSizeCategoryL" {
-                    for preset in presets { XCTAssertEqual(preset.frame.minY, presets[0].frame.minY, accuracy: 1) }
-                } else {
-                    XCTAssertEqual(presets[0].frame.minY, presets[1].frame.minY, accuracy: 1)
-                    XCTAssertEqual(presets[2].frame.minY, presets[3].frame.minY, accuracy: 1)
-                    XCTAssertGreaterThan(presets[2].frame.minY, presets[0].frame.maxY)
-                }
-                presets[2].tap()
-                XCTAssertTrue(presets[2].isSelected)
-                XCTAssertFalse(presets[0].isSelected)
+                XCTAssertTrue(stepper.isHittable)
                 XCTAssertEqual(stepper.label, "Playback speed")
+                setSpeed(app, dial: stepper, to: 1.5)
                 XCTAssertEqual(stepper.value as? String, "1.5 times")
-                XCTAssertGreaterThanOrEqual(stepper.frame.height, 44)
-                XCTAssertTrue(app.buttons["Done"].isHittable)
+                setSpeed(app, dial: stepper, to: 2.5)
+                XCTAssertEqual(stepper.value as? String, "2.5 times")
                 capture(app, name: "Playback Speed \(appearance) \(category == "UICTContentSizeCategoryL" ? "Default" : "AX5")")
-                presets[0].tap()
-                app.buttons["Done"].tap()
+                setSpeed(app, dial: stepper, to: 1)
+                XCTAssertEqual(stepper.value as? String, "1 times")
+                dismissSpeedPopover(app, stepper: stepper)
                 app.terminate()
             }
         }
     }
 }
+
+
+
+
+
+
 
 final class GunsmokePlaybackRegressionUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
