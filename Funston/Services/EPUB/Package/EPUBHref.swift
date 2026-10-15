@@ -180,3 +180,17 @@ enum EPUBHref {
         return String(path[...slash])
     }
 }
+
+extension EPUBHref {
+    /// The bytes of a `data:` URL: base64 when the header says so, else percent-decoded.
+    static func dataURLBytes(_ reference: String) -> Data? {
+        let trimmed = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("data:"), let comma = trimmed.firstIndex(of: ",") else { return nil }
+        let header = trimmed[trimmed.index(trimmed.startIndex, offsetBy: 5)..<comma].lowercased()
+        let payload = String(trimmed[trimmed.index(after: comma)...])
+        if header.split(separator: ";").contains("base64") {
+            return Data(base64Encoded: payload.filter { !$0.isWhitespace }, options: [.ignoreUnknownCharacters])
+        }
+        return payload.removingPercentEncoding.map { Data($0.utf8) }
+    }
+}

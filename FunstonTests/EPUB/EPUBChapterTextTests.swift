@@ -2,6 +2,9 @@ import UIKit
 import XCTest
 @testable import Funston
 
+/// A 1 by 1 transparent PNG.
+private let onePixelPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+
 /// The text model of Spec section 10: one attributed string per chapter, the
 /// run table and the block list.
 final class EPUBChapterTextTests: XCTestCase {
@@ -276,6 +279,20 @@ final class EPUBChapterTextTests: XCTestCase {
         let text = loaded.text
         XCTAssertEqual(text.blocks.map { text.text(in: $0.range) }, ["漢 (かん)字 (じ)", "Fallback text", "[video]", "No script"])
     }
+
+    @MainActor func testADataURLImageIsDecodedInlineInsteadOfBecomingAPlaceholder() throws {
+        let publication = try EPUBPublication.open(data: EPUBFixture.minimalBook(chapterBody: "<p>Before.</p><p><img src=\"data:image/png;base64,\(onePixelPNG)\" alt=\"one dot\"/></p><p>After.</p>"))
+        let session = EPUBReaderSession(publication: publication, settings: EPUBReadingSettings(), contentSize: CGSize(width: 320, height: 480), allowsTwoColumns: false, mediaContext: .default)
+        let chapter = try XCTUnwrap(session.chapter(0))
+        XCTAssertFalse(chapter.diagnostics.contains(code: EPUBImageCatalog.placeholderDiagnostic), chapter.diagnostics.items.map(\.code).joined(separator: ","))
+        let image = try XCTUnwrap(chapter.text.images.first)
+        XCTAssertEqual(image.intrinsicSize, CGSize(width: 1, height: 1))
+        XCTAssertEqual(image.alternativeText, "one dot")
+        XCTAssertTrue(image.path.hasPrefix(EPUBImageCatalog.inlinePathPrefix))
+        XCTAssertNotNil(session.resources.images.image(for: image.path, maximumPixelSize: 4), "The inline bytes decode on demand like any other image")
+        XCTAssertNil(EPUBHref.dataURLBytes("data:image/png;base64,***"), "Undecodable payloads are refused, not crashed on")
+    }
+
 }
 
 private extension NSRange {

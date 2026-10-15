@@ -18,6 +18,8 @@ final class EPUBImageCatalog: @unchecked Sendable {
 
     private let lock = NSLock()
     private let read: @Sendable (String) -> Data?
+    /// Images carried inline as data: URLs, under synthetic paths.
+    private var inline: [String: Data] = [:]
     private var metadata: [String: Metadata?] = [:]
     private var decoded: [DecodeKey: CGImage] = [:]
     private var decodedBytes = 0
@@ -33,13 +35,28 @@ final class EPUBImageCatalog: @unchecked Sendable {
         self.read = read
     }
 
+    /// Keeps the bytes of a data: URL image and returns the path that names them (Spec 13.3;
+    /// W3C pub-data-urls_browsing-context).
+    func registerInline(_ data: Data) -> String {
+        lock.lock(); defer { lock.unlock() }
+        let path = "\(Self.inlinePathPrefix)\(inline.count)"
+        inline[path] = data
+        return path
+    }
+    static let inlinePathPrefix = "data:#"
+
+    private func bytes(for path: String) -> Data? {
+        lock.lock(); let stored = inline[path]; lock.unlock()
+        return stored ?? read(path)
+    }
+
     /// Reads the pixel size without decoding. Nil when the bytes are not an
     /// image ImageIO knows, including every SVG.
     func metadata(for path: String) -> Metadata? {
         lock.lock()
         if let cached = metadata[path] { lock.unlock(); return cached }
         lock.unlock()
-        let result = Self.readMetadata(read(path))
+        let result = Self.readMetadata(bytes(for: path))
         lock.lock(); metadata[path] = result; lock.unlock()
         return result
     }
@@ -68,7 +85,7 @@ final class EPUBImageCatalog: @unchecked Sendable {
         lock.lock()
         if let cached = decoded[key] { lock.unlock(); return cached }
         lock.unlock()
-        guard let data = read(path), !Self.looksLikeSVG(data) else { return nil }
+        guard let data = bytes(for: path), !Self.looksLikeSVG(data) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceShouldCacheImmediately: true,

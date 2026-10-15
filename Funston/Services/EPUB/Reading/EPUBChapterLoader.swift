@@ -122,9 +122,10 @@ struct EPUBChapterLoader: Sendable {
         let publication = publication
         let builder = EPUBChapterTextBuilder(document: document, styles: styles, settings: settings, geometry: geometry, fonts: resources.fonts, images: resources.images,
                                              resolveLink: { Self.resolveLink($0, from: document.path, publication: publication) },
-                                             resolveImagePath: { reference in
+                                             resolveImagePath: { [images = resources.images] reference in
                                                  var scratch = EPUBDiagnosticList()
                                                  let resolved = EPUBHref.resolve(reference, from: document.path, in: publication.zip, diagnostics: &scratch)
+                                                 if resolved.kind == .data, let bytes = EPUBHref.dataURLBytes(reference) { return images.registerInline(bytes) }
                                                  return resolved.kind == .internalResource ? resolved.entry : nil
                                              }, deadline: deadline)
         let text = builder.build()
