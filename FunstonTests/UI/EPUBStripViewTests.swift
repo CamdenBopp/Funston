@@ -309,6 +309,7 @@ final class EPUBStripViewTests: XCTestCase {
         XCTAssertTrue((strip.accessibilityElements?.first as? UIView) === first, "Once focus left the strip the list starts at the first visible paragraph again")
     }
 
+    // MARK: Right-to-left books (Spec 13.2, Spec 24 gap 2)
 
     func testRightToLeftPageStripOrdersPagesFromTheRightAndMapsScrollDirectionsThroughTheProgression() throws {
         let session = try session()
@@ -330,6 +331,21 @@ final class EPUBStripViewTests: XCTestCase {
         XCTAssertEqual(strip.currentPlacement, EPUBPlacement(spineIndex: 0, pageIndex: 1))
         let hit = try XCTUnwrap(strip.characterIndex(at: CGPoint(x: strip.contentOffset.x + EPUBPageView.margin + 1, y: EPUBPageView.margin + 1)))
         XCTAssertEqual(hit.placement, EPUBPlacement(spineIndex: 0, pageIndex: 1), "Hit testing follows the reversed slots")
+    }
+
+    func testRightToLeftContinuousStripMapsLeftAndRightThroughTheProgression() throws {
+        let session = try session()
+        let strip = continuousStrip()
+        strip.isRightToLeft = true
+        strip.load(try chapters(session, spines: [0, 1, 2]), showing: 0, in: 0)
+        XCTAssertFalse(strip.accessibilityScroll(.left), "Left is backward in a right-to-left book: nothing above the top")
+        XCTAssertTrue(strip.accessibilityScroll(.right), "Right is forward")
+        XCTAssertEqual(strip.contentOffset.y, Self.stripSize.height - 2 * EPUBContinuousStripView.margin, accuracy: 0.5)
+        XCTAssertTrue(strip.accessibilityScroll(.left))
+        XCTAssertEqual(strip.contentOffset.y, 0, accuracy: 0.5)
+        strip.isRightToLeft = false
+        XCTAssertFalse(strip.accessibilityScroll(.right), "Right is backward in a left-to-right book")
+        XCTAssertTrue(strip.accessibilityScroll(.left))
     }
 
 

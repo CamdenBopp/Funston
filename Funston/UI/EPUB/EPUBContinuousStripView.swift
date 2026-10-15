@@ -37,6 +37,8 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
     static let visibleThreshold: CGFloat = focusTopInset
 
     weak var stripDelegate: EPUBContinuousStripDelegate?
+    /// Left and right three-finger scrolls follow the page progression (Spec 13.2).
+    var isRightToLeft = false
     /// Posts to VoiceOver; tests substitute a recorder.
     var postAccessibilityNotification: (UIAccessibility.Notification, Any?) -> Void = { UIAccessibility.post(notification: $0, argument: $1) }
     private(set) var chapters: [Chapter] = []
@@ -214,11 +216,13 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
     override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
         let forward: Bool
         switch direction {
-        case .next, .down, .left: forward = true
-        case .previous, .up, .right: forward = false
+        case .next, .down: forward = true
+        case .previous, .up: forward = false
+        case .left: forward = !isRightToLeft
+        case .right: forward = isRightToLeft
         @unknown default: return false
         }
-        EPUBAccessibilityLog.shared.record("continuous strip accessibilityScroll forward=\(forward) y=\(contentOffset.y)")
+        EPUBAccessibilityLog.shared.record("continuous strip accessibilityScroll direction=\(direction.rawValue) forward=\(forward) y=\(contentOffset.y)")
         guard page(forward: forward) else { return false }
         if let position = firstVisible {
             postAccessibilityNotification(.pageScrolled, stripDelegate?.continuousStrip(self, describeOffset: position.offset, spineIndex: position.spineIndex) ?? "")

@@ -267,6 +267,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         } else if layoutMode == .continuous {
             let scroll = EPUBContinuousStripView(frame: container.bounds)
             scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            scroll.isRightToLeft = session.publication.package.pageProgression == .rightToLeft
             scroll.stripDelegate = self
             container.addSubview(scroll)
             continuous = scroll
