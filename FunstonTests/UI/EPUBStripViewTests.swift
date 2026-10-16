@@ -276,6 +276,29 @@ final class EPUBStripViewTests: XCTestCase {
         XCTAssertTrue(recorder.posted.isEmpty)
     }
 
+    // MARK: The Reading page element (VoiceOver report: three-finger swipes with focus on it did nothing on the iPhone)
+
+    func testAThreeFingerSwipeWithFocusOnTheReadingPageElementTurnsThePageLikeOneInsideTheStrip() throws {
+        let session = try session()
+        let strip = pageStrip()
+        let delegate = PageDelegate()
+        let recorder = Recorder()
+        strip.stripDelegate = delegate
+        strip.postAccessibilityNotification = { recorder.post($0, $1) }
+        strip.load(try pageEntries(session, spines: [0, 1]), showing: EPUBPlacement(spineIndex: 0, pageIndex: 0))
+        // The element's container is the reader's view, which scrolls nothing itself.
+        let container = UIView()
+        container.addSubview(strip)
+        let controls = ReaderControls(reader: UIViewController(), pageView: container)
+        XCTAssertFalse(controls.page.accessibilityScroll(.next), "With no reader behind it the element turns nothing")
+        XCTAssertEqual(strip.currentPlacement, EPUBPlacement(spineIndex: 0, pageIndex: 0))
+        controls.page.scroll = { strip.accessibilityScroll($0) }
+        XCTAssertTrue(controls.page.accessibilityScroll(.next))
+        XCTAssertEqual(strip.currentPlacement, EPUBPlacement(spineIndex: 0, pageIndex: 1))
+        XCTAssertEqual(recorder.posted.map(\.notification.rawValue), [UIAccessibility.Notification.pageScrolled.rawValue, UIAccessibility.Notification.layoutChanged.rawValue])
+        XCTAssertTrue((recorder.posted.last?.argument as? EPUBParagraphView) === strip.firstElementOnShownPage, "Focus moves into the strip, onto the new page's first paragraph")
+    }
+
     // MARK: Swiping back out of the shown page (Spec 24, VoiceOver report gap 1)
 
     func testOnceFocusIsInsideThePageStripTheListReachesBackToEarlierPagesUntilFocusLeaves() throws {

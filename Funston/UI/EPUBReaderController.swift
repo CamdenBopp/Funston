@@ -232,6 +232,9 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
         }
         installSurface()
         installButtons()
+        // A three-finger swipe with focus on the Reading page element reaches the strip, as it would from inside the text
+        // (VoiceOver report, 2026-10-15: the element's container is the controller's view, which scrolls nothing).
+        readerControls.page.scroll = { [weak self] direction in self?.scrollFromPageElement(direction) ?? false }
         readerControls.page.adjust = { [weak self] amount in
             guard let self else { return }
             // VoiceOver stays on the adjustable element and speaks its new value.
@@ -522,6 +525,14 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     }
 
     // MARK: - Navigation
+
+    /// Apple Books turns the page on a three-finger swipe wherever focus sits on the page; the strip
+    /// that holds the text does the turn, the announcement and the focus move.
+    private func scrollFromPageElement(_ direction: UIAccessibilityScrollDirection) -> Bool {
+        if let strip { return strip.accessibilityScroll(direction) }
+        if let continuous { return continuous.accessibilityScroll(direction) }
+        return false
+    }
 
     func goForward() {
         guard let session else { return }

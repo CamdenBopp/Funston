@@ -60,11 +60,11 @@ The full record, with what each run spoke, is the table and the run sections of 
 | # | Item | Simulator (iOS 26.5, driven step by step) | iPhone 14 Pro Max (Camden) |
 | --- | --- | --- | --- |
 | 1 | Touch exploration lands on real text | not driven (no touch in the driver); element frames equal the text bounds | pending |
-| 2 | Swipes in reading order | yes, across pages | yes |
+| 2 | Swipes in reading order | yes, across pages | yes; also automated by EPUBVoiceOverDeviceTests |
 | 3 | Lines rotor, within and across | yes after the tokenizer fix (real lines, flows into the next paragraph) | pending |
 | 4 | Characters and Words rotors | yes | pending |
 | 5 | Read All across pages and chapters | yes (pages 19 to 22, III to IV, three turns in 75 s) | yes |
-| 6 | Three-finger swipe turns and announces | unit test only | yes |
+| 6 | Three-finger swipe turns and announces | unit test only | yes; from the Reading page element only after the forwarding fix of 2026-10-15 21:47 |
 | 7 | Focus after a manual turn | yes (page and block models); paragraph model by unit test | yes |
 | 8 | Headings rotor and levels | rotor yes, both directions across pages; levels not spoken | pending |
 | 9 | Links rotor; link and note actions | actions offered; performing them is not possible from the driver | pending |
@@ -79,7 +79,7 @@ The full record, with what each run spoke, is the table and the run sections of 
 | 18 | Page labels skippable | no (Phase B) | no |
 | 19 | Continuous mode crossing at a chapter end | Read All forward yes; the crossing not re-run since the lazy window | yes, before the lazy window |
 
-The device items marked pending are the next run with Camden (the list sent to him is in the hand-over notes); their results go into the VoiceOver report as a new section.
+The device items marked pending are the next run with Camden; their results go into the VoiceOver report as a new section. The run of 21:30 to 21:47 (VoiceOver report) added the device UI test, found and fixed the three-finger swipe from the Reading page element, and Camden called the result good enough to publish.
 
 ## Performance (Spec 20)
 

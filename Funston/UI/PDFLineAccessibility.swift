@@ -238,9 +238,17 @@ final class ReaderControls: NSObject {
 final class ReaderPageElement: UIAccessibilityElement {
     var toggle: (() -> Bool)?
     var adjust: ((Int) -> Void)?
+    /// A three-finger swipe while VoiceOver's focus is on this element. VoiceOver routes
+    /// the swipe from the focused element up through its containers, so a reader whose
+    /// scrolling view is not this element's container forwards it here (the EPUB strips);
+    /// the PDF reader's container scrolls itself and leaves this unset.
+    var scroll: ((UIAccessibilityScrollDirection) -> Bool)?
     override func accessibilityIncrement() { adjust?(1) }
     override func accessibilityDecrement() { adjust?(-1) }
     override func accessibilityPerformMagicTap() -> Bool { toggle?() ?? false }
+    override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
+        scroll?(direction) ?? super.accessibilityScroll(direction)
+    }
     override var accessibilityFrameInContainerSpace: CGRect {
         get { (accessibilityContainer as? UIView)?.bounds ?? .zero }
         set { super.accessibilityFrameInContainerSpace = newValue }
