@@ -72,7 +72,7 @@ The full record, with what each run spoke, is the table and the run sections of 
 | 11 | Lists and tables announce containers | no (Phase B) | no |
 | 12 | Notes open in a sheet and return | not performable from the driver | pending |
 | 13 | Languages switch voices | attribute level yes (corpus run) | pending, by ear |
-| 14 | Adjustable page element | yes | pending |
+| 14 | Adjustable page element | yes | yes, automated by EPUBVoiceOverDeviceTests |
 | 15 | Focus order equals document order | yes | yes |
 | 16 | No empty label | yes (text is the value; label empty by design) | yes |
 | 17 | Container start and end | partly: one container between the bars; label on entry not captured | pending |
