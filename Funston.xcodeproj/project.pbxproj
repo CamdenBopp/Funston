@@ -33,7 +33,6 @@
 		43E547F853E37982C3DCF10C /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = 650ECFD527B2974A8E640EDF /* ReadiumShared */; };
 		4619E6C13BE93409CB710B3D /* PlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C0ABD85EEF2749ED6AE3E4 /* PlaybackController.swift */; };
 		4E7886C99627066D41A780CD /* CodecCapabilityDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31252B3F929B645C52A91F9 /* CodecCapabilityDeviceTests.swift */; };
-		50E3CD76FC9AE87D6FE060A1 /* 73-magazine-1976-08-page40-columns.txt in Resources */ = {isa = PBXBuildFile; fileRef = F1C13430A7D6178CD5474BB0 /* 73-magazine-1976-08-page40-columns.txt */; };
 		5A1290C9A52BA86FC96199B4 /* RecordingListViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35F4618626CBCCC6CDB0FC46 /* RecordingListViews.swift */; };
 		5DC85AFBFB8E350571548C15 /* ArchiveModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04FF787B22A0BC8999CBCF7C /* ArchiveModels.swift */; };
 		5DEF336EB0C4EFA629A3BD54 /* ArchiveDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44447702FAFA480C5DE6AF61 /* ArchiveDTO.swift */; };
@@ -41,7 +40,6 @@
 		670A25A66B3475B39199A7CC /* OriginalVideoRemoteControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB47764A2EAA6737E450F564 /* OriginalVideoRemoteControl.swift */; };
 		682F8800A8040B5032932C6C /* ArtifactOriginalVideoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83FA6742BCE70DB39C50A79E /* ArtifactOriginalVideoController.swift */; };
 		6867855F6EB1A0DD0B4169AF /* BrowseControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40147F874FD620BC7B6D9AAE /* BrowseControllers.swift */; };
-		6870F82FC158A3084CE42B65 /* 73-magazine-1981-12-page6-columns.txt in Resources */ = {isa = PBXBuildFile; fileRef = 47FA3C22E8E457958AB7B0BD /* 73-magazine-1981-12-page6-columns.txt */; };
 		6BBC4CE8910BCDB9DCF0037D /* SleepTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71A58F6CF1D568B8FA22F12F /* SleepTimerTests.swift */; };
 		6C82D1DF1AA614083794B7C7 /* FunstonIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D4D22DFA0740A0E378DD886 /* FunstonIntents.swift */; };
 		6F51B7CC80D382D750A3B5F9 /* PDFScreenRenderingExperiment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */; };
@@ -49,8 +47,8 @@
 		7419B239E8D5D5D9E85F4A44 /* ArtifactContentsSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E08BE65EA2616DB7059E4153 /* ArtifactContentsSearchTests.swift */; };
 		78D6EC89CF7E2986318E3681 /* ContinueListeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E76AA1D77FB87D8EB6F6DF /* ContinueListeningTests.swift */; };
 		793B43E0E3E05D1BD0963CFB /* OriginalVideoBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29ACD0865BCD826414E2B675 /* OriginalVideoBookmark.swift */; };
+		7BA9D5B5CBA9947E7A89CCF4 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 92AD64F590889E352FD873C5 /* README.md */; };
 		7E77483624106B86399BD522 /* PDFReadingStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E18D86233FB0609AFE082A /* PDFReadingStateTests.swift */; };
-		7F2FAC64E63B5AB1ABE6DD17 /* 73-magazine-1976-08-page40.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 3241C28DADE65644C72B86D8 /* 73-magazine-1976-08-page40.jpg */; };
 		816C6600DBDBBCBD1F2F9116 /* ArtworkPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6688140E01B2D367C2C7AF /* ArtworkPipeline.swift */; };
 		8342B387FAA23AD0D722C77A /* PDFReadingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9D4D28CB7D06FA401FAA6C /* PDFReadingState.swift */; };
 		84B2B5B00AC9AABAA1845F1F /* SQLiteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B6AC7E7D67A26404F8526F1 /* SQLiteStore.swift */; };
@@ -76,7 +74,6 @@
 		AF284FAD0DD53B09AA0CE882 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 73F779CCD8281CD0F095B326 /* ThirdPartyNotices.txt */; };
 		AF4F75FB35E8BE2C381B128C /* CarPlay.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A72BE636AFEC95F275658643 /* CarPlay.framework */; };
 		B71B2B79473396C8456E2659 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEC399375132D18A85258F1 /* DownloadManager.swift */; };
-		B766190585C33ABB142AF1A1 /* 73-magazine-1981-12-page6.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 8BD14C4E10199D7E42AE586C /* 73-magazine-1981-12-page6.jpg */; };
 		B91E26B2C53A79404FEDF866 /* PlayerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9059921AE97E122328AC8EC5 /* PlayerViews.swift */; };
 		BA4CC927C7FB33B423E9C490 /* PDFTextLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BDF9BBD41BBA62E85E8A7EE /* PDFTextLayout.swift */; };
 		BC237F74570D608F4BA1F516 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D8F5AEEB8CCDBCE5EDFC46D /* Assets.xcassets */; };
@@ -143,7 +140,6 @@
 		2D9D4D28CB7D06FA401FAA6C /* PDFReadingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReadingState.swift; sourceTree = "<group>"; };
 		2E19340146C38C0EA03063E4 /* FunstonListController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonListController.swift; sourceTree = "<group>"; };
 		2FBBB642621A8FDC9EB59A6D /* FunstonRootController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonRootController.swift; sourceTree = "<group>"; };
-		3241C28DADE65644C72B86D8 /* 73-magazine-1976-08-page40.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "73-magazine-1976-08-page40.jpg"; sourceTree = "<group>"; };
 		3257AE33B2FBA5578BD487B2 /* CarPlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayTests.swift; sourceTree = "<group>"; };
 		35F4618626CBCCC6CDB0FC46 /* RecordingListViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingListViews.swift; sourceTree = "<group>"; };
 		3620295377858DD91BE8361F /* RecordingProgressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingProgressTests.swift; sourceTree = "<group>"; };
@@ -153,7 +149,6 @@
 		3D4D22DFA0740A0E378DD886 /* FunstonIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonIntents.swift; sourceTree = "<group>"; };
 		40147F874FD620BC7B6D9AAE /* BrowseControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseControllers.swift; sourceTree = "<group>"; };
 		44447702FAFA480C5DE6AF61 /* ArchiveDTO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveDTO.swift; sourceTree = "<group>"; };
-		47FA3C22E8E457958AB7B0BD /* 73-magazine-1981-12-page6-columns.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "73-magazine-1981-12-page6-columns.txt"; sourceTree = "<group>"; };
 		4885569ECF9679D7A64CADF7 /* ArchiveNetworking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNetworking.swift; sourceTree = "<group>"; };
 		4B6AC7E7D67A26404F8526F1 /* SQLiteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteStore.swift; sourceTree = "<group>"; };
 		4C4C0741D5A43831933E86B5 /* Funston.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Funston.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -176,11 +171,11 @@
 		83FA6742BCE70DB39C50A79E /* ArtifactOriginalVideoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactOriginalVideoController.swift; sourceTree = "<group>"; };
 		85F2CAC5EFC1BA2141AA0D81 /* ArchiveNetworkPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNetworkPolicy.swift; sourceTree = "<group>"; };
 		892AA9E3E0B1E928B9A42438 /* OriginalVideoTrackMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoTrackMemory.swift; sourceTree = "<group>"; };
-		8BD14C4E10199D7E42AE586C /* 73-magazine-1981-12-page6.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "73-magazine-1981-12-page6.jpg"; sourceTree = "<group>"; };
 		8C12FBD9697D8A4836AD47AE /* DownloadPermitCancellationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadPermitCancellationTests.swift; sourceTree = "<group>"; };
 		8E7631BBAB981E4F1A0DD839 /* OriginalVideoControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoControlsView.swift; sourceTree = "<group>"; };
 		9059921AE97E122328AC8EC5 /* PlayerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViews.swift; sourceTree = "<group>"; };
 		90E76B9A4F6B4D55BA45EEFE /* ArchiveNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNormalizer.swift; sourceTree = "<group>"; };
+		92AD64F590889E352FD873C5 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		97C4A1A2218332A1F56B2F54 /* ContinueListening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueListening.swift; sourceTree = "<group>"; };
 		99AAFDC5C7C54DF226D11A47 /* FunstonUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonUITests.swift; sourceTree = "<group>"; };
 		9C394E1AE0C72B687AC7C0B9 /* PDFLineAccessibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFLineAccessibilityTests.swift; sourceTree = "<group>"; };
@@ -217,7 +212,6 @@
 		E8FF06ECFBA48D28B9556414 /* PDFPerformanceView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PDFPerformanceView.h; sourceTree = "<group>"; };
 		EA709EA56A02C0C2ABF784EC /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		EE0DD97E3EF28B6AD269B2F2 /* MediaAvailabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaAvailabilityTests.swift; sourceTree = "<group>"; };
-		F1C13430A7D6178CD5474BB0 /* 73-magazine-1976-08-page40-columns.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "73-magazine-1976-08-page40-columns.txt"; sourceTree = "<group>"; };
 		F28EB53A203A0710CFBE557A /* AppIntentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntentTests.swift; sourceTree = "<group>"; };
 		F5E18D86233FB0609AFE082A /* PDFReadingStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReadingStateTests.swift; sourceTree = "<group>"; };
 		F5F6CA4F00827A4CBD134A9B /* ArtifactVideoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactVideoController.swift; sourceTree = "<group>"; };
@@ -288,11 +282,8 @@
 		409B9F98A7C63FE158113B32 /* Fixtures */ = {
 			isa = PBXGroup;
 			children = (
-				F1C13430A7D6178CD5474BB0 /* 73-magazine-1976-08-page40-columns.txt */,
-				3241C28DADE65644C72B86D8 /* 73-magazine-1976-08-page40.jpg */,
-				47FA3C22E8E457958AB7B0BD /* 73-magazine-1981-12-page6-columns.txt */,
-				8BD14C4E10199D7E42AE586C /* 73-magazine-1981-12-page6.jpg */,
 				1DF8F80C66F6D0AF8BBD4445 /* original-video-fixture.mkv */,
+				92AD64F590889E352FD873C5 /* README.md */,
 			);
 			path = Fixtures;
 			sourceTree = "<group>";
@@ -562,14 +553,14 @@
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					085AE0F8D7BC384DA4AAC47F = {
-						DevelopmentTeam = 68Z6A6ACWF;
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					2925CF9F1598B0124ABC257E = {
-						DevelopmentTeam = 68Z6A6ACWF;
+						DevelopmentTeam = "";
 					};
 					F952DB2BC434B88E66739701 = {
-						DevelopmentTeam = 68Z6A6ACWF;
+						DevelopmentTeam = "";
 						TestTargetID = 085AE0F8D7BC384DA4AAC47F;
 					};
 				};
@@ -614,10 +605,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				50E3CD76FC9AE87D6FE060A1 /* 73-magazine-1976-08-page40-columns.txt in Resources */,
-				7F2FAC64E63B5AB1ABE6DD17 /* 73-magazine-1976-08-page40.jpg in Resources */,
-				6870F82FC158A3084CE42B65 /* 73-magazine-1981-12-page6-columns.txt in Resources */,
-				B766190585C33ABB142AF1A1 /* 73-magazine-1981-12-page6.jpg in Resources */,
+				7BA9D5B5CBA9947E7A89CCF4 /* README.md in Resources */,
 				869D13666E4C62A82250AE62 /* original-video-fixture.mkv in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -761,7 +749,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.Funston;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.Funston;
 				PRODUCT_NAME = Funston;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
@@ -779,7 +767,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.FunstonUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.FunstonUITests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Funston;
@@ -823,7 +811,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 68Z6A6ACWF;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_CODE_COVERAGE = NO;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -858,7 +846,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.FunstonUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.FunstonUITests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Funston;
@@ -884,7 +872,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.Funston;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.Funston;
 				PRODUCT_NAME = Funston;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
@@ -928,7 +916,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 68Z6A6ACWF;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -969,7 +957,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.FunstonTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.FunstonTests;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "FunstonTests/FunstonTests-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -987,7 +975,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.FunstonTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.FunstonTests;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "FunstonTests/FunstonTests-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";

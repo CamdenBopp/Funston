@@ -1,6 +1,6 @@
 name: Funston
 options:
-  bundleIdPrefix: com.camden
+  bundleIdPrefix: com.example
   deploymentTarget:
     iOS: "18.0"
   xcodeVersion: "27.0"
@@ -9,7 +9,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    DEVELOPMENT_TEAM: 68Z6A6ACWF
+    DEVELOPMENT_TEAM: ""
     ENABLE_USER_SCRIPT_SANDBOXING: true
     ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: true
   configs:
@@ -48,7 +48,7 @@ targets:
       - sdk: CarPlay.framework
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.camden.Funston
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.Funston
         PRODUCT_NAME: Funston
         GENERATE_INFOPLIST_FILE: true
         INFOPLIST_FILE: Funston/Info.plist
@@ -78,7 +78,7 @@ targets:
         product: ArchivePlayerCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.camden.FunstonTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.FunstonTests
         GENERATE_INFOPLIST_FILE: true
         SWIFT_OBJC_BRIDGING_HEADER: FunstonTests/FunstonTests-Bridging-Header.h
   FunstonUITests:
@@ -90,7 +90,7 @@ targets:
       - target: Funston
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.camden.FunstonUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.FunstonUITests
         GENERATE_INFOPLIST_FILE: true
 schemes:
   FunstonPDFPerformance:
