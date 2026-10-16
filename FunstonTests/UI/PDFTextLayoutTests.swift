@@ -21,6 +21,8 @@ final class PDFTextLayoutTests: XCTestCase {
     /// The December 1981 scan is 1285 by 1768 pixels for a whole page; every
     /// engine measured finds 84-93% of its words.
     private static let minimumScanRecall = 0.88
+    /// The scans and their transcriptions are not in the repository (FunstonTests/Fixtures/README.md).
+    private static let scansNotDistributed = "The 73 Magazine page scans are not distributed with the repository; see FunstonTests/Fixtures/README.md"
 
     func testVisionEngineReadsMagazineColumnsInOrder() async throws {
         let options = XCTExpectedFailure.Options()
@@ -204,7 +206,7 @@ final class PDFTextLayoutTests: XCTestCase {
     // MARK: - Harness
 
     private func recognize(_ fixture: String, with engineID: String) async throws -> String {
-        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: fixture, withExtension: "jpg"))
+        guard let url = Bundle(for: Self.self).url(forResource: fixture, withExtension: "jpg") else { throw XCTSkip(Self.scansNotDistributed) }
         let image = try XCTUnwrap(UIImage(contentsOfFile: url.path)?.cgImage)
         let engine = try XCTUnwrap(PDFPageTextEngineRegistry.builtIn.engine(id: engineID))
         return await engine.recognize(image).text
@@ -220,7 +222,7 @@ final class PDFTextLayoutTests: XCTestCase {
     /// share of consecutive ground-truth lines where the second follows the first
     /// (allowing one word of slack where a line-break hyphen was rejoined).
     private static func score(_ text: String, against fixture: String) throws -> (recall: Double, continuity: Double, broken: [String]) {
-        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: fixture + "-columns", withExtension: "txt"))
+        guard let url = Bundle(for: Self.self).url(forResource: fixture + "-columns", withExtension: "txt") else { throw XCTSkip(Self.scansNotDistributed) }
         var columns: [[String]] = []
         for line in try String(contentsOf: url, encoding: .utf8).split(separator: "\n") {
             if line.hasPrefix("#") { columns.append([]) } else if !line.isEmpty { columns[columns.count - 1].append(String(line)) }

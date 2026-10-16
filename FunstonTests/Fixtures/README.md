@@ -1,0 +1,5 @@
+# Test fixtures
+
+`original-video-fixture.mkv` is 20 seconds of synthetic video, tones and captions generated with ffmpeg's test sources for the MKV playback tests; the command that makes it is at the top of `FunstonTests/Services/OriginalVideoPlaybackTests.swift`.
+
+The PDF reading-order tests (`PDFTextLayoutTests`, and one test in `PDFLineAccessibilityTests`) were written against two scanned magazine pages from the Internet Archive, 73 Magazine, August 1976, page 40 (item `73-magazine-1976-08`) and December 1981, page 6 (item `73-magazine-1981-12`), together with hand-typed transcriptions of their columns. Those four files are not distributed with the repository, because the magazine's copyright status could not be established. Without them the tests skip. To run them locally, export the two pages as JPEGs named `73-magazine-1976-08-page40.jpg` and `73-magazine-1981-12-page6.jpg` in this folder and transcribe their columns into `73-magazine-1976-08-page40-columns.txt` and `73-magazine-1981-12-page6-columns.txt`, one `#` line per column followed by its lines; then regenerate the project with `xcodegen generate` so the files join the test bundle.

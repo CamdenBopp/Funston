@@ -4,30 +4,31 @@
 
 ## Commits
 
-Branch `claude/sad-darwin-0e6cc1` on github.com/CamdenBopp/Funston, built on the Phase A head `7b78db6` (steps 1 to 9). The close-out range is `7b78db6..HEAD`; each commit names its axis (soundness, speed, correctness) and the test watched red and green. Oldest first:
+Branch `claude/sad-darwin-0e6cc1` on github.com/CamdenBopp/Funston, built on the Phase A head `4d21abc` (steps 1 to 9; hashes as in the public history, which omits two test fixtures). The close-out range is `4d21abc..HEAD`; each commit names its axis (soundness, speed, correctness) and the test watched red and green. Oldest first:
 
 <!-- commits -->
-- `2dfb8d2` Remove Readium: the native reader is the only EPUB path
-- `0ce9ffe` Rename EPUBCFIResolver and EPUBStyleResolver off the studies' name denylist
-- `e4b96f0` Delete the surfaces the strips replaced
-- `cf69d5d` Test the strips' VoiceOver contract: persistent elements, list start, focus, three-finger scroll
-- `ddac40f` Continuous strip: a paragraph showing only a sliver is not where VoiceOver's list starts
-- `45683be` Continuous strip: a focused paragraph is the reading position
-- `dcbbf93` Show the book's diagnostics: the Phase A problems screen
-- `718209c` Bound the work a book can demand: EPUBWorkLimits and the whole-book cap
-- `7eb2580` A chapter whose styled build runs past its budget renders as plain text
-- `9626180` A chapter whose layout runs past its budget is laid out again as plain text
-- `7341aeb` Build chapters without bridging the whole string for every character
-- `c2a0434` Build chapters within the budget: attributes once per run, a counted buffer, no per-character strings
-- `4c98b38` Strips follow VoiceOver's focus notification and let swipes lead back
-- `c7ced27` Right-to-left books: the continuous strip maps left and right through the progression
-- `d3c312d` Lines rotor: line boundaries stop before a soft wrap's trailing space
-- `f76398a` Page progression defaults to right-to-left for a right-to-left language
-- `9ea0770` Images carried as data: URLs render inline
-- `438a712` Open a book with one chapter laid out; the window's neighbours arrive off the main actor
-- `0a22c88` Run the W3C epub-tests and the corpus as gated tests; commit the first conformance table
-- `686b56b` Spec section 24: the answers, decisions and questions Phase A left behind
-- `fd40de1` Corpus run: every chapter renders with no lost text, every chapter start is named right
+- `a8986bd` Remove Readium: the native reader is the only EPUB path
+- `62de04e` Rename EPUBCFIResolver and EPUBStyleResolver off the studies' name denylist
+- `bc1545c` Delete the surfaces the strips replaced
+- `cdeaed9` Test the strips' VoiceOver contract: persistent elements, list start, focus, three-finger scroll
+- `1628e2c` Continuous strip: a paragraph showing only a sliver is not where VoiceOver's list starts
+- `0c79cbe` Continuous strip: a focused paragraph is the reading position
+- `9985feb` Show the book's diagnostics: the Phase A problems screen
+- `857fc78` Bound the work a book can demand: EPUBWorkLimits and the whole-book cap
+- `5e63e4b` A chapter whose styled build runs past its budget renders as plain text
+- `33f1d71` A chapter whose layout runs past its budget is laid out again as plain text
+- `7237348` Build chapters without bridging the whole string for every character
+- `d19494c` Build chapters within the budget: attributes once per run, a counted buffer, no per-character strings
+- `c06d273` Strips follow VoiceOver's focus notification and let swipes lead back
+- `1b3ca17` Right-to-left books: the continuous strip maps left and right through the progression
+- `e486d3e` Lines rotor: line boundaries stop before a soft wrap's trailing space
+- `d73d34f` Page progression defaults to right-to-left for a right-to-left language
+- `b844abd` Images carried as data: URLs render inline
+- `cdc4100` Open a book with one chapter laid out; the window's neighbours arrive off the main actor
+- `6717875` Run the W3C epub-tests and the corpus as gated tests; commit the first conformance table
+- `3a72b05` Spec section 24: the answers, decisions and questions Phase A left behind
+- `8512140` Corpus run: every chapter renders with no lost text, every chapter start is named right
+- `9b61806` Phase A report and the VoiceOver checklist filled in item by item
 <!-- /commits -->
 
 ## Test counts

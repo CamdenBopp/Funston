@@ -30,7 +30,9 @@ xcodegen generate
 xcodebuild -project Funston.xcodeproj -scheme Funston -destination 'generic/platform=iOS Simulator' build
 ```
 
-To run on a device, change `DEVELOPMENT_TEAM` and the `com.camden` bundle prefix in `project.yml` to your own. `Package.resolved` is committed; keep it to get the same dependency versions.
+`project.yml` ships with placeholders: `DEVELOPMENT_TEAM` is empty and the bundle identifiers use the `com.example` prefix. Simulator builds work as they are. To run on a device, set `DEVELOPMENT_TEAM` to your Apple developer team ID, change `bundleIdPrefix` and the three `PRODUCT_BUNDLE_IDENTIFIER` values to a prefix you own, and run `xcodegen generate` again. `Package.resolved` is committed; keep it to get the same dependency versions.
+
+The PDF reading-order tests use two scanned magazine pages that are not distributed with the repository; those tests skip when the scans are absent. [FunstonTests/Fixtures/README.md](FunstonTests/Fixtures/README.md) says which pages they are.
 
 Tests:
 

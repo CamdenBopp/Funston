@@ -126,7 +126,7 @@ final class PDFLineAccessibilityTests: XCTestCase {
     }
 
     func testVisionReturnsPageRelativeLineBoxesFromTheSameMagazineRecognition() async throws {
-        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "73-magazine-1976-08-page40", withExtension: "jpg"))
+        guard let url = Bundle(for: Self.self).url(forResource: "73-magazine-1976-08-page40", withExtension: "jpg") else { throw XCTSkip("The 73 Magazine page scan is not distributed with the repository; see FunstonTests/Fixtures/README.md") }
         let image = try XCTUnwrap(UIImage(contentsOfFile: url.path)?.cgImage)
         let engine = try XCTUnwrap(PDFPageTextEngineRegistry.builtIn.engine(id: PDFTextEngineID.appleVision))
         let result = await engine.recognize(image)

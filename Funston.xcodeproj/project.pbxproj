@@ -49,7 +49,6 @@
 		480976CB44F1F8C2B0C79D01 /* EPUBPaginationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C35FF210BE852BE2AD554DE /* EPUBPaginationTests.swift */; };
 		4DA8CF6C1DCCB6604E9857B2 /* EPUBStyleSheetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80F0DC16742E462A4763D97F /* EPUBStyleSheetTests.swift */; };
 		4E7886C99627066D41A780CD /* CodecCapabilityDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31252B3F929B645C52A91F9 /* CodecCapabilityDeviceTests.swift */; };
-		50E3CD76FC9AE87D6FE060A1 /* 73-magazine-1976-08-page40-columns.txt in Resources */ = {isa = PBXBuildFile; fileRef = F1C13430A7D6178CD5474BB0 /* 73-magazine-1976-08-page40-columns.txt */; };
 		54790EBFE9E6C4B406B4B0A7 /* EPUBNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2311537F8B4B2F1265D767DD /* EPUBNavigationTests.swift */; };
 		592364DCE212EFC1796458F2 /* EPUBContentDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112FF9D1BDE97FAAFD3E4715 /* EPUBContentDocument.swift */; };
 		5A1290C9A52BA86FC96199B4 /* RecordingListViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35F4618626CBCCC6CDB0FC46 /* RecordingListViews.swift */; };
@@ -64,7 +63,6 @@
 		670A25A66B3475B39199A7CC /* OriginalVideoRemoteControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB47764A2EAA6737E450F564 /* OriginalVideoRemoteControl.swift */; };
 		682F8800A8040B5032932C6C /* ArtifactOriginalVideoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83FA6742BCE70DB39C50A79E /* ArtifactOriginalVideoController.swift */; };
 		6867855F6EB1A0DD0B4169AF /* BrowseControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40147F874FD620BC7B6D9AAE /* BrowseControllers.swift */; };
-		6870F82FC158A3084CE42B65 /* 73-magazine-1981-12-page6-columns.txt in Resources */ = {isa = PBXBuildFile; fileRef = 47FA3C22E8E457958AB7B0BD /* 73-magazine-1981-12-page6-columns.txt */; };
 		6BBC4CE8910BCDB9DCF0037D /* SleepTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71A58F6CF1D568B8FA22F12F /* SleepTimerTests.swift */; };
 		6C82D1DF1AA614083794B7C7 /* FunstonIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D4D22DFA0740A0E378DD886 /* FunstonIntents.swift */; };
 		6F51B7CC80D382D750A3B5F9 /* PDFScreenRenderingExperiment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */; };
@@ -75,10 +73,10 @@
 		78D6EC89CF7E2986318E3681 /* ContinueListeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E76AA1D77FB87D8EB6F6DF /* ContinueListeningTests.swift */; };
 		793B43E0E3E05D1BD0963CFB /* OriginalVideoBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29ACD0865BCD826414E2B675 /* OriginalVideoBookmark.swift */; };
 		7B2DA44C3910DCD22CD95CC2 /* EPUBImageCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7B23C63CBF087FD0D45F7A8 /* EPUBImageCatalog.swift */; };
+		7BA9D5B5CBA9947E7A89CCF4 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 92AD64F590889E352FD873C5 /* README.md */; };
 		7C39CA28D5FEE7FF4EBF92F7 /* EPUBFontDeobfuscation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1AF178ADAEB466970D389EE /* EPUBFontDeobfuscation.swift */; };
 		7E6B3CDE72C6F747E88E5901 /* EPUBHTMLRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = F24CA60F7B173F3D5CD864FE /* EPUBHTMLRecovery.swift */; };
 		7E77483624106B86399BD522 /* PDFReadingStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E18D86233FB0609AFE082A /* PDFReadingStateTests.swift */; };
-		7F2FAC64E63B5AB1ABE6DD17 /* 73-magazine-1976-08-page40.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 3241C28DADE65644C72B86D8 /* 73-magazine-1976-08-page40.jpg */; };
 		816C6600DBDBBCBD1F2F9116 /* ArtworkPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6688140E01B2D367C2C7AF /* ArtworkPipeline.swift */; };
 		8342B387FAA23AD0D722C77A /* PDFReadingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9D4D28CB7D06FA401FAA6C /* PDFReadingState.swift */; };
 		84B2B5B00AC9AABAA1845F1F /* SQLiteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B6AC7E7D67A26404F8526F1 /* SQLiteStore.swift */; };
@@ -120,7 +118,6 @@
 		B21B70ADBCE7389347257F03 /* EPUBLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74BF0049FCC0C908E6092679 /* EPUBLocator.swift */; };
 		B3694A10209130649763ED99 /* EPUBXMLDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ABAC2FB0CCAE964A6956736 /* EPUBXMLDocument.swift */; };
 		B71B2B79473396C8456E2659 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEC399375132D18A85258F1 /* DownloadManager.swift */; };
-		B766190585C33ABB142AF1A1 /* 73-magazine-1981-12-page6.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 8BD14C4E10199D7E42AE586C /* 73-magazine-1981-12-page6.jpg */; };
 		B7EE4BC3BAA5A0148F64FE7C /* EPUBMediaType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BF71989CB140B2F66D1EA99 /* EPUBMediaType.swift */; };
 		B91E26B2C53A79404FEDF866 /* PlayerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9059921AE97E122328AC8EC5 /* PlayerViews.swift */; };
 		BA4CC927C7FB33B423E9C490 /* PDFTextLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BDF9BBD41BBA62E85E8A7EE /* PDFTextLayout.swift */; };
@@ -220,7 +217,6 @@
 		2E0E713E0CCF4C27D08D5017 /* EPUBFixtureCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBFixtureCache.swift; sourceTree = "<group>"; };
 		2E19340146C38C0EA03063E4 /* FunstonListController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonListController.swift; sourceTree = "<group>"; };
 		2FBBB642621A8FDC9EB59A6D /* FunstonRootController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonRootController.swift; sourceTree = "<group>"; };
-		3241C28DADE65644C72B86D8 /* 73-magazine-1976-08-page40.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "73-magazine-1976-08-page40.jpg"; sourceTree = "<group>"; };
 		3257AE33B2FBA5578BD487B2 /* CarPlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayTests.swift; sourceTree = "<group>"; };
 		34D5947F915F8D4C7002BD54 /* EPUBPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBPerformanceTests.swift; sourceTree = "<group>"; };
 		35F4618626CBCCC6CDB0FC46 /* RecordingListViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingListViews.swift; sourceTree = "<group>"; };
@@ -234,7 +230,6 @@
 		40147F874FD620BC7B6D9AAE /* BrowseControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseControllers.swift; sourceTree = "<group>"; };
 		44447702FAFA480C5DE6AF61 /* ArchiveDTO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveDTO.swift; sourceTree = "<group>"; };
 		46E279E415832ED871A08AC9 /* EPUBReaderSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBReaderSessionTests.swift; sourceTree = "<group>"; };
-		47FA3C22E8E457958AB7B0BD /* 73-magazine-1981-12-page6-columns.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "73-magazine-1981-12-page6-columns.txt"; sourceTree = "<group>"; };
 		4885569ECF9679D7A64CADF7 /* ArchiveNetworking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNetworking.swift; sourceTree = "<group>"; };
 		4930A8F7C98010EF367222FE /* EPUBComputedStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBComputedStyle.swift; sourceTree = "<group>"; };
 		4B6AC7E7D67A26404F8526F1 /* SQLiteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteStore.swift; sourceTree = "<group>"; };
@@ -277,7 +272,6 @@
 		85F2CAC5EFC1BA2141AA0D81 /* ArchiveNetworkPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNetworkPolicy.swift; sourceTree = "<group>"; };
 		892AA9E3E0B1E928B9A42438 /* OriginalVideoTrackMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoTrackMemory.swift; sourceTree = "<group>"; };
 		89D2713C6E43982987FDF6D4 /* EPUBSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBSelector.swift; sourceTree = "<group>"; };
-		8BD14C4E10199D7E42AE586C /* 73-magazine-1981-12-page6.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "73-magazine-1981-12-page6.jpg"; sourceTree = "<group>"; };
 		8BE99751DD54B00B7C4B1C1B /* EPUBStyleCascade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBStyleCascade.swift; sourceTree = "<group>"; };
 		8C12FBD9697D8A4836AD47AE /* DownloadPermitCancellationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadPermitCancellationTests.swift; sourceTree = "<group>"; };
 		8C3CE18567EC6E6D1CF5A6F5 /* EPUBContentDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBContentDecoder.swift; sourceTree = "<group>"; };
@@ -286,6 +280,7 @@
 		9059921AE97E122328AC8EC5 /* PlayerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViews.swift; sourceTree = "<group>"; };
 		90E76B9A4F6B4D55BA45EEFE /* ArchiveNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNormalizer.swift; sourceTree = "<group>"; };
 		91739B1D795AFADC7D7EF024 /* EPUBPackageDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBPackageDocumentTests.swift; sourceTree = "<group>"; };
+		92AD64F590889E352FD873C5 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		96598BDC0EFE7D1D90A808C2 /* EPUBContainerFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBContainerFile.swift; sourceTree = "<group>"; };
 		97C4A1A2218332A1F56B2F54 /* ContinueListening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueListening.swift; sourceTree = "<group>"; };
 		9974BA9337603F52918C915B /* EPUBZipReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBZipReader.swift; sourceTree = "<group>"; };
@@ -346,7 +341,6 @@
 		EA709EA56A02C0C2ABF784EC /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		EE0DD97E3EF28B6AD269B2F2 /* MediaAvailabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaAvailabilityTests.swift; sourceTree = "<group>"; };
 		F1AF178ADAEB466970D389EE /* EPUBFontDeobfuscation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBFontDeobfuscation.swift; sourceTree = "<group>"; };
-		F1C13430A7D6178CD5474BB0 /* 73-magazine-1976-08-page40-columns.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "73-magazine-1976-08-page40-columns.txt"; sourceTree = "<group>"; };
 		F24CA60F7B173F3D5CD864FE /* EPUBHTMLRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBHTMLRecovery.swift; sourceTree = "<group>"; };
 		F28EB53A203A0710CFBE557A /* AppIntentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntentTests.swift; sourceTree = "<group>"; };
 		F57418E764B4E2A8CC51329A /* EPUBWorkLimits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBWorkLimits.swift; sourceTree = "<group>"; };
@@ -453,11 +447,8 @@
 		409B9F98A7C63FE158113B32 /* Fixtures */ = {
 			isa = PBXGroup;
 			children = (
-				F1C13430A7D6178CD5474BB0 /* 73-magazine-1976-08-page40-columns.txt */,
-				3241C28DADE65644C72B86D8 /* 73-magazine-1976-08-page40.jpg */,
-				47FA3C22E8E457958AB7B0BD /* 73-magazine-1981-12-page6-columns.txt */,
-				8BD14C4E10199D7E42AE586C /* 73-magazine-1981-12-page6.jpg */,
 				1DF8F80C66F6D0AF8BBD4445 /* original-video-fixture.mkv */,
+				92AD64F590889E352FD873C5 /* README.md */,
 			);
 			path = Fixtures;
 			sourceTree = "<group>";
@@ -827,14 +818,14 @@
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					085AE0F8D7BC384DA4AAC47F = {
-						DevelopmentTeam = 68Z6A6ACWF;
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					2925CF9F1598B0124ABC257E = {
-						DevelopmentTeam = 68Z6A6ACWF;
+						DevelopmentTeam = "";
 					};
 					F952DB2BC434B88E66739701 = {
-						DevelopmentTeam = 68Z6A6ACWF;
+						DevelopmentTeam = "";
 						TestTargetID = 085AE0F8D7BC384DA4AAC47F;
 					};
 				};
@@ -878,10 +869,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				50E3CD76FC9AE87D6FE060A1 /* 73-magazine-1976-08-page40-columns.txt in Resources */,
-				7F2FAC64E63B5AB1ABE6DD17 /* 73-magazine-1976-08-page40.jpg in Resources */,
-				6870F82FC158A3084CE42B65 /* 73-magazine-1981-12-page6-columns.txt in Resources */,
-				B766190585C33ABB142AF1A1 /* 73-magazine-1981-12-page6.jpg in Resources */,
+				7BA9D5B5CBA9947E7A89CCF4 /* README.md in Resources */,
 				869D13666E4C62A82250AE62 /* original-video-fixture.mkv in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1092,7 +1080,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.Funston;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.Funston;
 				PRODUCT_NAME = Funston;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
@@ -1110,7 +1098,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.FunstonUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.FunstonUITests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Funston;
@@ -1154,7 +1142,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 68Z6A6ACWF;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_CODE_COVERAGE = NO;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1189,7 +1177,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.FunstonUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.FunstonUITests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Funston;
@@ -1216,7 +1204,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.Funston;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.Funston;
 				PRODUCT_NAME = Funston;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
@@ -1260,7 +1248,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 68Z6A6ACWF;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -1301,7 +1289,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.FunstonTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.FunstonTests;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "FunstonTests/FunstonTests-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1319,7 +1307,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.camden.FunstonTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.FunstonTests;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "FunstonTests/FunstonTests-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
