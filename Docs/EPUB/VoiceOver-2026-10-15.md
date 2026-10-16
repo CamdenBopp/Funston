@@ -30,25 +30,25 @@ Books: Man and Maid chapter 1, Moby Dick (Standard Ebooks) chapter 1, Poems of t
 
 | # | Item | Simulator | iPhone | Notes |
 |---|---|---|---|---|
-| 1 | Line-by-line touch exploration lands on real text | | | |
-| 2 | Block-wise swipes in reading order | | | |
-| 3 | Lines rotor, including across a page | | | |
-| 4 | Characters and Words rotors | | | |
-| 5 | Read All continues across pages and chapters | | | |
-| 6 | Three-finger swipe turns the page and announces "Page p of q" | | | |
-| 7 | Focus after a manual turn is the new page | | | |
-| 8 | Headings rotor and levels | | | |
-| 9 | Links rotor; link and note actions | | | |
-| 10 | Images announce their alternatives | | | |
-| 11 | Lists and tables announce their containers | | | |
-| 12 | Notes open in a sheet and return | | | |
-| 13 | Languages switch voices | | | |
-| 14 | The adjustable page element increments and decrements | | | |
-| 15 | Focus order equals document order | | | |
-| 16 | No empty label | | | |
-| 17 | Container start and end announced | | | |
-| 18 | Page labels skippable | | | |
-| 19 | Continuous mode: crossing at the chapter end | | | |
+| 1 | Line-by-line touch exploration lands on real text | not driven: the driver has no touch; the tree shows each paragraph element's frame equal to its text's bounds | pending | To try on the phone: every touch should land on real text, never on empty space between paragraphs. |
+| 2 | Block-wise swipes in reading order | yes: title, Go to, Contents, Reading page, then the shown page's paragraphs in document order; past a page's last paragraph the next page's first follows and the page comes into view | yes ("works beautifully") | Swipe left from a page's first paragraph now reaches the previous page's last paragraph (strip tests); on the phone before that fix it went to Reading page. |
+| 3 | Lines rotor, including across a page | yes: within a paragraph the laid-out lines after the tokenizer fix; from a paragraph's last line into the next paragraph; page model: across pages through accessibilityScroll | pending | Before the fix the simulator stepped 45-character chunks that cut words (open question 21, now closed by the fix). |
+| 4 | Characters and Words rotors | yes: "Cap t", "h", "e", "space"; "Project", "Gutenberg", "EBook" | pending |  |
+| 5 | Read All continues across pages and chapters | yes: pages 19 to 22 and across the chapter III to IV file boundary; close-out run three turns in 75 s with no repeat or stop; continuous mode reads forward with the view following | yes ("works beautifully") | The element VoiceOver holds must survive the turn; every design that replaced it lost Read All. |
+| 6 | Three-finger swipe turns the page and announces "Page p of q" | unit test only (strip tests: one page per scroll, pageScrolled posted); the driver cannot make a three-finger swipe | yes ("works beautifully") |  |
+| 7 | Focus after a manual turn is the new page | page model and block model: focus on the new page's first element one second after each turn; paragraph model: unit test (focus moves to the first paragraph there) | yes |  |
+| 8 | Headings rotor and levels | rotor yes: next heading across pages ("Cap v", "VI"), previous heading after the reach-back fix; levels no: "heading" with no level | pending | Open question 23 (levels). |
+| 9 | Links rotor; link and note actions | actions present: "Show note [1]" and "Activate" on the note reference; performing a custom action is not possible from the driver; Links rotor not offered on pages without links | pending | Device run: perform "Show note [1]", then "Return to text". |
+| 10 | Images announce their alternatives | yes: "emblem, Image" on the title page, the page coming into view | pending |  |
+| 11 | Lists and tables announce their containers | no: paragraphs are flat elements, no list or table container | no | Open question 20; Phase B. |
+| 12 | Notes open in a sheet and return | not performable from the driver | pending | Same device step as item 9. |
+| 13 | Languages switch voices | attribute level yes: the corpus run counts the runs carrying a speech language (Elektra 18, Relativity 36, Moby Dick 65) | pending (by ear) |  |
+| 14 | The adjustable page element increments and decrements | yes: "Adjust Value"; up "III, page 2 of 48", down "III, page 1 of 48" | pending |  |
+| 15 | Focus order equals document order | yes | yes (Read All reads in order) |  |
+| 16 | No empty label | yes for speech: every element speaks its text; the label is empty by design and the text is the value | yes |  |
+| 17 | Container start and end announced | partly: the strip is one container between the navigation bar and the tab bar (Containers rotor); whether its label is spoken on entry was not captured | pending |  |
+| 18 | Page labels skippable | no: page-break markers are not elements | no | Open question 20; Phase B. |
+| 19 | Continuous mode: crossing at the chapter end | Read All reads forward in continuous mode with the view following and the location advancing; crossing at the window's end not re-run since the window became lazy (438a712) | yes before the lazy window ("both modes") | To re-run on the phone: Read All across a chapter end in continuous mode. |
 
 ## Simulator run (iPhone 17 Pro, iOS 26.5, "Funston EPUB VO")
 
@@ -101,5 +101,31 @@ Camden's iPhone 14 Pro Max, both modes, three-finger swipes, Read All and paragr
 - Read All in continuous mode (page model switch is irrelevant there) reads the surface's block elements in order; as VoiceOver focuses each block the surface scrolls it into view and the settled report follows (log: settled offsets 0, 195, 576, 535 over a minute of reading). Blocks keep their element objects across window rebuilds after the fix above.
 - One run that opened at a restored position deep in the book (chapter II, surface scrolled 12,115 pt down) listed the chapter's first blocks as elements, with the "II" heading's frame 12,115 pt above the viewport; after Read All the Reading page value had fallen back to "Chapter 1, location 1", the book's start. The element window was built from a stale scroll offset and VoiceOver's reading pulled the surface back to the top. Open point: the window must be rebuilt (and VoiceOver told with layoutChanged) after the restore sets the content offset; not yet fixed, logged for the continuous-mode checklist item.
 
+## Simulator run, Phase A close-out (evening of 2026-10-15)
+
+Build: branch `claude/sad-darwin-0e6cc1` (the Phase A head plus the step 10 and 11 changes), "Funston EPUB VO" (iPhone 17 Pro, iOS 26.5), Man and Maid opened from the Library's downloaded copy, page by page, paragraph model, experiment log on. Driven step by step with the `ios-sim-voiceover` driver: each step is one keyboard command, the caption panel is read back (OCR; stray tab-bar words such as "Explore Search Library" are OCR noise), the focused element is read from the accessibility tree, and the app's log is read before the next step.
+
+- Reading order (item 15, item 2): walking from the title: "Man and Maid, heading", "Go to, button", "Contents, button", "Reading page, IV, page 2 of 47, adjustable", then the shown page's first paragraph, then the paragraphs in document order. The strip's elements carry their text as the value with an empty label; every element speaks its text (item 16 holds for speech; the label is empty by design).
+- Rotor options on a paragraph: Characters, Words, Lines, Speaking Rate, Containers, Headings, Edit; Actions appears when the element has actions. No Images or Links rotor on a page without images or links.
+- Headings rotor (item 8): from a paragraph in chapter IV, next heading spoke "Cap v, heading" and the page with chapter V's heading came into view; next again spoke "VI, heading". Previous heading from VI first went to the navigation title "Man and Maid, heading", because the element list started at the shown page; after the change that lets the list reach back through the window once focus is inside the strip (commit in this branch), previous heading spoke "Cap v, heading". A third next from VI spoke "Heading not found": the next heading lies beyond the three-chapter window. Heading levels: VoiceOver says "heading" with no level (open question 23).
+- Focus mechanism: the app never logged `accessibilityElementDidBecomeFocused` on a paragraph view in any run, this one or the earlier ones; `UIAccessibility.elementFocusedNotification` arrives with the paragraph view itself in its userInfo ("focus inside the page strip: EPUBParagraphView"), and before the strips listened to it, UIKit's own scroll-to-visible had been bringing the focused paragraph's page in. The strips now follow focus from the notification (open question 22).
+- Adjustable element (item 14): on "Reading page", the rotor offers "Adjust Value"; swipe up spoke "III, page 2 of 48", swipe down "III, page 1 of 48".
+- Characters and Words rotors (item 4): "Cap t", "h", "e", "space"; "Project", "Gutenberg", "EBook".
+- Lines rotor (item 3): the steps run on from one paragraph into the next (the text navigation links): "...by C", "licking on the caption.", then "MAN AND MAID", then the caption paragraph, then "MAN AND MAID", "By ELINOR GLYN". Within a paragraph, though, each step is a chunk of about 45 to 47 characters that cuts words ("by C|licking", "the tedious h|ours"), not a laid-out line, although the paragraph views implement line granularity in their tokenizer. Which calls VoiceOver makes on a custom UITextInput view for its Lines rotor is being logged next (open question 21).
+- Lines rotor, after the fix (item 3): on "1. Where possible, punctuation has been normalized to contemporary standards." VoiceOver spoke "1. Where possible, punctuation has been", "normalized to contemporary standards.", then the next paragraph's "2. Several different styles of thought", "breaks (vertical space, dots, stars, line).", "have been retained from the original.", "3. Obvious typographic and spelling", and stepping up retraced "have been retained from the original." and "breaks (vertical space, dots, stars, line).". The logged calls showed the mechanism: VoiceOver asks the tokenizer for the forward line boundary, speaks up to it, and steps one past it for the next line, so the boundary now excludes a soft wrap's trailing space and the line lookup prefers the line that contains an offset over the one that ends at it.
+- Images (item 10): swiping right from the title page reached "emblem, Image" (the title block's emblem, `alt="emblem"`), on the next page, which came into view. The Images rotor is not offered while no image is on screen.
+- Read All (item 5): started on the emblem (page 3 of the first spine item); after 75 s VoiceOver was reading "Suzette supped with me, here in my appartement last night" in chapter I and the Reading page said "I, page 6 of 52": three page turns, each page coming into view as focus moved paragraph by paragraph (focus notifications every one to five seconds in the log), no repeat and no stop.
+- Links and note actions (item 9), Les Misérables volume 4 (lesmisrablesvthe48734gut, downloaded through Search under VoiceOver, opened at "Go to Location" 300): the paragraph that begins "Listen to what I tell you, boy" offers the Actions rotor with "Show note [1]" and "Activate, Default"; the note body paragraph "[1] Écoute ce que je te dis, garçon..." sits at the chapter's end as its own element. Performing the custom action is not possible from the simulator driver (Control-Option-Space is recognised but does nothing there, as the skill records), so opening the sheet and "Return to text" (item 12) are left to the device run.
+- Go to Location (the Go to menu): the alert reads "Go to Location, 1 to 774", the field takes a typed number, and the reader moved to "GAVROCHE REAPS ADVANTAGE FROM NAPOLEON THE GREAT., page 5 of 61".
+- Languages (item 13): verified at the attribute level by the corpus run (Docs/EPUB/Corpus-2026-10-15.md counts, per book, the runs that carry a VoiceOver speech language: Elektra's Greek, English and Italian spans, Moby Dick's eighteen languages); whether VoiceOver switches voices is for the device run, by ear.
+- Container start and end (item 17): the strips are semantic-group containers labelled with the chapter title; with the Containers rotor, previous container from a paragraph in Les Misérables went to the chapter's heading ("...M ON HIGH., heading", the strip's first listed element) and next container to the tab bar ("Tab Bar, Explore, Tab, 1 of 3"), so VoiceOver treats the strip as one container between the navigation bar and the tab bar. Whether it speaks the container's label on entry was not captured by the caption panel; to listen for on the device.
+- Containers rotor: previous container from a paragraph deep in the window went to the window's first paragraph (the book's first, because Gutenberg's first spine item holds the front matter and chapters I to III), then to the Item back button.
+- Reading page value "III, page 1 of 48" was read once from the Reading page element after the Headings rotor moves and a reinstall with a restored position. No chapter file of Man and Maid has 48 pages at the simulator's size, and the corpus run names every chapter file's first page correctly (the header page has no entry and the controller says "Chapter 1"; the chapter IV file says "IV"), so the value is not explained and is listed under the open points.
+
 ## Open points
 
+- First page label: the close-out run saw "III, page 1 of 48" on Man and Maid's first page, where "Transcriber's Notes" is the entry anchored there. The corpus test now asserts the first page's entry for that book; its result decides whether this is a lookup defect or an artefact of the moment the caption was read (result: the corpus run labels the first page of every chapter file correctly, Man and Maid's header page with no entry and the chapter IV file with "IV"; the observed value is not reproduced and stays recorded here).
+- A restore deep in the book in continuous mode: the earlier surface built its element window from a stale scroll offset and Read All pulled the view back to the top. The strips replaced that surface and start their list at the first visible paragraph of the current offset (unit-tested), but a deep restore under VoiceOver in continuous mode has not been re-run since.
+- Continuous mode crossing at a chapter end (item 19) and the device items marked pending in the table (1, 3, 4, 8, 9 and 12, 10, 13, 14, 17): the next device run, listed in the Phase A report.
+- Whether VoiceOver speaks the strip's container label (the chapter title) on entry (item 17).
+- Heading levels (open question 23), list and table containers and skippable page labels (open question 20): Phase B.
