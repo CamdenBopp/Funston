@@ -92,7 +92,11 @@ struct EPUBChapterLoader: Sendable {
 
     var publication: EPUBPublication { resources.publication }
 
-    func load(spineIndex: Int) -> EPUBLoadedChapter? {
+    func load(spineIndex: Int) -> EPUBLoadedChapter? { loadWithStyles(spineIndex: spineIndex)?.chapter }
+
+    /// The chapter with the computed style of every node of its document, for tests that
+    /// need to know what the builder hid; the reader keeps only the chapter.
+    func loadWithStyles(spineIndex: Int) -> (chapter: EPUBLoadedChapter, styles: [EPUBComputedStyle])? {
         guard publication.package.spine.indices.contains(spineIndex) else { return nil }
         let item = publication.package.spine[spineIndex]
         guard let path = item.path else { return nil }
@@ -101,7 +105,7 @@ struct EPUBChapterLoader: Sendable {
         do { data = try publication.resource(at: path, diagnostics: &diagnostics) } catch {
             diagnostics.record(.chapterDecode, "chapter.unreadable", path: path, spineIndex: spineIndex, "The chapter could not be read from the archive.")
             let empty = EPUBContentDocument(path: path, tree: EPUBXMLDocument(nodes: [], documentElement: nil), parserPath: .unreadable, encodingName: "", diagnostics: diagnostics, publicationLanguage: publication.package.primaryLanguage)
-            return EPUBLoadedChapter(spineIndex: spineIndex, document: empty, text: Self.emptyText(diagnostics), diagnostics: diagnostics)
+            return (EPUBLoadedChapter(spineIndex: spineIndex, document: empty, text: Self.emptyText(diagnostics), diagnostics: diagnostics), [])
         }
         if item.kind == .image {
             let document = EPUBContentDocument.parse(Data(Self.imagePageMarkup(path: path).utf8), path: path, publicationLanguage: publication.package.primaryLanguage)
@@ -115,7 +119,7 @@ struct EPUBChapterLoader: Sendable {
 
     /// Styles and builds the chapter; a build that runs past its deadline is done
     /// again over the document reduced to plain paragraphs, with no deadline (Spec 19.3).
-    private func build(_ document: EPUBContentDocument, spineIndex: Int, sheets: [EPUBStyleSheet], diagnostics: EPUBDiagnosticList, deadline: ContinuousClock.Instant?) -> EPUBLoadedChapter {
+    private func build(_ document: EPUBContentDocument, spineIndex: Int, sheets: [EPUBStyleSheet], diagnostics: EPUBDiagnosticList, deadline: ContinuousClock.Instant?) -> (chapter: EPUBLoadedChapter, styles: [EPUBComputedStyle]) {
         var diagnostics = diagnostics
         let resolver = EPUBStyleCascade(settings: settings, sheets: sheets)
         let styles = resolver.resolve(document, diagnostics: &diagnostics)
@@ -133,7 +137,7 @@ struct EPUBChapterLoader: Sendable {
         if deadline != nil, text.diagnostics.contains(code: EPUBChapterTextBuilder.budgetDiagnostic) {
             return build(EPUBContentDocument.plainText(of: document), spineIndex: spineIndex, sheets: [], diagnostics: diagnostics, deadline: nil)
         }
-        return EPUBLoadedChapter(spineIndex: spineIndex, document: document, text: text, diagnostics: diagnostics)
+        return (EPUBLoadedChapter(spineIndex: spineIndex, document: document, text: text, diagnostics: diagnostics), styles)
     }
 
     static func resolveLink(_ href: String, from base: String, publication: EPUBPublication) -> EPUBLinkTarget? {

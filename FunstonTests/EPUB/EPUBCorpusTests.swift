@@ -19,27 +19,30 @@ final class EPUBCorpusTests: XCTestCase {
         let url: URL
         /// Diagnostic codes the study predicts for this file.
         let expectedCodes: [String]
-        /// The cover discovery rule the study predicts.
+        /// The cover discovery rule the study predicts (Gutenberg's `meta name="cover"` names the item: meta.id).
         let coverRule: String?
         let pageListCount: Int?
         let minimumContents: Int
+        /// The contents entries the reader names on the first page of the first readable spine items,
+        /// when the study knows them; nil inside means no entry (the controller then says "Chapter n").
+        var chapterStartLabels: [String?] = []
     }
 
     static let gutenbergURL = "https://archive.org/download/"
     static let standardEbooksURL = "https://standardebooks.org/ebooks/"
 
     static let books: [Book] = [
-        Book(file: "pg20512-images.epub", url: URL(string: gutenbergURL + "manandmaid20512gut/pg20512-images.epub")!, expectedCodes: ["nav.fallbackNCX"], coverRule: nil, pageListCount: nil, minimumContents: 25),
-        Book(file: "pg20512.epub", url: URL(string: gutenbergURL + "manandmaid20512gut/pg20512.epub")!, expectedCodes: ["nav.fallbackNCX"], coverRule: nil, pageListCount: nil, minimumContents: 25),
-        Book(file: "pg890.epub", url: URL(string: gutenbergURL + "historyofthedecl00890gut/pg890.epub")!, expectedCodes: ["nav.fallbackNCX"], coverRule: "guide.image", pageListCount: nil, minimumContents: 50),
-        Book(file: "pg30155-images.epub", url: URL(string: gutenbergURL + "relativitythespe30155gut/pg30155-images.epub")!, expectedCodes: ["nav.fallbackNCX", "nav.synthetic"], coverRule: nil, pageListCount: nil, minimumContents: 1),
-        Book(file: "pg30155.epub", url: URL(string: gutenbergURL + "relativitythespe30155gut/pg30155.epub")!, expectedCodes: ["nav.fallbackNCX", "nav.synthetic"], coverRule: nil, pageListCount: nil, minimumContents: 1),
-        Book(file: "pg24226.epub", url: URL(string: gutenbergURL + "pgcommunitytexts24226gut/pg24226.epub")!, expectedCodes: ["nav.fallbackNCX", "nav.synthetic"], coverRule: "guide.image", pageListCount: nil, minimumContents: 6),
-        Book(file: "pg17995.epub", url: URL(string: gutenbergURL + "pgcommunitytexts17995gut/pg17995.epub")!, expectedCodes: ["nav.fallbackNCX"], coverRule: "guide.image", pageListCount: nil, minimumContents: 2),
-        Book(file: "pg27348.epub", url: URL(string: gutenbergURL + "theciaworldfactb27348gut/pg27348.epub")!, expectedCodes: ["nav.fallbackNCX"], coverRule: "guide.image", pageListCount: nil, minimumContents: 30),
-        Book(file: "pg33681-images.epub", url: URL(string: gutenbergURL + "poemsofthegreatw33681gut/pg33681-images.epub")!, expectedCodes: ["nav.fallbackNCX"], coverRule: nil, pageListCount: 36, minimumContents: 23),
-        Book(file: "pg48734-images.epub", url: URL(string: gutenbergURL + "lesmisrablesvthe48734gut/pg48734-images.epub")!, expectedCodes: ["nav.fallbackNCX"], coverRule: nil, pageListCount: nil, minimumContents: 100),
-        Book(file: "pg48734.epub", url: URL(string: gutenbergURL + "lesmisrablesvthe48734gut/pg48734.epub")!, expectedCodes: ["nav.fallbackNCX"], coverRule: nil, pageListCount: nil, minimumContents: 100),
+        Book(file: "pg20512-images.epub", url: URL(string: gutenbergURL + "manandmaid20512gut/pg20512-images.epub")!, expectedCodes: [], coverRule: "meta.id", pageListCount: nil, minimumContents: 25, chapterStartLabels: [nil, "IV"]),
+        Book(file: "pg20512.epub", url: URL(string: gutenbergURL + "manandmaid20512gut/pg20512.epub")!, expectedCodes: [], coverRule: "meta.id", pageListCount: nil, minimumContents: 25, chapterStartLabels: [nil, "IV"]),
+        Book(file: "pg890.epub", url: URL(string: gutenbergURL + "historyofthedecl00890gut/pg890.epub")!, expectedCodes: [], coverRule: "meta.id", pageListCount: nil, minimumContents: 50),
+        Book(file: "pg30155-images.epub", url: URL(string: gutenbergURL + "relativitythespe30155gut/pg30155-images.epub")!, expectedCodes: ["nav.synthetic"], coverRule: "meta.id", pageListCount: nil, minimumContents: 1),
+        Book(file: "pg30155.epub", url: URL(string: gutenbergURL + "relativitythespe30155gut/pg30155.epub")!, expectedCodes: ["nav.synthetic"], coverRule: "meta.id", pageListCount: nil, minimumContents: 1),
+        Book(file: "pg24226.epub", url: URL(string: gutenbergURL + "pgcommunitytexts24226gut/pg24226.epub")!, expectedCodes: ["nav.synthetic"], coverRule: "meta.id", pageListCount: nil, minimumContents: 6),
+        Book(file: "pg17995.epub", url: URL(string: gutenbergURL + "pgcommunitytexts17995gut/pg17995.epub")!, expectedCodes: [], coverRule: "meta.id", pageListCount: nil, minimumContents: 2),
+        Book(file: "pg27348.epub", url: URL(string: gutenbergURL + "theciaworldfactb27348gut/pg27348.epub")!, expectedCodes: [], coverRule: "meta.id", pageListCount: nil, minimumContents: 30),
+        Book(file: "pg33681-images.epub", url: URL(string: gutenbergURL + "poemsofthegreatw33681gut/pg33681-images.epub")!, expectedCodes: [], coverRule: "meta.id", pageListCount: 36, minimumContents: 23),
+        Book(file: "pg48734-images.epub", url: URL(string: gutenbergURL + "lesmisrablesvthe48734gut/pg48734-images.epub")!, expectedCodes: [], coverRule: "meta.id", pageListCount: nil, minimumContents: 100),
+        Book(file: "pg48734.epub", url: URL(string: gutenbergURL + "lesmisrablesvthe48734gut/pg48734.epub")!, expectedCodes: [], coverRule: "meta.id", pageListCount: nil, minimumContents: 100),
         Book(file: "herman-melville_moby-dick.epub", url: URL(string: standardEbooksURL + "herman-melville/moby-dick/downloads/herman-melville_moby-dick.epub?source=download")!, expectedCodes: [], coverRule: "cover-image", pageListCount: nil, minimumContents: 140),
         Book(file: "herman-melville_moby-dick_advanced.epub", url: URL(string: standardEbooksURL + "herman-melville/moby-dick/downloads/herman-melville_moby-dick_advanced.epub?source=download")!, expectedCodes: [], coverRule: "cover-image", pageListCount: nil, minimumContents: 140),
         Book(file: "lewis-carroll_alices-adventures-in-wonderland_john-tenniel.epub", url: URL(string: standardEbooksURL + "lewis-carroll/alices-adventures-in-wonderland/john-tenniel/downloads/lewis-carroll_alices-adventures-in-wonderland_john-tenniel.epub?source=download")!, expectedCodes: [], coverRule: "cover-image", pageListCount: nil, minimumContents: 12)
@@ -47,32 +50,41 @@ final class EPUBCorpusTests: XCTestCase {
 
     // MARK: Checks
 
-    /// The non-whitespace scalars of every text node the renderer should show, in document order.
-    static func sourceScalars(of document: EPUBContentDocument) -> [Unicode.Scalar] {
+    /// The non-whitespace scalars, uppercased, of every text node the renderer should show, in
+    /// document order: hidden subtrees, CSS display none, never-rendered elements, `rp` and
+    /// SVG internals are left out, as the builder leaves them out. Uppercased because
+    /// small-caps and text-transform change the case of what is rendered.
+    static func sourceScalars(of document: EPUBContentDocument, styles: [EPUBComputedStyle]) -> [Unicode.Scalar] {
         guard let body = document.body else { return [] }
         var result: [Unicode.Scalar] = []
         let tree = document.tree
         func walk(_ id: EPUBXMLDocument.NodeID) {
             let node = tree[id]
-            if node.isCharacterData { result.append(contentsOf: node.text.unicodeScalars.filter { !$0.properties.isWhitespace }); return }
+            if node.isCharacterData { result.append(contentsOf: node.text.uppercased().unicodeScalars.filter { !$0.properties.isWhitespace }); return }
             if document.hidden[id] || document.isNeverRendered(id) || node.name == "rp" || node.name == "svg" { return }
+            if styles.indices.contains(id), styles[id].display == .none { return }
             for child in node.children { walk(child) }
         }
         walk(body)
         return result
     }
 
-    /// Whether every source scalar appears in the rendered text in order; the first miss when not.
+    /// Whether every source scalar appears in the rendered text in order; the first miss when not,
+    /// with the source and the rendered text around it.
     static func lostText(source: [Unicode.Scalar], rendered: String) -> String? {
-        let shown = Array(rendered.unicodeScalars.filter { !$0.properties.isWhitespace })
+        let shown = Array(rendered.uppercased().unicodeScalars.filter { !$0.properties.isWhitespace })
         var cursor = 0
+        var lastMatch = 0
         for (index, scalar) in source.enumerated() {
-            while cursor < shown.count, shown[cursor] != scalar { cursor += 1 }
-            guard cursor < shown.count else {
-                let context = String(String.UnicodeScalarView(source[max(0, index - 20)..<min(source.count, index + 20)]))
-                return "source scalar \(index) of \(source.count) (\(scalar)) not rendered near \"\(context)\""
+            var probe = cursor
+            while probe < shown.count, shown[probe] != scalar { probe += 1 }
+            guard probe < shown.count else {
+                let around = String(String.UnicodeScalarView(source[max(0, index - 24)..<min(source.count, index + 24)]))
+                let renderedAround = String(String.UnicodeScalarView(shown[max(0, lastMatch - 24)..<min(shown.count, lastMatch + 24)]))
+                return "source scalar \(index) of \(source.count) (\(scalar)) not rendered; source \"\(around)\", rendered \"\(renderedAround)\""
             }
-            cursor += 1
+            cursor = probe + 1
+            lastMatch = probe
         }
         return nil
     }
@@ -92,7 +104,20 @@ final class EPUBCorpusTests: XCTestCase {
         let contents = publication.navigation.flattenedContents
         XCTAssertGreaterThanOrEqual(contents.count, book.minimumContents, "\(book.file): contents has \(contents.count) entries")
         lines.append("- Opens: \"\(publication.title)\", \(publication.package.spine.count) spine items, \(contents.count) contents entries (\(publication.navigation.contentsSource)), cover rule \(publication.package.coverRule ?? "none")")
+        if book.file.hasPrefix("pg") { XCTAssertEqual(publication.navigation.contentsSource, book.expectedCodes.contains("nav.synthetic") ? .synthetic : .ncx, "\(book.file): an EPUB 2 file's contents come from its NCX") }
         if let rule = book.coverRule { XCTAssertEqual(publication.package.coverRule, rule, "\(book.file): cover rule") }
+        // The Reading page value on each chapter file's first page: the deepest entry at or before the page's
+        // first character (FOL-34), which is the previous file's last entry when text precedes the first heading.
+        var starts: [String] = []
+        for (ordinal, spine) in session.readableSpine.prefix(4).enumerated() {
+            session.go(to: .spine(spine))
+            guard let start = session.relocationIfChanged(), let chapter = session.chapter(spine) else { starts.append("spine \(spine): no report"); continue }
+            let opening = chapter.text.plainText.prefix(40).replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\u{2029}", with: " ")
+            starts.append("spine \(spine): \"\(start.contentsEntry?.label ?? "no entry")\", \(start.pageCount) pages, first page \(start.visibleRange.length) characters from \(start.visibleRange.location), opens \"\(opening)\"")
+            XCTAssertGreaterThan(start.visibleRange.length, 0, "\(book.file): spine \(spine) opens on an empty page")
+            if ordinal < book.chapterStartLabels.count { XCTAssertEqual(start.contentsEntry?.label, book.chapterStartLabels[ordinal], "\(book.file): spine \(spine) first page label") }
+        }
+        lines.append("- Chapter starts: " + starts.joined(separator: "; "))
         if let count = book.pageListCount {
             XCTAssertEqual(publication.navigation.pageList.count, count, "\(book.file): page list")
             lines.append("- Page list: \(publication.navigation.pageList.count) entries, first \"\(publication.navigation.pageList.first?.label ?? "")\"")
@@ -104,15 +129,19 @@ final class EPUBCorpusTests: XCTestCase {
         let loader = EPUBChapterLoader(resources: resources, settings: session.settings, geometry: geometry, mediaContext: .default, limits: .standard)
         var suspicious = EPUBWorkLimits.standard
         suspicious.limitsSuspiciousLayout = true
+        var foreignRuns = 0
         for spine in session.readableSpine {
-            guard let loaded = loader.load(spineIndex: spine) else { XCTFail("\(book.file): spine \(spine) did not load"); continue }
+            guard let (loaded, styles) = loader.loadWithStyles(spineIndex: spine) else { XCTFail("\(book.file): spine \(spine) did not load"); continue }
             report.chapters += 1
             report.parserPaths[loaded.document.parserPath.rawValue, default: 0] += 1
             codes.formUnion(loaded.diagnostics.items.map(\.code))
             XCTAssertNotEqual(loaded.document.parserPath, .unreadable, "\(book.file): spine \(spine) unreadable")
-            if let lost = Self.lostText(source: Self.sourceScalars(of: loaded.document), rendered: loaded.text.plainText) {
+            if let lost = Self.lostText(source: Self.sourceScalars(of: loaded.document, styles: styles), rendered: loaded.text.plainText) {
                 report.lost.append("spine \(spine): \(lost)")
             }
+            // Checklist item 13 at the attribute level: runs in another language carry the speech language.
+            let accessible = EPUBPageView.accessibleText(in: loaded.text.string, range: NSRange(location: 0, length: loaded.text.length))
+            accessible.enumerateAttribute(.accessibilitySpeechLanguage, in: NSRange(location: 0, length: accessible.length)) { value, _, _ in if value != nil { foreignRuns += 1 } }
             let plain = EPUBLayoutSession(text: loaded.text, geometry: session.geometry, key: session.layoutKey, settings: session.settings, margins: 0)
             XCTAssertEqual(plain.table.pages.last?.endOffset, loaded.text.length, "\(book.file): spine \(spine) pages do not cover the text")
             XCTAssertFalse(plain.diagnostics.contains(code: EPUBLayoutSession.budgetDiagnostic), "\(book.file): spine \(spine) overran the layout budget")
@@ -121,8 +150,10 @@ final class EPUBCorpusTests: XCTestCase {
             if guarded.table.pages.map(\.firstOffset) != plain.table.pages.map(\.firstOffset) { report.pagesMoved.append(spine) }
         }
         XCTAssertTrue(report.lost.isEmpty, "\(book.file): lost text \(report.lost)")
-        lines.append("- Chapters: \(report.chapters) loaded, parser paths \(report.parserPaths), \(report.pagesLaidOut) pages at 350x720 pt and 17 pt")
+        let skipped = publication.package.spine.count - session.readableSpine.count
+        lines.append("- Chapters: \(report.chapters) of \(session.readableSpine.count) readable spine items loaded (\(skipped) non-linear or placeholder skipped), parser paths \(report.parserPaths), \(report.pagesLaidOut) pages at 350x720 pt and 17 pt")
         lines.append("- Lost text: \(report.lost.isEmpty ? "none" : report.lost.joined(separator: "; "))")
+        lines.append("- Runs carrying a VoiceOver speech language (text in another language than the chapter): \(foreignRuns)")
         lines.append("- Suspicious-contents guard moved page breaks in: \(report.pagesMoved.isEmpty ? "no chapter" : report.pagesMoved.map(String.init).joined(separator: ", "))")
         for code in book.expectedCodes { XCTAssertTrue(codes.contains(code), "\(book.file): expected diagnostic \(code); got \(codes.sorted())") }
         lines.append("- Diagnostic codes: \(codes.sorted().joined(separator: " "))")
