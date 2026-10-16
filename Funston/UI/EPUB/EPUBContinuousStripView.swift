@@ -156,7 +156,7 @@ final class EPUBContinuousStripView: UIScrollView, UIScrollViewDelegate {
         layoutElements()
         listStart = -1
         updateElementList()
-        EPUBAccessibilityLog.shared.record("continuous strip loaded \(chapters.count) chapters, \(ordered.count) paragraph elements")
+        EPUBAccessibilityLog.shared.record("VoiceOver \(UIAccessibility.isVoiceOverRunning ? "on" : "off"); continuous strip loaded \(chapters.count) chapters, \(ordered.count) paragraph elements")
     }
 
     private func layoutElements() {

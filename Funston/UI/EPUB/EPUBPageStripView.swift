@@ -172,7 +172,7 @@ final class EPUBPageStripView: UIScrollView, UIScrollViewDelegate {
         layoutElements()
         updateInteraction()
         updateElementList()
-        EPUBAccessibilityLog.shared.record("strip loaded \(entries.count) pages, \(ordered.count) paragraph elements, showing index \(currentIndex)")
+        EPUBAccessibilityLog.shared.record("VoiceOver \(UIAccessibility.isVoiceOverRunning ? "on" : "off"); strip loaded \(entries.count) pages, \(ordered.count) paragraph elements, showing index \(currentIndex)")
     }
 
     /// VoiceOver's list starts at the shown page's first paragraph, so entering the
