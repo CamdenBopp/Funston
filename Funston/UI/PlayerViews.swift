@@ -170,13 +170,17 @@ private struct PlaybackPositionView: View {
     var body: some View {
         if let duration = MediaDuration.validated(playback.duration), duration > 0 {
             VStack(spacing: 8) {
-                PlaybackPositionScrubber(
-                    position: PlayerTimePresentation.clampedPosition(seeking ? proposedTime : playback.elapsed, duration: duration),
-                    duration: duration, rate: playback.playbackRate,
-                    backStep: playback.skipBackInterval, forwardStep: playback.skipForwardInterval,
-                    onScrub: { proposedTime = PlayerTimePresentation.clampedPosition($0, duration: duration); seeking = true },
-                    onCommit: { seeking = false; playback.seek(to: PlayerTimePresentation.clampedPosition($0, duration: duration)) },
-                    onCancel: { seeking = false })
+                // A hidden stock Slider reserves the space the old slider took,
+                // so nothing around the position control moves.
+                Slider(value: .constant(0)).hidden().accessibilityHidden(true).overlay {
+                    PlaybackPositionScrubber(
+                        position: PlayerTimePresentation.clampedPosition(seeking ? proposedTime : playback.elapsed, duration: duration),
+                        duration: duration, rate: playback.playbackRate,
+                        backStep: playback.skipBackInterval, forwardStep: playback.skipForwardInterval,
+                        onScrub: { proposedTime = PlayerTimePresentation.clampedPosition($0, duration: duration); seeking = true },
+                        onCommit: { seeking = false; playback.seek(to: PlayerTimePresentation.clampedPosition($0, duration: duration)) },
+                        onCancel: { seeking = false })
+                }
                 HStack {
                     Text(PlayerTimePresentation.clock(seeking ? proposedTime : playback.elapsed))
                     Spacer()
@@ -190,9 +194,8 @@ private struct PlaybackPositionView: View {
     }
 }
 
-/// The audio player's position bar. UISlider on iOS 26 keeps coasting after
-/// the finger lifts and reports the coasted value, so a flick seeks minutes
-/// past where it was let go. PlaybackScrubber lands where the finger lifts.
+/// The audio player's position slider. It looks like the stock slider, but
+/// lands where the finger lifts; see PlaybackScrubber.
 private struct PlaybackPositionScrubber: UIViewRepresentable {
     var position: Double
     var duration: Double
@@ -204,7 +207,7 @@ private struct PlaybackPositionScrubber: UIViewRepresentable {
     var onCancel: () -> Void
 
     func makeUIView(context: Context) -> PlaybackScrubber {
-        let scrubber = PlaybackScrubber(fillColor: .tintColor, trackColor: .systemFill, label: "Playback position",
+        let scrubber = PlaybackScrubber(style: .thumb, label: "Playback position",
                                         backStep: backStep, forwardStep: forwardStep)
         let coordinator = context.coordinator
         scrubber.addAction(UIAction { [weak scrubber] _ in
@@ -224,10 +227,6 @@ private struct PlaybackPositionScrubber: UIViewRepresentable {
         scrubber.backStep = backStep
         scrubber.forwardStep = forwardStep
         if !scrubber.isTracking { scrubber.position = position }
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: PlaybackScrubber, context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? uiView.bounds.width, height: PlaybackScrubber.touchHeight)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }

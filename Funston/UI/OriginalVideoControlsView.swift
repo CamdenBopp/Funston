@@ -52,7 +52,7 @@ final class OriginalVideoControlsView: UIView {
     }
     let moreButton = OriginalVideoControlsView.glassButton(symbol: "ellipsis", label: "More")
     let titleLabel = UILabel()
-    let scrubber = PlaybackScrubber(fillColor: .white, trackColor: UIColor.white.withAlphaComponent(Metrics.emptyTrackOpacity),
+    let scrubber = PlaybackScrubber(style: .bar(fill: .white, track: UIColor.white.withAlphaComponent(Metrics.emptyTrackOpacity)),
                                     label: "Current position", backStep: OriginalVideoControlsView.skipInterval,
                                     forwardStep: OriginalVideoControlsView.skipInterval)
     let noticeLabel = UILabel()
