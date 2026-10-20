@@ -86,13 +86,17 @@ final class FunstonRootController: UIViewController {
                 histories.forEach { $0.collapseDetail() }
                 self.split = nil
             }
-            let appearance = UITabBarAppearance()
-            appearance.configureWithOpaqueBackground()
-            appearance.backgroundColor = .systemBackground
-            tabs.tabBar.backgroundColor = .systemBackground
-            tabs.tabBar.isTranslucent = false
-            tabs.tabBar.standardAppearance = appearance
-            tabs.tabBar.scrollEdgeAppearance = appearance
+            // iOS 26 draws the tab bar as floating Liquid Glass; an opaque
+            // appearance there turns it into a solid slab under the glass player.
+            if #unavailable(iOS 26.0) {
+                let appearance = UITabBarAppearance()
+                appearance.configureWithOpaqueBackground()
+                appearance.backgroundColor = .systemBackground
+                tabs.tabBar.backgroundColor = .systemBackground
+                tabs.tabBar.isTranslucent = false
+                tabs.tabBar.standardAppearance = appearance
+                tabs.tabBar.scrollEdgeAppearance = appearance
+            }
             tabs.setViewControllers(destinations, animated: false)
             tabs.selectedIndex = selectedDestination
             install(tabs)
