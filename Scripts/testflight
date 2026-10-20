@@ -1,0 +1,17 @@
+#!/bin/bash
+# Funston's TestFlight CLI. Compiles Scripts/TestFlight.swift on first use and
+# whenever its contents change, then runs it. Try: Scripts/testflight help
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+source="$here/TestFlight.swift"
+binary="$here/.build/testflight"
+stamp="$binary.sha256"
+# A content hash, not mtime: macOS bash compares mtimes to the second, so an
+# edit right after a build would keep running the old binary.
+hash="$(shasum -a 256 "$source" | cut -d' ' -f1)"
+if [[ ! -x "$binary" || "$(cat "$stamp" 2>/dev/null)" != "$hash" ]]; then
+  mkdir -p "$here/.build"
+  xcrun swiftc -parse-as-library -O "$source" -o "$binary"
+  echo "$hash" > "$stamp"
+fi
+FUNSTON_ROOT="$(dirname "$here")" exec "$binary" "$@"
