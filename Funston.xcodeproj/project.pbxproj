@@ -43,6 +43,7 @@
 		6BBC4CE8910BCDB9DCF0037D /* SleepTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71A58F6CF1D568B8FA22F12F /* SleepTimerTests.swift */; };
 		6C82D1DF1AA614083794B7C7 /* FunstonIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D4D22DFA0740A0E378DD886 /* FunstonIntents.swift */; };
 		6F51B7CC80D382D750A3B5F9 /* PDFScreenRenderingExperiment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */; };
+		6F5510676E82D38FFAD65D55 /* PlaybackScrubber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 824E0DAD06D714361AAED6D3 /* PlaybackScrubber.swift */; };
 		719B8E29AC09F5608E5F532D /* ExploreController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C06E7B3A4A0DEDE6ED4D71EE /* ExploreController.swift */; };
 		7419B239E8D5D5D9E85F4A44 /* ArtifactContentsSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E08BE65EA2616DB7059E4153 /* ArtifactContentsSearchTests.swift */; };
 		78D6EC89CF7E2986318E3681 /* ContinueListeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E76AA1D77FB87D8EB6F6DF /* ContinueListeningTests.swift */; };
@@ -168,6 +169,7 @@
 		8184368EFE3E38AB32EB6C7F /* MediaPlayer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaPlayer.framework; path = System/Library/Frameworks/MediaPlayer.framework; sourceTree = SDKROOT; };
 		81DC90056E59A1CB9040BE47 /* LNPopupController */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LNPopupController; path = Vendor/LNPopupController; sourceTree = SOURCE_ROOT; };
 		81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFScreenRenderingExperiment.swift; sourceTree = "<group>"; };
+		824E0DAD06D714361AAED6D3 /* PlaybackScrubber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackScrubber.swift; sourceTree = "<group>"; };
 		83FA6742BCE70DB39C50A79E /* ArtifactOriginalVideoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactOriginalVideoController.swift; sourceTree = "<group>"; };
 		85F2CAC5EFC1BA2141AA0D81 /* ArchiveNetworkPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveNetworkPolicy.swift; sourceTree = "<group>"; };
 		892AA9E3E0B1E928B9A42438 /* OriginalVideoTrackMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalVideoTrackMemory.swift; sourceTree = "<group>"; };
@@ -365,6 +367,7 @@
 				0E0741FDE3A3DEA7A40CE4DC /* PDFLineAccessibility.swift */,
 				2D9D4D28CB7D06FA401FAA6C /* PDFReadingState.swift */,
 				2BDF9BBD41BBA62E85E8A7EE /* PDFTextLayout.swift */,
+				824E0DAD06D714361AAED6D3 /* PlaybackScrubber.swift */,
 				9059921AE97E122328AC8EC5 /* PlayerViews.swift */,
 				35F4618626CBCCC6CDB0FC46 /* RecordingListViews.swift */,
 				1DDF8921F8E80E4F8BC7D463 /* SettingsView.swift */,
@@ -662,6 +665,7 @@
 				8342B387FAA23AD0D722C77A /* PDFReadingState.swift in Sources */,
 				BA4CC927C7FB33B423E9C490 /* PDFTextLayout.swift in Sources */,
 				4619E6C13BE93409CB710B3D /* PlaybackController.swift in Sources */,
+				6F5510676E82D38FFAD65D55 /* PlaybackScrubber.swift in Sources */,
 				B91E26B2C53A79404FEDF866 /* PlayerViews.swift in Sources */,
 				5A1290C9A52BA86FC96199B4 /* RecordingListViews.swift in Sources */,
 				84B2B5B00AC9AABAA1845F1F /* SQLiteStore.swift in Sources */,

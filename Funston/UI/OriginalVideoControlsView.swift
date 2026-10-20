@@ -26,6 +26,8 @@ final class OriginalVideoControlsView: UIView {
         /// Title 2 at the default text size; scaled with Dynamic Type from there.
         static let titleSize: CGFloat = 22
         static let timeSize: CGFloat = 13
+        /// The scrubber track behind the played part, over the film.
+        static let emptyTrackOpacity: CGFloat = 0.3
     }
 
     enum Transport: Equatable { case loading, playing, paused, ended }
@@ -50,7 +52,9 @@ final class OriginalVideoControlsView: UIView {
     }
     let moreButton = OriginalVideoControlsView.glassButton(symbol: "ellipsis", label: "More")
     let titleLabel = UILabel()
-    let scrubber = OriginalVideoScrubber()
+    let scrubber = PlaybackScrubber(fillColor: .white, trackColor: UIColor.white.withAlphaComponent(Metrics.emptyTrackOpacity),
+                                    label: "Current position", backStep: OriginalVideoControlsView.skipInterval,
+                                    forwardStep: OriginalVideoControlsView.skipInterval)
     let noticeLabel = UILabel()
     let spinner = UIActivityIndicatorView(style: .large)
     private let elapsedLabel = UILabel()
@@ -265,82 +269,5 @@ final class OriginalVideoControlsView: UIView {
         view.layer.cornerCurve = .continuous
         view.clipsToBounds = true
         return view
-    }
-}
-
-/// The position bar. Drag anywhere on it, as with the system player; VoiceOver
-/// treats it as one adjustable control that moves 10 seconds per swipe.
-@MainActor
-final class OriginalVideoScrubber: UIControl {
-    private enum Metrics {
-        static let trackHeight: CGFloat = 6
-        static let trackingHeight: CGFloat = 12
-        static let touchHeight: CGFloat = 44
-        static let emptyTrackOpacity: CGFloat = 0.3
-    }
-
-    var duration: Double? { didSet { setNeedsLayout(); updateAccessibility() } }
-    var position: Double = 0 { didSet { setNeedsLayout(); updateAccessibility() } }
-    private let track = UIView()
-    private let fill = UIView()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        track.backgroundColor = UIColor.white.withAlphaComponent(Metrics.emptyTrackOpacity)
-        fill.backgroundColor = .white
-        for view in [track, fill] {
-            view.isUserInteractionEnabled = false
-            view.layer.cornerCurve = .continuous
-            addSubview(view)
-        }
-        isAccessibilityElement = true
-        accessibilityLabel = "Current position"
-        accessibilityTraits = .adjustable
-        heightAnchor.constraint(equalToConstant: Metrics.touchHeight).isActive = true
-        setContentHuggingPriority(.defaultLow, for: .horizontal)
-    }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let height = isTracking ? Metrics.trackingHeight : Metrics.trackHeight
-        track.frame = CGRect(x: 0, y: (bounds.height - height) / 2, width: bounds.width, height: height)
-        track.layer.cornerRadius = height / 2
-        let fraction = duration.map { $0 > 0 ? min(1, max(0, position / $0)) : 0 } ?? 0
-        fill.frame = CGRect(x: 0, y: track.frame.minY, width: bounds.width * fraction, height: height)
-        fill.layer.cornerRadius = height / 2
-    }
-
-    override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
-        guard duration != nil else { return false }
-        move(to: touch)
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.15) { self.layoutIfNeeded() }
-        return true
-    }
-    override func continueTracking(_ touch: UITouch, with event: UIEvent?) -> Bool { move(to: touch); return true }
-    override func endTracking(_ touch: UITouch?, with event: UIEvent?) {
-        if let touch { move(to: touch) }
-        setNeedsLayout()
-        sendActions(for: .primaryActionTriggered)
-    }
-    override func cancelTracking(with event: UIEvent?) { setNeedsLayout() }
-
-    private func move(to touch: UITouch) {
-        guard let duration, bounds.width > 0 else { return }
-        position = min(1, max(0, touch.location(in: self).x / bounds.width)) * duration
-        sendActions(for: .valueChanged)
-    }
-
-    override func accessibilityIncrement() { step(by: OriginalVideoControlsView.skipInterval) }
-    override func accessibilityDecrement() { step(by: -OriginalVideoControlsView.skipInterval) }
-    private func step(by seconds: Double) {
-        guard let duration else { return }
-        position = min(duration, max(0, position + seconds))
-        sendActions(for: .primaryActionTriggered)
-    }
-
-    private func updateAccessibility() {
-        guard let duration else { accessibilityValue = PlayerTimePresentation.spoken(position); return }
-        accessibilityValue = PlayerTimePresentation.spokenPosition(position, duration: duration, rate: 1)
     }
 }
