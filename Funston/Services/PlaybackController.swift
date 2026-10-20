@@ -161,6 +161,9 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
     private var generation: UInt64 = 0
     private var intentRevision: UInt64 = 0
     private var positionRevision: UInt64 = 0
+    /// A seek AVPlayer hasn't applied yet. Until it lands, currentTime still
+    /// reports the old position, so the visible clock keeps the seek target.
+    private var pendingSeek: (revision: UInt64, item: AVPlayerItem?)?
     private var persistenceTail: Task<Void, Never>?
     @Published private(set) var wantsToPlay = false
     private var restoringPosition = false
@@ -585,7 +588,14 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
             phase = .paused
             wantsToPlay = false
         }
-        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        let revision = positionRevision
+        pendingSeek = (revision, player.currentItem)
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.pendingSeek?.revision == revision else { return }
+                self.pendingSeek = nil
+            }
+        }
         elapsed = target
         updateNowPlaying()
     }
@@ -628,7 +638,8 @@ final class PlaybackController: ObservableObject, SleepTimerTarget {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.elapsed = self.currentSeconds
+                let seekLanding = self.pendingSeek.map { $0.item === self.player.currentItem } ?? false
+                if !seekLanding { self.elapsed = self.currentSeconds }
                 let seconds = self.player.currentItem?.duration.seconds
                 if let seconds = MediaDuration.validated(seconds), seconds > 0 { self.duration = seconds }
             }
