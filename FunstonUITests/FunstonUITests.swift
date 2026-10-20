@@ -151,7 +151,7 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 8))
         XCTAssertTrue(waitForValue("Playing", of: toggle))
         let title = app.staticTexts["player.trackTitle"]
-        let position = app.sliders["Playback position"]
+        let position = app.descendants(matching: .any)["Playback position"]
         let toggleFrame = toggle.frame
         let titleFrame = title.frame
         let positionFrame = position.frame
@@ -240,7 +240,7 @@ final class FunstonUITests: XCTestCase {
         popup.tap()
         XCTAssertTrue(toggle.waitForExistence(timeout: 8))
         XCTAssertTrue(waitForValue("Playing", of: toggle))
-        let position = app.sliders["Playback position"]
+        let position = app.descendants(matching: .any)["Playback position"]
         XCTAssertTrue(position.waitForExistence(timeout: 8))
         let positionValue = position.value as? String ?? ""
         print("Resumed position: \(positionValue)")
@@ -765,7 +765,7 @@ final class GunsmokePlaybackRegressionUITests: XCTestCase {
         XCTAssertTrue(transport.waitForExistence(timeout: 10))
         let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Playing"), object: transport)
         XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 100), .completed, app.debugDescription)
-        let position = app.sliders["Playback position"]
+        let position = app.descendants(matching: .any)["Playback position"]
         let before = String(describing: position.value)
         let start = XCTAttachment(string: app.debugDescription); start.name = "Gunsmoke playback started"; start.lifetime = .keepAlways; add(start)
         // Observe real transport for twelve seconds; merely presenting Pause is insufficient.

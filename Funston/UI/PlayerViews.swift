@@ -170,19 +170,13 @@ private struct PlaybackPositionView: View {
     var body: some View {
         if let duration = MediaDuration.validated(playback.duration), duration > 0 {
             VStack(spacing: 8) {
-                Slider(value: Binding(get: { PlayerTimePresentation.clampedPosition(seeking ? proposedTime : playback.elapsed, duration: duration) }, set: { proposedTime = PlayerTimePresentation.clampedPosition($0, duration: duration) }), in: 0...duration) { editing in
-                    seeking = editing
-                    if !editing { playback.seek(to: proposedTime) }
-                }
-                .accessibilityLabel("Playback position")
-                .accessibilityValue(PlayerTimePresentation.spokenPosition(playback.elapsed, duration: duration, rate: playback.playbackRate))
-                .accessibilityAdjustableAction { direction in
-                    switch direction {
-                    case .increment: playback.skip(by: playback.skipForwardInterval)
-                    case .decrement: playback.skip(by: -playback.skipBackInterval)
-                    @unknown default: break
-                    }
-                }
+                PlaybackPositionScrubber(
+                    position: PlayerTimePresentation.clampedPosition(seeking ? proposedTime : playback.elapsed, duration: duration),
+                    duration: duration, rate: playback.playbackRate,
+                    backStep: playback.skipBackInterval, forwardStep: playback.skipForwardInterval,
+                    onScrub: { proposedTime = PlayerTimePresentation.clampedPosition($0, duration: duration); seeking = true },
+                    onCommit: { seeking = false; playback.seek(to: PlayerTimePresentation.clampedPosition($0, duration: duration)) },
+                    onCancel: { seeking = false })
                 HStack {
                     Text(PlayerTimePresentation.clock(seeking ? proposedTime : playback.elapsed))
                     Spacer()
@@ -193,6 +187,54 @@ private struct PlaybackPositionView: View {
             .onChange(of: playback.elapsed) { _, value in if !seeking { proposedTime = value } }
             .onChange(of: playback.context?.track.id) { _, _ in seeking = false }
         }
+    }
+}
+
+/// The audio player's position bar. UISlider on iOS 26 keeps coasting after
+/// the finger lifts and reports the coasted value, so a flick seeks minutes
+/// past where it was let go. PlaybackScrubber lands where the finger lifts.
+private struct PlaybackPositionScrubber: UIViewRepresentable {
+    var position: Double
+    var duration: Double
+    var rate: Double
+    var backStep: Double
+    var forwardStep: Double
+    var onScrub: (Double) -> Void
+    var onCommit: (Double) -> Void
+    var onCancel: () -> Void
+
+    func makeUIView(context: Context) -> PlaybackScrubber {
+        let scrubber = PlaybackScrubber(fillColor: .tintColor, trackColor: .systemFill, label: "Playback position",
+                                        backStep: backStep, forwardStep: forwardStep)
+        let coordinator = context.coordinator
+        scrubber.addAction(UIAction { [weak scrubber] _ in
+            if let scrubber { coordinator.parent.onScrub(scrubber.position) }
+        }, for: .valueChanged)
+        scrubber.addAction(UIAction { [weak scrubber] _ in
+            if let scrubber { coordinator.parent.onCommit(scrubber.position) }
+        }, for: .primaryActionTriggered)
+        scrubber.addAction(UIAction { _ in coordinator.parent.onCancel() }, for: .touchCancel)
+        return scrubber
+    }
+
+    func updateUIView(_ scrubber: PlaybackScrubber, context: Context) {
+        context.coordinator.parent = self
+        scrubber.duration = duration
+        scrubber.playbackRate = rate
+        scrubber.backStep = backStep
+        scrubber.forwardStep = forwardStep
+        if !scrubber.isTracking { scrubber.position = position }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: PlaybackScrubber, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? uiView.bounds.width, height: PlaybackScrubber.touchHeight)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    @MainActor final class Coordinator {
+        var parent: PlaybackPositionScrubber
+        init(parent: PlaybackPositionScrubber) { self.parent = parent }
     }
 }
 

@@ -221,6 +221,11 @@ final class FunstonPlayerPresentation: NSObject, LNPopupPresentationDelegate, UI
         return true
     }
 
+    /// A drag on the position bar scrubs; it must not also pull the player closed.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        !(touch.view is PlaybackScrubber)
+    }
+
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         true

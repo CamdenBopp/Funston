@@ -7,8 +7,9 @@ final class PlaybackScrubber: UIControl {
     private enum Metrics {
         static let trackHeight: CGFloat = 6
         static let trackingHeight: CGFloat = 12
-        static let touchHeight: CGFloat = 44
     }
+    /// The bar is thin but the touch area meets the minimum target.
+    static let touchHeight: CGFloat = 44
 
     var duration: Double? { didSet { setNeedsLayout(); updateAccessibility() } }
     var position: Double = 0 { didSet { setNeedsLayout(); updateAccessibility() } }
@@ -33,7 +34,7 @@ final class PlaybackScrubber: UIControl {
         isAccessibilityElement = true
         accessibilityLabel = label
         accessibilityTraits = .adjustable
-        heightAnchor.constraint(equalToConstant: Metrics.touchHeight).isActive = true
+        heightAnchor.constraint(equalToConstant: Self.touchHeight).isActive = true
         setContentHuggingPriority(.defaultLow, for: .horizontal)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
