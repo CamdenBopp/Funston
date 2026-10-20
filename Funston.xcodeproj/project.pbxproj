@@ -41,6 +41,7 @@
 		670A25A66B3475B39199A7CC /* OriginalVideoRemoteControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB47764A2EAA6737E450F564 /* OriginalVideoRemoteControl.swift */; };
 		682F8800A8040B5032932C6C /* ArtifactOriginalVideoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83FA6742BCE70DB39C50A79E /* ArtifactOriginalVideoController.swift */; };
 		6867855F6EB1A0DD0B4169AF /* BrowseControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40147F874FD620BC7B6D9AAE /* BrowseControllers.swift */; };
+		6B2213B3C4E79070A4F6745A /* BugReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 627E1C590C1FB6F2720C8B3D /* BugReportTests.swift */; };
 		6BBC4CE8910BCDB9DCF0037D /* SleepTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71A58F6CF1D568B8FA22F12F /* SleepTimerTests.swift */; };
 		6C82D1DF1AA614083794B7C7 /* FunstonIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D4D22DFA0740A0E378DD886 /* FunstonIntents.swift */; };
 		6F51B7CC80D382D750A3B5F9 /* PDFScreenRenderingExperiment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FD7830ED3035404E3E2A59 /* PDFScreenRenderingExperiment.swift */; };
@@ -98,6 +99,7 @@
 		F30D5650C3CB4BE3C874A25F /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 09D88D22F618DAE5A39639D0 /* libsqlite3.tbd */; };
 		F5B8A7086BC9A4D26B859DC0 /* PlaybackLifecyclePolishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 233DB5EE909DC936BDB88C04 /* PlaybackLifecyclePolishTests.swift */; };
 		F5B97A27324D31423F0FA693 /* MediaPlayer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8184368EFE3E38AB32EB6C7F /* MediaPlayer.framework */; };
+		F82B42DA234FF6EE6FDE77AA /* BugReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54E4747CF4BCED2753BA3794 /* BugReport.swift */; };
 		F9318DCDC9233EE774950867 /* SettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 674ACE856E3B5230DE656AD1 /* SettingsUITests.swift */; };
 		F9E9741D793F15D8C6FF6D4E /* FunstonApplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2275460558ED9B1F14D4806 /* FunstonApplication.swift */; };
 		FC4F11E2513C406928945EF2 /* CarPlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3257AE33B2FBA5578BD487B2 /* CarPlayTests.swift */; };
@@ -155,7 +157,9 @@
 		4B6AC7E7D67A26404F8526F1 /* SQLiteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteStore.swift; sourceTree = "<group>"; };
 		4C4C0741D5A43831933E86B5 /* Funston.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Funston.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4FD2EE1149DB04EDD621B35A /* FunstonTests-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "FunstonTests-Bridging-Header.h"; sourceTree = "<group>"; };
+		54E4747CF4BCED2753BA3794 /* BugReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BugReport.swift; sourceTree = "<group>"; };
 		60547F1D814C05A757DCE7B9 /* FunstonAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunstonAppearance.swift; sourceTree = "<group>"; };
+		627E1C590C1FB6F2720C8B3D /* BugReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BugReportTests.swift; sourceTree = "<group>"; };
 		63B2F9D20233F0D328D27C37 /* CachingArchiveRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachingArchiveRepository.swift; sourceTree = "<group>"; };
 		674ACE856E3B5230DE656AD1 /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
 		6C37976A26BD3A4263FF23B3 /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
@@ -259,6 +263,7 @@
 				4885569ECF9679D7A64CADF7 /* ArchiveNetworking.swift */,
 				85F2CAC5EFC1BA2141AA0D81 /* ArchiveNetworkPolicy.swift */,
 				90E76B9A4F6B4D55BA45EEFE /* ArchiveNormalizer.swift */,
+				54E4747CF4BCED2753BA3794 /* BugReport.swift */,
 				D0742EF0885D2E7C2F295BC7 /* MediaAvailability.swift */,
 			);
 			path = Core;
@@ -449,6 +454,7 @@
 			children = (
 				B1DBCB79CF586FE1530AF953 /* ArchiveCoreTests.swift */,
 				AC02795EA9F4683C9F28A761 /* ArchiveNetworkPolicyTests.swift */,
+				627E1C590C1FB6F2720C8B3D /* BugReportTests.swift */,
 				EE0DD97E3EF28B6AD269B2F2 /* MediaAvailabilityTests.swift */,
 				FBE560371DF410B0A8012A84 /* MetadataFormatterTests.swift */,
 			);
@@ -645,6 +651,7 @@
 				88E995A2FFA090376E00BE1A /* ArtifactVideoController.swift in Sources */,
 				816C6600DBDBBCBD1F2F9116 /* ArtworkPipeline.swift in Sources */,
 				6867855F6EB1A0DD0B4169AF /* BrowseControllers.swift in Sources */,
+				F82B42DA234FF6EE6FDE77AA /* BugReport.swift in Sources */,
 				12567D6189ACD7041167D8F7 /* CachingArchiveRepository.swift in Sources */,
 				C9D5104BB0BBF2FB8B7B86C2 /* CarPlayController.swift in Sources */,
 				3210CFDCBF7ECDBBA0B5E175 /* CarPlaySceneDelegate.swift in Sources */,
@@ -690,6 +697,7 @@
 				7419B239E8D5D5D9E85F4A44 /* ArtifactContentsSearchTests.swift in Sources */,
 				1194CE52844AAFB3377DB4F0 /* ArtworkResponseLimitTests.swift in Sources */,
 				1DECC04ED3D36E252CEFBF31 /* BookRoutingTests.swift in Sources */,
+				6B2213B3C4E79070A4F6745A /* BugReportTests.swift in Sources */,
 				FC4F11E2513C406928945EF2 /* CarPlayTests.swift in Sources */,
 				4E7886C99627066D41A780CD /* CodecCapabilityDeviceTests.swift in Sources */,
 				78D6EC89CF7E2986318E3681 /* ContinueListeningTests.swift in Sources */,

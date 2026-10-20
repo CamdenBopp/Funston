@@ -75,7 +75,12 @@ private struct SettingsView: View {
                     NavigationLink("Privacy policy") {
                         SettingsTextPage(title: "Privacy policy", text: "Funston stores your library, downloads, settings, and listening and reading positions on your device. Funston requests media, artwork, and catalog information from Internet Archive. Those requests include your IP address and the Funston app version. Funston does not include analytics or advertising tracking. Internet Archive’s privacy policy applies to its service.", linkTitle: "Internet Archive privacy policy", linkURL: URL(string: "https://archive.org/about/terms.php"))
                     }
-                    Link("View on GitHub", destination: URL(string: ArchiveNetworkPolicy.contact)!)
+                    if let repository = BugReport.repository {
+                        Link("View on GitHub", destination: repository)
+                    }
+                    if let bugReport = bugReport.url {
+                        Link("Report a bug", destination: bugReport)
+                    }
                     NavigationLink("Shortcuts help") {
                         Form {
                             Section("Say to Siri") {
@@ -111,6 +116,26 @@ private struct SettingsView: View {
     private var version: String {
         let bundle = Bundle.main
         return "\(bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))"
+    }
+    private var bugReport: BugReport {
+        let bundle = Bundle.main
+        let device = UIDevice.current
+        let category = UIApplication.shared.preferredContentSizeCategory.rawValue
+        return BugReport(
+            appVersion: bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+            build: bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
+            systemVersion: device.systemVersion,
+            model: Self.modelIdentifier,
+            voiceOverRunning: UIAccessibility.isVoiceOverRunning,
+            textSize: category.replacingOccurrences(of: "UICTContentSizeCategory", with: "")
+        )
+    }
+    /// The hardware identifier, such as "iPhone17,1". UIDevice.model only says "iPhone".
+    private static var modelIdentifier: String {
+        if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] { return "\(simulated) simulator" }
+        var system = utsname()
+        uname(&system)
+        return withUnsafeBytes(of: &system.machine) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
     }
     private var notices: String {
         Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt")
