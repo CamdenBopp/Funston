@@ -28,13 +28,14 @@ struct EPUBPageItem: Equatable {
 /// The VoiceOver items of one page, in reading order. Only the page on screen
 /// is exposed, so wherever focus enters the book it lands on that page's text.
 /// Plain text between headings, links and images is one item that reads line
-/// by line; the others are their own items so they can be activated and found
-/// by the headings and links rotors.
+/// by line, or with `byParagraph` one item per paragraph, the part of it on
+/// this page; the others are their own items so they can be activated and
+/// found by the headings and links rotors.
 @MainActor
 enum EPUBPageItems {
     static let imageFallbackLabel = "Image"
 
-    static func items(layout: EPUBLayoutSession, chapter: EPUBChapterText, page: Int) -> [EPUBPageItem] {
+    static func items(layout: EPUBLayoutSession, chapter: EPUBChapterText, page: Int, byParagraph: Bool = false) -> [EPUBPageItem] {
         guard layout.table.pages.indices.contains(page) else { return [] }
         let pageRange = layout.table.pages[page].range
         let lines = layout.table.lineFrames(onPage: page).map { (range: layout.table.lines[$0.line].range, frame: $0.frame) }
@@ -67,8 +68,12 @@ enum EPUBPageItems {
         var items: [EPUBPageItem] = []
         var cursor = pageRange.location
         func addText(upTo end: Int) {
-            guard end > cursor, let item = item(.text, NSRange(location: cursor, length: end - cursor), lines: lines, layout: layout, page: page) else { return }
-            items.append(item)
+            guard end > cursor else { return }
+            let run = NSRange(location: cursor, length: end - cursor)
+            let parts = byParagraph ? paragraphParts(of: run, in: chapter) : [run]
+            for part in parts {
+                if let item = item(.text, part, lines: lines, layout: layout, page: page) { items.append(item) }
+            }
         }
         for piece in standalone where piece.range.location >= cursor {
             addText(upTo: piece.range.location)
@@ -77,6 +82,24 @@ enum EPUBPageItems {
         }
         addText(upTo: pageRange.location + pageRange.length)
         return items
+    }
+
+    /// A text run cut where paragraphs begin and end. Text between blocks, if any, stays its own part.
+    private static func paragraphParts(of run: NSRange, in chapter: EPUBChapterText) -> [NSRange] {
+        var parts: [NSRange] = []
+        var start = run.location
+        let end = run.location + run.length
+        for block in chapter.blocks where NSIntersectionRange(block.range, run).length > 0 {
+            let piece = NSIntersectionRange(block.range, run)
+            let pieceEnd = piece.location + piece.length
+            // Blocks don't nest, but never read the same text twice if one ever overlaps.
+            guard pieceEnd > start else { continue }
+            if piece.location > start { parts.append(NSRange(location: start, length: piece.location - start)) }
+            parts.append(NSRange(location: max(piece.location, start), length: pieceEnd - max(piece.location, start)))
+            start = pieceEnd
+        }
+        if end > start { parts.append(NSRange(location: start, length: end - start)) }
+        return parts
     }
 
     private static func label(_ alternative: String?) -> String {

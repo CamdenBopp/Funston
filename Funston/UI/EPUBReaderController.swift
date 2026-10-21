@@ -40,6 +40,8 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     /// Page by page under the per-paragraph model: the reading window's pages in one paging strip.
     private var strip: EPUBPageStripView?
     private var layoutMode: PDFReadingLayout = .pages
+    /// The VoiceOver model the surface was built for; Settings can change it while a book is open.
+    private var installedModel = EPUBAccessibilityModel.preferred
     private let container = UIView()
     private let banner = UILabel()
     private var noticeShown = false
@@ -95,6 +97,11 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
             .sink { [weak self] _ in self?.saveNow() }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)
             .sink { [weak self] _ in self?.applySettings() }.store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: SettingsStore.didChange)
+            .sink { [weak self] _ in
+                guard let self, EPUBAccessibilityModel.preferred != installedModel else { return }
+                installSurface()
+            }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)
             .sink { [weak self] _ in self?.session?.shed() }.store(in: &subscriptions)
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self, UITraitUserInterfaceStyle.self]) { (reader: EPUBReaderController, _: UITraitCollection) in
@@ -264,6 +271,7 @@ final class EPUBReaderController: UIViewController, UIPageViewControllerDataSour
     // MARK: - Surfaces
 
     private func installSurface() {
+        installedModel = EPUBAccessibilityModel.preferred
         pager?.willMove(toParent: nil); pager?.view.removeFromSuperview(); pager?.removeFromParent(); pager = nil
         continuous?.removeFromSuperview(); continuous = nil
         strip?.removeFromSuperview(); strip = nil

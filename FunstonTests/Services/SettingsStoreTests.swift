@@ -36,6 +36,21 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(PDFTextEnginePreference(defaults: defaults, bookKey: "book").selectedID, PDFTextEngineID.embedded)
     }
 
+    /// Settings, Accessibility: books read page by page until the reader picks paragraphs, and the
+    /// choice is stored under the key the reader and the device tests read.
+    func testBookVoiceOverModelDefaultsToPageAndPersistsTheChoice() {
+        let store = settings()
+        XCTAssertEqual(store.bookVoiceOverModel, .page)
+        var changes = 0
+        let observer = NotificationCenter.default.addObserver(forName: SettingsStore.didChange, object: nil, queue: nil) { _ in changes += 1 }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        store.bookVoiceOverModel = .paragraphs
+        XCTAssertEqual(store.bookVoiceOverModel, .paragraphs)
+        XCTAssertEqual(changes, 1, "An open book listens for this to rebuild its page")
+        store.bookVoiceOverModel = .page
+        XCTAssertEqual(store.bookVoiceOverModel, .page)
+    }
+
     func testDefaultsDriveLivePlaybackAndRemoteIntervals() async throws {
         let store = try SQLiteStore(url: URL(string: "file::memory:")!)
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)

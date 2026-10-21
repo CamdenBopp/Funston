@@ -103,6 +103,42 @@ final class EPUBPageItemTests: XCTestCase {
         }
     }
 
+    /// Settings, Accessibility, Paragraph by Paragraph: each paragraph's part of the page is its own
+    /// item, and together they read exactly the text the Page by Page items read.
+    func testParagraphByParagraphMakesEachParagraphOnThePageItsOwnItem() throws {
+        let session = try session()
+        let layout = try XCTUnwrap(session.layout(0))
+        let chapter = try XCTUnwrap(session.chapter(0)).text
+        let byPage = EPUBPageItems.items(layout: layout, chapter: chapter, page: 0)
+        let byParagraph = EPUBPageItems.items(layout: layout, chapter: chapter, page: 0, byParagraph: true)
+        func blocks(touchedBy item: EPUBPageItem) -> Int {
+            chapter.blocks.filter { NSIntersectionRange($0.range, item.range).length > 0 }.count
+        }
+        let pageRun = try XCTUnwrap(byPage.last { $0.kind == .text })
+        XCTAssertGreaterThan(blocks(touchedBy: pageRun), 1, "Page by Page reads the text after the image as one item over several paragraphs")
+        let texts = byParagraph.filter { $0.kind == .text }
+        XCTAssertGreaterThan(texts.count, byPage.filter { $0.kind == .text }.count)
+        for item in texts {
+            XCTAssertEqual(blocks(touchedBy: item), 1, "\"\(chapter.text(in: item.range).prefix(40))\" stays inside one paragraph")
+        }
+        XCTAssertTrue(chapter.text(in: try XCTUnwrap(texts.last { chapter.text(in: $0.range).hasPrefix("After the image") }).range).hasPrefix("After the image"))
+        func covered(_ items: [EPUBPageItem]) -> IndexSet {
+            items.reduce(into: IndexSet()) { set, item in
+                for line in item.lines { set.insert(integersIn: line.range.location..<(line.range.location + line.range.length)) }
+            }
+        }
+        // The breaks between paragraphs belong to no paragraph, so only white space may go missing.
+        let string = layout.string.string as NSString
+        let missing = covered(byPage).subtracting(covered(byParagraph))
+        let added = covered(byParagraph).subtracting(covered(byPage))
+        XCTAssertTrue(added.isEmpty, "Splitting by paragraph adds no text")
+        let missingText = missing.map { string.substring(with: NSRange(location: $0, length: 1)) }
+        XCTAssertTrue(missingText.allSatisfy { $0.allSatisfy(\.isWhitespace) },
+                      "Splitting by paragraph drops only white space, not \(missingText.map { $0.debugDescription })")
+        XCTAssertEqual(byParagraph.filter { $0.kind != .text }.map(\.kind), byPage.filter { $0.kind != .text }.map(\.kind),
+                       "Headings, links and images are the same items either way")
+    }
+
     func testATextItemReadsLineByLineAndFindsTheLineUnderAPoint() throws {
         let reader = Reader(session: try session())
         let window = UIWindow(frame: CGRect(origin: .zero, size: Self.pageSize))

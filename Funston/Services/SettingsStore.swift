@@ -58,6 +58,11 @@ final class SettingsStore: ObservableObject {
         get { PDFReadingLayout(rawValue: defaults.string(forKey: "pdf.readingLayout") ?? "") ?? .continuous }
         set { write(newValue.rawValue, key: "pdf.readingLayout") }
     }
+    /// How VoiceOver reads books: the page's text line by line, or paragraph by paragraph.
+    var bookVoiceOverModel: EPUBAccessibilityModel {
+        get { EPUBAccessibilityModel(rawValue: defaults.string(forKey: EPUBAccessibilityLog.modelKey) ?? "") ?? .page }
+        set { write(newValue.rawValue, key: EPUBAccessibilityLog.modelKey) }
+    }
     var hideUnsupportedMedia: Bool {
         get { defaults.bool(forKey: "content.hideUnsupportedMedia") }
         set { write(newValue, key: "content.hideUnsupportedMedia") }

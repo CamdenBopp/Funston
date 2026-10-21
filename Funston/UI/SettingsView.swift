@@ -66,6 +66,19 @@ private struct SettingsView: View {
                 Section("Content") {
                     Toggle("Hide items without playable or readable media", isOn: $settings.hideUnsupportedMedia)
                 }
+                Section {
+                    Picker("VoiceOver reads books", selection: Binding(
+                        // The older paragraph strip is only for its device test; show it as Paragraph by Paragraph.
+                        get: { settings.bookVoiceOverModel == .page ? EPUBAccessibilityModel.page : .paragraphs },
+                        set: { settings.bookVoiceOverModel = $0 })) {
+                        Text("Page by Page").tag(EPUBAccessibilityModel.page)
+                        Text("Paragraph by Paragraph").tag(EPUBAccessibilityModel.paragraphs)
+                    }
+                } header: {
+                    Text("Accessibility")
+                } footer: {
+                    Text("Page by Page reads the text on screen as one item you can step through line by line. Paragraph by Paragraph makes each paragraph its own item, so one swipe moves one paragraph. Three-finger swipes turn pages in both.")
+                }
                 Section("About") {
                     LabeledContent("Version", value: version)
                     Link("Internet Archive", destination: URL(string: "https://archive.org")!)

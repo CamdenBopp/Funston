@@ -4,7 +4,11 @@ import UIKit
 enum EPUBAccessibilityModel: String, Sendable {
     /// The shown page's text read line by line, headings, links and images apart (the default).
     case page
-    /// One text element per paragraph, linked, the page-turn trait on the last.
+    /// The shown page with one item per paragraph, the part of it on this page;
+    /// headings, links and images apart. Chosen in Settings, Accessibility.
+    case paragraphs
+    /// The older paragraph strip: one element per paragraph across the chapter
+    /// window. Kept only for its device test; not offered in Settings.
     case blocks
 
     @MainActor static var preferred: EPUBAccessibilityModel {
@@ -156,7 +160,8 @@ final class EPUBPageView: UIView {
         itemGroup.accessibilityLabel = chapterTitle
         textSurface.isHidden = false
         let placement = EPUBPlacement(spineIndex: spineIndex, pageIndex: pageIndex)
-        let specs = layout.flatMap { layout in chapter.map { EPUBPageItems.items(layout: layout, chapter: $0, page: pageIndex) } } ?? []
+        let specs = layout.flatMap { layout in chapter.map { EPUBPageItems.items(layout: layout, chapter: $0, page: pageIndex,
+                                                                                          byParagraph: EPUBAccessibilityModel.preferred == .paragraphs) } } ?? []
         var order = itemPool
         if itemsPlacement != placement, let held = focusedElement() as? EPUBPageItemElement, order.contains(where: { $0 === held }) {
             // A new page: the element VoiceOver holds becomes its first, so reading goes on from the top
