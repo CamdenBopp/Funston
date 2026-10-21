@@ -298,12 +298,13 @@ final class FunstonUITests: XCTestCase {
         capture(app, name: "07b Native PDF Find")
     }
 
-    /// A Project Gutenberg book opens in the EPUB reader, its text reaches
-    /// VoiceOver, and Contents jumps to a chapter.
+    /// A Project Gutenberg book opens in the native EPUB reader, its page
+    /// reaches VoiceOver, and Contents jumps to a chapter.
     @MainActor
     func testReadingABornDigitalBook() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["--skip-playback-restoration"]
+        // Page by page, the layout VoiceOver always reads in.
+        app.launchArguments += ["--skip-playback-restoration", "-epub.positionValue", "YES", "-pdf.readingLayout", "pages"]
         app.launch()
         app.tabBars.buttons["Search"].tap()
         let field = app.searchFields["Search the Internet Archive"]
@@ -317,9 +318,15 @@ final class FunstonUITests: XCTestCase {
         XCTAssertTrue(read.waitForExistence(timeout: 30))
         XCTAssertEqual(read.label, "Read Book")
         read.tap()
-        let text = app.webViews.staticTexts.firstMatch
-        XCTAssertTrue(text.waitForExistence(timeout: 60), app.debugDescription)
-        print("BOOK_TEXT", app.webViews.staticTexts.allElementsBoundByIndex.prefix(6).map(\.label))
+        // The page's items, and the page container, whose value says where we are under the
+        // positionValue switch (the paragraph strips keep the "Reading page" element for it).
+        let page = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'reader.epub.item.'")).firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 90), app.debugDescription)
+        let readingPage = app.descendants(matching: .any)["reader.epub.page"]
+        XCTAssertTrue(readingPage.waitForExistence(timeout: 10))
+        let opened = readingPage.value as? String ?? ""
+        print("BOOK_PAGE", page.label, "|", opened)
+        XCTAssertTrue(opened.contains("page 1 of") || opened.contains("location 1 of"), opened)
         capture(app, name: "10 Book")
         let contents = app.buttons["Contents"]
         XCTAssertTrue(contents.waitForExistence(timeout: 10))
@@ -329,23 +336,25 @@ final class FunstonUITests: XCTestCase {
         XCTAssertGreaterThan(chapters.count, 3)
         print("BOOK_CONTENTS", chapters.allElementsBoundByIndex.prefix(8).map(\.label))
         capture(app, name: "11 Book contents")
-        chapters.element(boundBy: min(4, chapters.count - 1)).tap()
-        XCTAssertTrue(text.waitForExistence(timeout: 10))
+        let chosen = chapters.element(boundBy: min(4, chapters.count - 1))
+        let chosenLabel = chosen.label
+        chosen.tap()
+        XCTAssertTrue(page.waitForExistence(timeout: 10))
         sleep(2)
         capture(app, name: "12 Book chapter")
-        let visible = Set(app.webViews.staticTexts.allElementsBoundByIndex.filter(\.isHittable).map(\.label))
-        XCTAssertFalse(visible.isEmpty)
+        let atChapter = readingPage.value as? String ?? ""
+        XCTAssertNotEqual(atChapter, opened, "The contents tap moved the reader")
+        XCTAssertTrue(atChapter.lowercased().hasPrefix(chosenLabel.lowercased().prefix(8)), "\(atChapter) should start with \(chosenLabel)")
         // Leave and come back: the book reopens where it was left.
         sleep(2)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(read.waitForExistence(timeout: 10))
         read.tap()
-        XCTAssertTrue(text.waitForExistence(timeout: 30))
+        XCTAssertTrue(page.waitForExistence(timeout: 30))
         sleep(2)
-        let reopened = Set(app.webViews.staticTexts.allElementsBoundByIndex.filter(\.isHittable).map(\.label))
-        print("BOOK_RESUME visible", visible.count, "reopened", reopened.count, "shared", visible.intersection(reopened).count)
-        XCTAssertFalse(visible.isDisjoint(with: reopened), "The book should reopen at the chapter it was left on")
-        XCTAssertFalse(reopened.contains("The Project Gutenberg EBook of Man and Maid, by Elinor Glyn"), "It reopened at the start")
+        let reopened = readingPage.value as? String ?? ""
+        print("BOOK_RESUME", atChapter, "|", reopened)
+        XCTAssertEqual(reopened, atChapter, "The book should reopen at the chapter it was left on")
     }
 
     @MainActor func testVideoViewingJourneyAndNativeControls() throws { try videoJourney(category: "UICTContentSizeCategoryL") }

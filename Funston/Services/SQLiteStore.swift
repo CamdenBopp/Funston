@@ -528,7 +528,7 @@ actor SQLiteStore {
           updated_at REAL NOT NULL
         );
         """,
-        // 4: where you are in each book, as Readium's locator JSON.
+        // 4: where you are in each book, as locator JSON (version 2 since the native reader; older rows migrate on open).
         """
         CREATE TABLE IF NOT EXISTS book_positions(
           identifier TEXT NOT NULL,

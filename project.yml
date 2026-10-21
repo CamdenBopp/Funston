@@ -22,9 +22,6 @@ packages:
   ArchivePlayerCore:
     url: https://github.com/CamdenBopp/ArchivePlayerCore.git
     from: 0.1.0
-  Readium:
-    url: https://github.com/readium/swift-toolkit.git
-    exactVersion: 3.11.0
 targets:
   Funston:
     type: application
@@ -36,13 +33,8 @@ targets:
         product: LNPopupController-Static
       - package: ArchivePlayerCore
         product: ArchivePlayerCore
-      - package: Readium
-        product: ReadiumShared
-      - package: Readium
-        product: ReadiumStreamer
-      - package: Readium
-        product: ReadiumNavigator
       - sdk: libsqlite3.tbd
+      - sdk: libxml2.tbd
       - sdk: AVFoundation.framework
       - sdk: MediaPlayer.framework
       - sdk: CarPlay.framework
@@ -62,6 +54,7 @@ targets:
         MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: "16"
         CODE_SIGN_STYLE: Automatic
+        HEADER_SEARCH_PATHS: "$(SDKROOT)/usr/include/libxml2"
     scheme:
       testTargets:
         - FunstonTests
